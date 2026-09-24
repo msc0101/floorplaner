@@ -169,7 +169,7 @@ const UI = {
       const r = App.rooms.find(x => x.id === id);
       if (!r) return null;
       const wins = Rooms.windowsOf(r);
-      return { title: r.name, lines: [`Площадь пола ${U.fmtArea(r.areaFloor)}`, `По осям ${U.fmtArea(r.areaAxis)} · периметр ${L(r.perimFloor)}`, wins.length ? 'Окна: ' + wins.map(w => U.compass8(w.info.bearing)).join(', ') : 'Без окон'], hint: 'Клик — выбрать, двойной клик — переименовать' };
+      return { title: r.name, lines: [`Площадь пола ${U.fmtArea(r.areaFloor)}`, `По осям ${U.fmtArea(r.areaAxis)} · периметр ${L(r.perimFloor)}`, wins.length ? 'Окна: ' + wins.map(w => w.info.dir).join(', ') : 'Без окон'], hint: 'Клик — выбрать, двойной клик — переименовать' };
     }
     if (id === 'underlay') return { title: 'Подложка', lines: [App.doc.underlay?.name || 'картинка плана'], hint: 'Тяните, чтобы сдвинуть' };
     const o = Model.get(id), c = Model.coll(id);
@@ -181,7 +181,7 @@ const UI = {
         if (o.kind === 'fence') return { title: 'Забор', lines: [(FENCE_MATERIALS[o.mat] || {}).name || '', `Длина ${L(Model.wallLen(o))}, высота ${L(o.h)}`, ...tail] };
         const M = WALL_MATERIALS[o.mat];
         const R = o.kind === 'ext' ? wallR(o) : null;
-        return { title: 'Стена: ' + WALL_KINDS[o.kind].name.toLowerCase(), lines: [M ? M.name : '', `Длина ${L(Model.wallLen(o))} · толщина ${Math.round(o.th)} см${o.ins ? ` (утепл. ${o.ins})` : ''} · высота ${L(o.h)}`, R ? `R = ${R.toFixed(2)} м²·°C/Вт` : '', ...tail].filter(Boolean), hint: 'Тяните — сдвиг поперёк, за конец — длина' };
+        return { title: 'Стена: ' + WALL_KINDS[o.kind].name.toLowerCase(), lines: [M ? M.name : '', `Длина ${L(Model.wallLen(o))} · толщина ${Math.round(o.th)} см${o.ins ? ` (утепл. ${Math.round(o.ins)} см)` : ''} · высота ${L(o.h)}`, R ? `R = ${R.toFixed(2)} м²·°C/Вт` : '', ...tail].filter(Boolean), hint: 'Тяните — сдвиг поперёк, за конец — длина' };
       }
       case 'openings': {
         const T = OPENING_TYPES[o.type], win = T.cat === 'window';
@@ -864,7 +864,7 @@ const UI = {
       F.info('Площадь пола', U.fmtArea(r.areaFloor)),
       F.info('Площадь по осям стен', U.fmtArea(r.areaAxis)),
       F.info('Периметр по полу', U.fmtLen(r.perimFloor)),
-      F.info('Окна', wins.length ? wins.map(w => U.compass8(w.info.bearing)).join(', ') : 'нет'),
+      F.info('Окна', wins.length ? wins.map(w => w.info.dir).join(', ') : 'нет'),
       F.btns([['Переименовать на плане: двойной клик', null, 'ghost']].map(x => [x[0], () => UI.focusField('roomName'), x[2]])),
     ));
     const name = r.name.toLowerCase();

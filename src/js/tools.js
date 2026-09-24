@@ -39,7 +39,7 @@ const Tools = {
 
   set(name, opt = {}) {
     if (Tools.cur === name && !opt.force && name !== 'place') return;
-    if (typeof UI !== 'undefined' && UI.hideTip) UI.hideTip();
+    UI.hideTip();
     Tools.cancel(true);
     Tools.cur = name;
     Tools.st = {};
@@ -342,7 +342,6 @@ const Tools = {
 
   /* ------------------------------ выделение ------------------------------ */
   selDown(e, sp, p) {
-    UI.hideTip();
     const h = Tools.handleAt(sp);
     if (h) { Tools.beginHandle(h, p, e); return; }
     // компас: вращение стрелки севера
@@ -1077,14 +1076,13 @@ const Input = {
     cv.addEventListener('pointerup', Input.up);
     cv.addEventListener('pointercancel', Input.up);
     cv.addEventListener('pointerleave', () => { UI.hideTip(); if (!Input.pointers.size) { App.hover = null; App.redraw(); } });
-    cv.addEventListener('wheel', () => UI.hideTip(), { passive: true });
     cv.addEventListener('dblclick', (e) => { const sp = Input.sp(e); Tools.dbl(e, sp, View.toWorld(sp)); });
     cv.addEventListener('wheel', Input.wheel, { passive: false });
     cv.addEventListener('contextmenu', (e) => e.preventDefault());
   },
   sp(e) { const r = App.canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; },
   down(e) {
-    UI.hideMenu();
+    UI.hideMenu(); UI.hideTip();
     // снять фокус с полей панели, чтобы она обновилась под новое выделение
     if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
     App.canvas.setPointerCapture(e.pointerId);
@@ -1153,6 +1151,7 @@ const Input = {
   },
   wheel(e) {
     e.preventDefault();
+    UI.hideTip();
     const sp = Input.sp(e);
     if (e.shiftKey && !e.ctrlKey) { View.ox += (e.deltaY || e.deltaX) / View.scale; App.redraw(); return; }
     const dy = e.deltaMode === 1 ? e.deltaY * 30 : e.deltaY;

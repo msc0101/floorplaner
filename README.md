@@ -181,5 +181,6 @@ tools/screenshots.mjs  скриншоты для README
 ## Проверка
 
 ```bash
-npm test          # сборка + смоук-тест в headless Chromium (нужен playwright)
+npm install       # один раз: playwright для тестов (браузер: npx playwright install chromium)
+npm test          # сборка + смоук-тест в headless Chromium
 ```

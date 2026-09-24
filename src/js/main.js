@@ -295,6 +295,7 @@ const App = {
 
   /* ---------------------------- горячие клавиши -------------------------- */
   keydown(e) {
+    UI.hideTip();   // удаление, отмена, масштаб, 3D — подсказка устаревает
     const tag = (e.target.tagName || '').toLowerCase();
     const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
     const dlgOpen = document.querySelector('dialog[open]');

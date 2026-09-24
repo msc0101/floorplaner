@@ -8,5 +8,8 @@
     "test": "node tools/build.mjs && node tools/smoke.mjs",
     "serve": "npx http-server src -p 8080 -c-1"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.56.0"
+  }
 }
