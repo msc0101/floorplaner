@@ -100,6 +100,27 @@ await page.emulateMedia({ media: 'print' });
 await page.screenshot({ path: join(shots, '08-print.png'), fullPage: true });
 await page.emulateMedia({ media: 'screen' });
 await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+// новые возможности: этажи, крыша, 3D, IFC, DXF/SVG, смета, проверки, чертежи
+const extra = await page.evaluate(() => {
+  IO.loadDemo();
+  const r = {};
+  r.floors = App.doc.floors.length;
+  r.roofArea = Math.round(Roof.params(App.doc.roofs[0]).area / 1e4);
+  Model.setFloor(App.doc.floors[1].id); r.upperRooms = App.rooms.length; Model.setFloor(App.doc.floors[0].id);
+  r.ifc = IFC.build().length > 1000;
+  const reg = IO.regionFor('all');
+  r.svg = Vector.svg(reg, 100, {}).includes('<svg');
+  r.dxf = Vector.dxf(null, 100, { drawing: true }).length > 1000;
+  r.estimate = Math.round(Estimate.totals(Estimate.rows()).total) > 0;
+  r.checks = App.checks.results.length;
+  r.autoDims = Drawing.autoDims(App.doc.floors[0].id).length;
+  return r;
+});
+console.log('extra', JSON.stringify(extra));
+await page.evaluate(() => View3D.toggle(true));
+await page.waitForTimeout(500);
+await page.screenshot({ path: join(shots, '11-3d.png') });
+await page.evaluate(() => View3D.toggle(false));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

@@ -300,9 +300,8 @@ const App = {
     const dlgOpen = document.querySelector('dialog[open]');
     if (e.key === 'F1') { e.preventDefault(); if (!dlgOpen) $('dlgHelp').showModal(); return; }
     if (View3D.active && !dlgOpen && !typing) {
-      if (e.key === 'Escape' || e.code === 'Digit3') { View3D.toggle(false); e.preventDefault(); }
-      else if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyZ' || e.code === 'KeyY')) { e.preventDefault(); e.code === 'KeyZ' && !e.shiftKey ? App.undo() : App.redo(); }
-      return;
+      if (e.key === 'Escape' || e.code === 'Digit3') { View3D.toggle(false); e.preventDefault(); return; }
+      if (!(e.ctrlKey || e.metaKey)) return;       // в 3D — только сочетания с Ctrl (отмена, сохранение, печать…)
     }
     if (dlgOpen || typing) {
       if (typing && e.key === 'Escape') e.target.blur();

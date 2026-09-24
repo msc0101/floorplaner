@@ -127,13 +127,11 @@ const IFC = {
     }
     add('IFCRELAGGREGATES', IFC.guid(), oh, null, null, building, [...storeys.values()].map(s => s.st));
 
-    const saveV = App.V;
     const matGroups = new Map();       // слои материалов стен
     const spacesBy = new Map();
     const fdAll = App.floorData || [];
-    for (const f of d.floors) {
+    for (const f of d.floors) Drawing.onFloor(f.id, () => {
       const S = storeys.get(f.id);
-      App.V = Model.viewOf(f.id);
       const fd = fdAll.find(x => x.floor.id === f.id);
       // ---- стены ----
       for (const w of App.V.walls) {
@@ -258,8 +256,7 @@ const IFC = {
         contain(zc < 0 ? 'site' : f.id, el);
         pset(el, 'FP_Network', [['System', LABEL(k.name)], ['Code', LABEL(k.code)], ['Length', LEN(G.polyPerimeter(l.pts, false) * 10)], ['Depth', LEN(depth)]]);
       }
-    }
-    App.V = saveV;
+    });
     // ---- крыши ----
     for (const r of d.roofs) {
       const S = storeys.get(r.floor) || [...storeys.values()].pop();

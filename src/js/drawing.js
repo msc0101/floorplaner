@@ -88,7 +88,10 @@ const Drawing = {
     const pad = 300;
     return { x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad };
   },
-  sheetTitle(f, i) { return `План ${f.name.toLowerCase().includes('этаж') ? f.name.replace(/(\d+)\s*этаж/i, '$1-го этажа') : f.name.toLowerCase()}`; },
+  sheetTitle(f) {
+    const m = /^(\d+)\s*этаж$/i.exec(f.name.trim());
+    return m ? `План ${m[1]}-го этажа` : `План: ${f.name}`;
+  },
 
   /* ---- штамп в векторе (SVG/DXF): x, y, мм на листе → единицы чертежа ---- */
   vectorTitleBlock(ctx, x, y, k, info) {

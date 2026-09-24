@@ -127,8 +127,8 @@ const Estimate = {
   /* --------------------------------- UI ----------------------------------- */
   open() { Estimate.render(); $('dlgEstimate').showModal(); },
   render() {
-    const box = $('estBody');
-    box.textContent = '';
+    const box = $('estBody'), tot = $('estTot');
+    box.textContent = ''; tot.textContent = '';
     const s = App.doc.settings;
     s.prices = s.prices || {}; s.estQty = s.estQty || {}; s.estOff = s.estOff || {};
     const rows = Estimate.rows();
@@ -155,8 +155,8 @@ const Estimate = {
     }
     const res = U.el('input', { type: 'number', value: T.pct, step: 1, min: 0, max: 100 });
     res.onchange = () => { s.estReserve = U.clamp(U.num(res.value, 10), 0, 100); save(); };
-    box.append(
-      rows.length ? tbl : U.el('p', { class: 'note' }, 'В проекте пока нечего считать: нарисуйте стены, крышу, проёмы, сети или добавьте оборудование.'),
+    box.append(rows.length ? tbl : U.el('p', { class: 'note' }, 'В проекте пока нечего считать: нарисуйте стены, крышу, проёмы, сети или добавьте оборудование.'));
+    tot.append(
       U.el('div', { class: 'est-tot' },
         U.el('div', {}, U.el('span', {}, 'Итого по позициям'), U.el('b', {}, Estimate.money(T.sub))),
         U.el('div', {}, U.el('span', {}, 'Непредвиденные расходы, %'), res, U.el('b', {}, Estimate.money(T.reserve))),

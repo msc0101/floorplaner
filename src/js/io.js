@@ -92,7 +92,7 @@ const IO = {
     const cx = (region.x0 + region.x1) / 2, cy = (region.y0 + region.y1) / 2;
     const prevC = Theme.C;
     Theme.C = Theme.light;
-    const layers = { ...App.doc.settings.layers, grid: !!o.grid, ...(o.drawing ? { lower: false, checks: false, shadows: false, heat: false } : {}), ...(o.planOnly ? { site: false, siteobj: false, fence: false, roof: false } : {}) };
+    const layers = { ...App.doc.settings.layers, grid: !!o.grid, lower: false, ...(o.drawing ? { lower: false, checks: false, shadows: false, heat: false } : {}), ...(o.planOnly ? { site: false, siteobj: false, fence: false, roof: false } : {}) };
     try {
       Render.draw({ ctx, w: cv.width, h: cv.height, dpr: 1, fs: o.fs || 1, scale, ox: cx - cv.width / 2 / scale, oy: cy - cv.height / 2 / scale, C: Theme.light, exporting: true, printGrid: !!o.grid, layers });
       // компас и масштабная линейка
@@ -119,7 +119,7 @@ const IO = {
 
   /* -------------------------------- печать ------------------------------- */
   /** Листы комплекта чертежей: генплан (если есть участок) + план каждого этажа с размерами */
-  drawingSheets(o = {}, N = 100) {
+  drawingSheets(o = {}, N = 0) {
     const out = [];
     const d = App.doc, ground = d.floors[0];
     if (d.areas.length || d.roads.length) out.push({ fid: ground.id, region: IO.regionFor('all'), dims: false, title: 'Генплан участка', note: 'Схема планировочной организации участка' });
@@ -127,8 +127,8 @@ const IO = {
       if (!Model.viewOf(f.id).walls.some(w => w.kind !== 'fence')) continue;
       out.push({ fid: f.id, region: Drawing.regionFor(f.id), dims: true, title: Drawing.sheetTitle(f), note: `Отметка чистого пола ${f.elev >= 0 ? '+' : ''}${(f.elev / 100).toFixed(3)}` });
     }
-    // ширина листа — не меньше штампа (185 мм)
-    const minW = 200 * N / 10;
+    // ширина листа — не меньше штампа (185 мм); без масштаба (подбор) — не расширяем
+    const minW = N ? 200 * N / 10 : 0;
     for (const s of out) { const w = s.region.x1 - s.region.x0; if (w < minW) { s.region.x0 -= (minW - w) / 2; s.region.x1 += (minW - w) / 2; } }
     return out;
   },

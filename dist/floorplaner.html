@@ -176,7 +176,7 @@ body.mode-3d .floorbar { z-index: 5; }
 .fl-btn.on { background: var(--accent-soft); color: var(--accent); font-weight: 650; border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .fl-btn.add { color: var(--muted-2); font-size: 11px; border-top: 1px solid var(--border); border-radius: 0 0 7px 7px; }
 .est-card { width: min(980px, 96vw); max-height: 92vh; }
-.est-body { overflow: auto; max-height: 64vh; }
+.est-body { overflow: auto; max-height: 56vh; outline: none; }
 .tbl.est td { padding: 3px 4px; }
 .tbl.est input[type=number] { width: 90px; text-align: right; }
 .tbl.est input[type=text] { width: calc(100% - 34px); }
@@ -250,6 +250,13 @@ button.danger:hover { background: var(--danger-soft); border-color: var(--danger
 .phead span { color: var(--muted); font-size: 12px; }
 .sect { border-top: 1px solid var(--border); padding: 10px 0 8px; display: flex; flex-direction: column; gap: 6px; }
 .sect:first-child { border-top: 0; }
+.sect-h { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
+.sect-h::after { content: '▾'; margin-left: auto; color: var(--muted-2); font-size: 11px; transition: transform .15s; }
+.sect.collapsed .sect-h::after { transform: rotate(-90deg); }
+.sect.collapsed > :not(.sect-h) { display: none !important; }
+.sect-h:hover { color: var(--text); }
+.dd-label { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted-2); padding: 8px 10px 3px; }
+.dd-label:first-child { padding-top: 4px; }
 .sect h4 { margin: 0 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .7px; color: var(--muted-2); font-weight: 650; }
 .frow { display: flex; align-items: center; gap: 7px; }
 .flabel { flex: 0 0 42%; color: var(--muted); font-size: 12px; }
@@ -351,6 +358,12 @@ progress { width: 100%; height: 6px; accent-color: var(--accent); }
 .scrim { position: fixed; inset: 0; background: rgba(10, 14, 20, .4); z-index: 20; }
 
 /* ---------------------------------- адаптив ---------------------------------- */
+@media (max-height: 900px) {
+  .rail { padding: 4px; gap: 1px; }
+  .tool { padding: 4px 2px 3px; gap: 1px; font-size: 10px; }
+  .tool svg { width: 18px; height: 18px; }
+  .rail-title { margin: 5px 0 1px; font-size: 9px; }
+}
 .only-narrow { display: none !important; }
 @media (max-width: 1180px) {
   .library { width: 220px; flex-basis: 220px; }
@@ -377,7 +390,7 @@ progress { width: 100%; height: 6px; accent-color: var(--accent); }
 .fl-btn.on { background: var(--accent-soft); color: var(--accent); font-weight: 650; border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .fl-btn.add { color: var(--muted-2); font-size: 11px; border-top: 1px solid var(--border); border-radius: 0 0 7px 7px; }
 .est-card { width: min(980px, 96vw); max-height: 92vh; }
-.est-body { overflow: auto; max-height: 64vh; }
+.est-body { overflow: auto; max-height: 56vh; outline: none; }
 .tbl.est td { padding: 3px 4px; }
 .tbl.est input[type=number] { width: 90px; text-align: right; }
 .tbl.est input[type=text] { width: calc(100% - 34px); }
@@ -407,12 +420,16 @@ button.mini:disabled { opacity: .35; }
 .statusbar { padding-left: 10px; }
   .st-hint { display: none; }
   .tool-opts { right: 8px; max-width: calc(100% - 140px); }
+  .tool-opts.is-hint { display: none; }
+  .topbar { overflow-x: auto; scrollbar-width: none; }
 }
 @media (max-width: 560px) {
   .rail { width: 52px; flex-basis: 52px; }
   .tool span { font-size: 9px; }
   .tb-group { padding-left: 4px; }
-  .theme-seg button[data-theme="auto"] { display: none; }
+  .theme-seg, .brand, .view3d-btn span, #btnFile span { display: none; }
+  .project-name { width: 96px; }
+  .topbar { gap: 4px; padding: 6px; }
   .welcome-actions { grid-template-columns: 1fr; }
   .help-cols { grid-template-columns: 1fr; }
 }
@@ -466,23 +483,23 @@ button.mini:disabled { opacity: .35; }
           <svg viewBox="0 0 24 24"><path d="M4 4h10l6 6v10H4z"/><path d="M14 4v6h6"/></svg><span>Файл</span>
         </button>
         <div class="dropdown" id="fileMenu" role="menu" hidden>
+          <div class="dd-label">Проект</div>
           <button data-act="new"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Новый проект<kbd>Ctrl+Alt+N</kbd></button>
           <button data-act="open"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></svg>Открыть…<kbd>Ctrl+O</kbd></button>
           <button data-act="save"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg>Сохранить (.json)<kbd>Ctrl+S</kbd></button>
-          <hr>
-          <button data-act="drawings"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M13 16h8M13 16v4M6 8h7M6 8v2M13 8v2"/></svg>Чертежи с размерами (PDF, DXF, SVG)…</button>
-          <button data-act="estimate"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>Смета…</button>
-          <hr>
-          <button data-act="png"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 16l5-5 5 5 3-3 5 5"/></svg>Экспорт в PNG</button>
-          <button data-act="svg"><svg viewBox="0 0 24 24"><path d="M4 4h10l6 6v10H4z"/><path d="M8 16l2-5 2 5M14 11h3l-3 5h3"/></svg>Экспорт в SVG (вектор)</button>
-          <button data-act="dxf"><svg viewBox="0 0 24 24"><path d="M4 4h10l6 6v10H4z"/><path d="M7 12h2a2 2 0 0 1 0 4H7zM12 12l3 4M15 12l-3 4"/></svg>Экспорт в DXF (AutoCAD)</button>
-          <button data-act="ifc"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M8 10v4M11 10v4M11 10h2M11 12h1.5M15.5 10h-1.5v4h1.5"/></svg>Экспорт в IFC (BIM: Revit, ArchiCAD, Renga)</button>
-          <button data-act="obj"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>Экспорт 3D-модели (OBJ)</button>
-          <hr>
-          <button data-act="print"><svg viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H3v-7h18v7h-3M6 14h12v7H6z"/></svg>Печать / PDF…<kbd>Ctrl+P</kbd></button>
-          <hr>
-          <button data-act="underlay"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16l-5-5-9 8"/></svg>Загрузить подложку (картинку)…</button>
           <button data-act="demo"><svg viewBox="0 0 24 24"><path d="M3 20V9l9-6 9 6v11z"/></svg>Открыть пример</button>
+          <div class="dd-label">Документы</div>
+          <button data-act="drawings"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M13 16h8M13 16v4M6 8h7M6 8v2M13 8v2"/></svg>Чертежи с размерами (PDF, DXF, SVG)…</button>
+          <button data-act="print"><svg viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H3v-7h18v7h-3M6 14h12v7H6z"/></svg>Печать / PDF плана…<kbd>Ctrl+P</kbd></button>
+          <button data-act="estimate"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>Смета…</button>
+          <div class="dd-label">Экспорт</div>
+          <button data-act="png"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 16l5-5 5 5 3-3 5 5"/></svg>Картинка PNG</button>
+          <button data-act="svg"><svg viewBox="0 0 24 24"><path d="M4 4h10l6 6v10H4z"/><path d="M8 16l2-5 2 5M14 11h3l-3 5h3"/></svg>SVG — вектор, со слоями</button>
+          <button data-act="dxf"><svg viewBox="0 0 24 24"><path d="M4 4h10l6 6v10H4z"/><path d="M7 12h2a2 2 0 0 1 0 4H7zM12 12l3 4M15 12l-3 4"/></svg>DXF — AutoCAD, nanoCAD</button>
+          <button data-act="ifc"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M8 10v4M11 10v4M11 10h2M11 12h1.5M15.5 10h-1.5v4h1.5"/></svg>IFC — BIM: Revit, ArchiCAD, Renga</button>
+          <button data-act="obj"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>OBJ — 3D-модель (Blender, SketchUp)</button>
+          <div class="dd-label">Подложка</div>
+          <button data-act="underlay"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16l-5-5-9 8"/></svg>Загрузить картинку плана…</button>
         </div>
       </div>
       <button class="icon-btn" id="btnUndo" title="Отменить (Ctrl+Z)" aria-label="Отменить"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12H9"/></svg></button>
@@ -537,6 +554,9 @@ button.mini:disabled { opacity: .35; }
       <div class="rail-group">
         <button class="tool" data-tool="area" title="Участок / зона (B)"><svg viewBox="0 0 24 24"><path d="M4 7l6-3 10 4-2 12-12-2z" stroke-dasharray="3 2"/></svg><span>Зона</span></button>
         <button class="tool" data-tool="road" title="Улица, дорога, тропинка (P)"><svg viewBox="0 0 24 24"><path d="M7 21L10 3M17 21L14 3M12 5v3M12 11v3M12 17v3"/></svg><span>Дорога</span></button>
+      </div>
+      <div class="rail-title">Сети</div>
+      <div class="rail-group">
         <button class="tool" data-tool="line" title="Трасса: трубы, кабели, газ (U)"><svg viewBox="0 0 24 24"><path d="M3 18h6V8h8v8h4"/><circle cx="3" cy="18" r="1.5"/><circle cx="21" cy="16" r="1.5"/></svg><span>Сети</span></button>
       </div>
       <div class="rail-title">Разметка</div>
@@ -638,9 +658,10 @@ button.mini:disabled { opacity: .35; }
 <dialog class="modal" id="dlgEstimate">
   <div class="modal-card wide est-card">
     <h3>Смета</h3>
-    <div class="est-body" id="estBody"></div>
+    <div class="est-body" id="estBody" tabindex="-1"></div>
+    <div id="estTot"></div>
     <div class="modal-actions">
-      <button id="estAdd">+ Своя позиция</button><button id="estReset">Цены по умолчанию</button><button id="estCsv">CSV (Excel)</button><button id="estPrint">Печать</button><button class="primary" id="estClose">Закрыть</button>
+      <button id="estAdd">+ Своя позиция</button><button id="estReset">Цены по умолчанию</button><button id="estCsv">CSV (Excel)</button><button id="estPrint">Печать</button><button class="primary" id="estClose" autofocus>Закрыть</button>
     </div>
   </div>
 </dialog>
@@ -664,6 +685,8 @@ button.mini:disabled { opacity: .35; }
           <li><b>Поворот</b>: ручка ⟳ над выделением, кнопки в свойствах; без выделения — поворот всего плана.</li>
           <li><b>Примечания</b>: инструмент «Заметка» (<kbd>K</kbd>) — клик по объекту; выноска следует за объектом.</li>
           <li><b>Солнце</b>: тени на любую дату и время, карта освещённости участка, инсоляция комнат.</li>
+          <li><b>Этажи</b>: переключатель справа внизу, «+ этаж» копирует наружные стены. <b>3D</b> — кнопка вверху или <kbd>3</kbd>.</li>
+          <li><b>Документы</b>: «Файл → Чертежи с размерами» (листы со штампом), смета, экспорт в DXF, IFC (BIM), OBJ.</li>
           <li><b>Отмена</b> любого действия — <kbd>Ctrl+Z</kbd>, повтор — <kbd>Ctrl+Y</kbd>.</li>
         </ul>
       </div>
@@ -672,7 +695,8 @@ button.mini:disabled { opacity: .35; }
         <table class="keys">
           <tr><td>Выбор / Рука</td><td><kbd>V</kbd> / <kbd>H</kbd>, <kbd>Пробел</kbd></td></tr>
           <tr><td>Стена / Комната</td><td><kbd>W</kbd> / <kbd>Q</kbd></td></tr>
-          <tr><td>Дверь / Окно</td><td><kbd>D</kbd> / <kbd>O</kbd></td></tr>
+          <tr><td>Дверь / Окно / Крыша</td><td><kbd>D</kbd> / <kbd>O</kbd> / <kbd>J</kbd></td></tr>
+          <tr><td>3D-вид (и обратно)</td><td><kbd>3</kbd>, <kbd>Esc</kbd></td></tr>
           <tr><td>Зона / Дорога / Сети</td><td><kbd>B</kbd> / <kbd>P</kbd> / <kbd>U</kbd></td></tr>
           <tr><td>Размер / Рулетка / Текст</td><td><kbd>N</kbd> / <kbd>M</kbd> / <kbd>T</kbd></td></tr>
           <tr><td>Примечание к объекту</td><td><kbd>K</kbd></td></tr>
@@ -5320,14 +5344,14 @@ const Tools = {
     const tol = Tools.tol();
     const idx = o.pts.findIndex(q => G.dist(q, p) < tol);
     if (idx >= 0) {
-      if (o.pts.length > (closed ? 3 : 2)) { o.pts.splice(idx, 1); Model.commit(); UI.toast('Точка удалена'); }
+      if (o.pts.length > (closed ? 3 : 2)) { o.pts.splice(idx, 1); if (o.edges) o.edges.splice(idx, 1); Model.commit(); UI.toast('Точка удалена'); }
       return;
     }
     const n = o.pts.length;
     for (let i = 0; i < (closed ? n : n - 1); i++) {
       const a = o.pts[i], b = o.pts[(i + 1) % n];
       const pr = G.proj(p, a, b);
-      if (pr.d < tol) { o.pts.splice(i + 1, 0, { x: pr.q.x, y: pr.q.y }); Model.commit(); UI.toast('Точка добавлена'); return; }
+      if (pr.d < tol) { o.pts.splice(i + 1, 0, { x: pr.q.x, y: pr.q.y }); if (o.edges) o.edges.splice(i + 1, 0, o.edges[i] || 'auto'); Model.commit(); UI.toast('Точка добавлена'); return; }
     }
   },
 
@@ -5928,8 +5952,24 @@ const $ = (id) => document.getElementById(id);
 
 /* ---------------------------- конструктор форм --------------------------- */
 const F = {
+  /** Раздел панели; клик по заголовку сворачивает его (состояние запоминается) */
+  _collapsed: (() => { try { return new Set(JSON.parse(localStorage.getItem('fp:collapsed') || '[]')); } catch (e) { return new Set(); } })(),
   section(title, ...kids) {
-    return U.el('section', { class: 'sect' }, title ? U.el('h4', {}, title) : null, ...kids);
+    const sec = U.el('section', { class: 'sect' + (title && F._collapsed.has(title) ? ' collapsed' : '') });
+    if (title) {
+      const h = U.el('h4', { class: 'sect-h', tabindex: '0', role: 'button', 'aria-expanded': String(!F._collapsed.has(title)), title: 'Свернуть / развернуть' }, title);
+      const toggle = () => {
+        const c = sec.classList.toggle('collapsed');
+        h.setAttribute('aria-expanded', String(!c));
+        if (c) F._collapsed.add(title); else F._collapsed.delete(title);
+        try { localStorage.setItem('fp:collapsed', JSON.stringify([...F._collapsed])); } catch (e) { /* нет доступа */ }
+      };
+      h.addEventListener('click', toggle);
+      h.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+      sec.append(h);
+    }
+    sec.append(...kids.flat().filter(k => k != null && k !== false));
+    return sec;
   },
   row(label, control, unit) {
     return U.el('label', { class: 'frow' }, U.el('span', { class: 'flabel' }, label), control, unit ? U.el('span', { class: 'funit' }, unit) : null);
@@ -6179,6 +6219,7 @@ const UI = {
   renderToolOpts() {
     const box = $('toolOpts');
     box.textContent = '';
+    box.classList.toggle('is-hint', Tools.cur === 'select');
     const t = Tools.cur, o = Tools.opts;
     const title = U.el('b', { class: 'to-title' }, TOOL_INFO[t]?.name || '');
     box.append(title);
@@ -6340,6 +6381,12 @@ const UI = {
   head(body, title, sub) { body.append(U.el('div', { class: 'phead' }, U.el('b', {}, title), sub ? U.el('span', {}, sub) : null)); },
 
   propsNone(body) {
+    if (App.isEmpty()) {
+      UI.head(body, 'Пустой проект');
+      body.append(F.note('С чего начать: инструмент <b>Стена</b> (W) или <b>Комната</b> (Q) — для дома, <b>Зона → Граница участка</b> (B) — для участка. Мебель, сантехника, септик, постройки — в библиотеке слева. Размеры — в сантиметрах, как в жизни.'),
+        F.btns([['Открыть пример', () => IO.loadDemo(), 'primary'], ['Справка (F1)', () => $('dlgHelp').showModal()]]));
+      return;
+    }
     UI.head(body, 'Ничего не выделено');
     body.append(F.note('Кликните по объекту, чтобы изменить его размеры, поворот и свойства. Рамкой слева направо — выбрать целиком попавшие, справа налево — задетые.'));
     body.append(F.section('Весь план',
@@ -6816,6 +6863,13 @@ const UI = {
       F.num('Широта', g.lat, (v) => { g.lat = U.clamp(v, -89, 89); g.city = ''; Model.commit(); }, { unit: '°', step: 0.01 }),
       F.num('Долгота', g.lon, (v) => { g.lon = U.clamp(v, -180, 180); g.city = ''; Model.commit(); }, { unit: '°', step: 0.01 }),
       F.num('Часовой пояс UTC+', g.tz, (v) => { g.tz = U.clamp(v, -12, 14); Model.commit(); }, { unit: 'ч', step: 1 })));
+    // быстрый участок и проверка отступов — сразу после ориентации
+    const wIn = U.el('input', { type: 'number', value: 20, step: 0.5, min: 1 }), dIn = U.el('input', { type: 'number', value: 30, step: 0.5, min: 1 });
+    if (!App.doc.areas.some(a => a.kind === 'plot')) body.append(F.section('Быстрый участок',
+      U.el('div', { class: 'frow' }, U.el('span', { class: 'flabel' }, 'Ширина × длина'), wIn, U.el('span', { class: 'funit' }, '×'), dIn, U.el('span', { class: 'funit' }, 'м')),
+      F.btns([['Создать участок', () => App.createPlot(U.num(wIn.value, 20) * 100, U.num(dIn.value, 30) * 100), 'primary']]),
+      F.note('6 соток ≈ 20×30 м, 10 соток ≈ 25×40 м, 15 соток ≈ 30×50 м.')));
+    body.append(UI.checksSection());
     // дата и время
     const date = U.el('input', { type: 'date', value: st.date });
     date.addEventListener('change', () => { if (date.value) { st.date = date.value; if (App.heat) App.heat.stale = true; App.saveSoon(); UI.refresh(); App.redraw(); } });
@@ -6877,13 +6931,6 @@ const UI = {
       roomsSec.append(F.info('Дата', dd.split('-').reverse().join('.')), tbl);
     }
     body.append(roomsSec);
-    body.append(UI.checksSection());
-    // участок
-    const wIn = U.el('input', { type: 'number', value: 20, step: 0.5, min: 1 }), dIn = U.el('input', { type: 'number', value: 30, step: 0.5, min: 1 });
-    body.append(F.section('Быстрый участок',
-      U.el('div', { class: 'frow' }, U.el('span', { class: 'flabel' }, 'Ширина × длина'), wIn, U.el('span', { class: 'funit' }, '×'), dIn, U.el('span', { class: 'funit' }, 'м')),
-      F.btns([['Создать участок', () => App.createPlot(U.num(wIn.value, 20) * 100, U.num(dIn.value, 30) * 100), 'primary']]),
-      F.note('6 соток ≈ 20×30 м, 10 соток ≈ 25×40 м, 15 соток ≈ 30×50 м.')));
   },
   checksSection() {
     const s = App.doc.settings;
@@ -7191,7 +7238,10 @@ const Drawing = {
     const pad = 300;
     return { x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad };
   },
-  sheetTitle(f, i) { return `План ${f.name.toLowerCase().includes('этаж') ? f.name.replace(/(\d+)\s*этаж/i, '$1-го этажа') : f.name.toLowerCase()}`; },
+  sheetTitle(f) {
+    const m = /^(\d+)\s*этаж$/i.exec(f.name.trim());
+    return m ? `План ${m[1]}-го этажа` : `План: ${f.name}`;
+  },
 
   /* ---- штамп в векторе (SVG/DXF): x, y, мм на листе → единицы чертежа ---- */
   vectorTitleBlock(ctx, x, y, k, info) {
@@ -7371,7 +7421,7 @@ const Vector = {
     const ctx = new VectorCtx();
     const k = scaleN / 10;                       // единиц чертежа (см) на 1 мм листа
     let x = 0, Hmax = 0, page = 0;
-    const sheets = IO.drawingSheets(o);
+    const sheets = IO.drawingSheets(o, scaleN);
     for (const sh of sheets) {
       page++;
       const reg = sh.region, W = reg.x1 - reg.x0, H = reg.y1 - reg.y0;
@@ -7650,13 +7700,11 @@ const IFC = {
     }
     add('IFCRELAGGREGATES', IFC.guid(), oh, null, null, building, [...storeys.values()].map(s => s.st));
 
-    const saveV = App.V;
     const matGroups = new Map();       // слои материалов стен
     const spacesBy = new Map();
     const fdAll = App.floorData || [];
-    for (const f of d.floors) {
+    for (const f of d.floors) Drawing.onFloor(f.id, () => {
       const S = storeys.get(f.id);
-      App.V = Model.viewOf(f.id);
       const fd = fdAll.find(x => x.floor.id === f.id);
       // ---- стены ----
       for (const w of App.V.walls) {
@@ -7781,8 +7829,7 @@ const IFC = {
         contain(zc < 0 ? 'site' : f.id, el);
         pset(el, 'FP_Network', [['System', LABEL(k.name)], ['Code', LABEL(k.code)], ['Length', LEN(G.polyPerimeter(l.pts, false) * 10)], ['Depth', LEN(depth)]]);
       }
-    }
-    App.V = saveV;
+    });
     // ---- крыши ----
     for (const r of d.roofs) {
       const S = storeys.get(r.floor) || [...storeys.values()].pop();
@@ -7975,8 +8022,8 @@ const Estimate = {
   /* --------------------------------- UI ----------------------------------- */
   open() { Estimate.render(); $('dlgEstimate').showModal(); },
   render() {
-    const box = $('estBody');
-    box.textContent = '';
+    const box = $('estBody'), tot = $('estTot');
+    box.textContent = ''; tot.textContent = '';
     const s = App.doc.settings;
     s.prices = s.prices || {}; s.estQty = s.estQty || {}; s.estOff = s.estOff || {};
     const rows = Estimate.rows();
@@ -8003,8 +8050,8 @@ const Estimate = {
     }
     const res = U.el('input', { type: 'number', value: T.pct, step: 1, min: 0, max: 100 });
     res.onchange = () => { s.estReserve = U.clamp(U.num(res.value, 10), 0, 100); save(); };
-    box.append(
-      rows.length ? tbl : U.el('p', { class: 'note' }, 'В проекте пока нечего считать: нарисуйте стены, крышу, проёмы, сети или добавьте оборудование.'),
+    box.append(rows.length ? tbl : U.el('p', { class: 'note' }, 'В проекте пока нечего считать: нарисуйте стены, крышу, проёмы, сети или добавьте оборудование.'));
+    tot.append(
       U.el('div', { class: 'est-tot' },
         U.el('div', {}, U.el('span', {}, 'Итого по позициям'), U.el('b', {}, Estimate.money(T.sub))),
         U.el('div', {}, U.el('span', {}, 'Непредвиденные расходы, %'), res, U.el('b', {}, Estimate.money(T.reserve))),
@@ -8150,7 +8197,7 @@ const IO = {
     const cx = (region.x0 + region.x1) / 2, cy = (region.y0 + region.y1) / 2;
     const prevC = Theme.C;
     Theme.C = Theme.light;
-    const layers = { ...App.doc.settings.layers, grid: !!o.grid, ...(o.drawing ? { lower: false, checks: false, shadows: false, heat: false } : {}), ...(o.planOnly ? { site: false, siteobj: false, fence: false, roof: false } : {}) };
+    const layers = { ...App.doc.settings.layers, grid: !!o.grid, lower: false, ...(o.drawing ? { lower: false, checks: false, shadows: false, heat: false } : {}), ...(o.planOnly ? { site: false, siteobj: false, fence: false, roof: false } : {}) };
     try {
       Render.draw({ ctx, w: cv.width, h: cv.height, dpr: 1, fs: o.fs || 1, scale, ox: cx - cv.width / 2 / scale, oy: cy - cv.height / 2 / scale, C: Theme.light, exporting: true, printGrid: !!o.grid, layers });
       // компас и масштабная линейка
@@ -8177,7 +8224,7 @@ const IO = {
 
   /* -------------------------------- печать ------------------------------- */
   /** Листы комплекта чертежей: генплан (если есть участок) + план каждого этажа с размерами */
-  drawingSheets(o = {}, N = 100) {
+  drawingSheets(o = {}, N = 0) {
     const out = [];
     const d = App.doc, ground = d.floors[0];
     if (d.areas.length || d.roads.length) out.push({ fid: ground.id, region: IO.regionFor('all'), dims: false, title: 'Генплан участка', note: 'Схема планировочной организации участка' });
@@ -8185,8 +8232,8 @@ const IO = {
       if (!Model.viewOf(f.id).walls.some(w => w.kind !== 'fence')) continue;
       out.push({ fid: f.id, region: Drawing.regionFor(f.id), dims: true, title: Drawing.sheetTitle(f), note: `Отметка чистого пола ${f.elev >= 0 ? '+' : ''}${(f.elev / 100).toFixed(3)}` });
     }
-    // ширина листа — не меньше штампа (185 мм)
-    const minW = 200 * N / 10;
+    // ширина листа — не меньше штампа (185 мм); без масштаба (подбор) — не расширяем
+    const minW = N ? 200 * N / 10 : 0;
     for (const s of out) { const w = s.region.x1 - s.region.x0; if (w < minW) { s.region.x0 -= (minW - w) / 2; s.region.x1 += (minW - w) / 2; } }
     return out;
   },
@@ -8750,9 +8797,8 @@ const App = {
     const dlgOpen = document.querySelector('dialog[open]');
     if (e.key === 'F1') { e.preventDefault(); if (!dlgOpen) $('dlgHelp').showModal(); return; }
     if (View3D.active && !dlgOpen && !typing) {
-      if (e.key === 'Escape' || e.code === 'Digit3') { View3D.toggle(false); e.preventDefault(); }
-      else if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyZ' || e.code === 'KeyY')) { e.preventDefault(); e.code === 'KeyZ' && !e.shiftKey ? App.undo() : App.redo(); }
-      return;
+      if (e.key === 'Escape' || e.code === 'Digit3') { View3D.toggle(false); e.preventDefault(); return; }
+      if (!(e.ctrlKey || e.metaKey)) return;       // в 3D — только сочетания с Ctrl (отмена, сохранение, печать…)
     }
     if (dlgOpen || typing) {
       if (typing && e.key === 'Escape') e.target.blur();

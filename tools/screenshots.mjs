@@ -35,6 +35,38 @@ await shot('dark.png');
 await page.evaluate(() => { Theme.set('light'); UI.showTab('layers'); View.fit({ x0: 1300, y0: 900, x1: 2500, y1: 2900 }, 20); });
 await shot('networks.png');
 
+// мансарда: этаж, лестница, крыша
+await page.evaluate(() => { Model.setFloor('f2'); View.fit({ x0: 500, y0: 1050, x1: 1900, y1: 2250 }, 20); const r = App.doc.roofs[0]; App.sel.clear(); App.sel.add(r.id); App.selChanged(); });
+await shot('floors.png');
+await page.evaluate(() => { App.sel.clear(); Model.setFloor('f1'); });
+
+// 3D
+await page.evaluate(() => { View3D.toggle(true); });
+await page.waitForTimeout(600);
+await shot('3d.png');
+await page.evaluate(() => { View3D.toggle(false); });
+
+// проверка отступов
+await page.evaluate(() => { UI.showTab('sun'); document.querySelector('#tab-sun').scrollTop = 420; View.fit(Model.contentBBox(), 30); });
+await shot('checks.png');
+
+// смета
+await page.evaluate(() => Estimate.open());
+await page.waitForTimeout(200);
+await shot('estimate.png');
+await page.evaluate(() => $('dlgEstimate').close());
+
+// лист чертежа
+await page.evaluate(() => { window.print = () => {}; IO.print({ paper: 'A3', orient: 'landscape', scale: 'fit', area: 'all', expl: false, spec: false, legend: false, grid: false, drawing: true }); });
+await page.waitForTimeout(400);
+await page.emulateMedia({ media: 'print' });
+await page.setViewportSize({ width: 1587, height: 1123 });
+await page.evaluate(() => window.scrollTo(0, 1123));
+await page.screenshot({ path: join(out, 'drawing.png'), fullPage: true, clip: { x: 0, y: 1123, width: 1587, height: 1123 } });
+await page.emulateMedia({ media: 'screen' });
+await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+await page.setViewportSize({ width: 1440, height: 860 });
+
 // печать
 await page.evaluate(() => { window.print = () => {}; IO.print({ paper: 'A4', orient: 'landscape', scale: 'fit', area: 'all', expl: true, spec: true, legend: true, grid: false }); });
 await page.waitForTimeout(400);

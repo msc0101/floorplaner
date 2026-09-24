@@ -558,14 +558,14 @@ const Tools = {
     const tol = Tools.tol();
     const idx = o.pts.findIndex(q => G.dist(q, p) < tol);
     if (idx >= 0) {
-      if (o.pts.length > (closed ? 3 : 2)) { o.pts.splice(idx, 1); Model.commit(); UI.toast('Точка удалена'); }
+      if (o.pts.length > (closed ? 3 : 2)) { o.pts.splice(idx, 1); if (o.edges) o.edges.splice(idx, 1); Model.commit(); UI.toast('Точка удалена'); }
       return;
     }
     const n = o.pts.length;
     for (let i = 0; i < (closed ? n : n - 1); i++) {
       const a = o.pts[i], b = o.pts[(i + 1) % n];
       const pr = G.proj(p, a, b);
-      if (pr.d < tol) { o.pts.splice(i + 1, 0, { x: pr.q.x, y: pr.q.y }); Model.commit(); UI.toast('Точка добавлена'); return; }
+      if (pr.d < tol) { o.pts.splice(i + 1, 0, { x: pr.q.x, y: pr.q.y }); if (o.edges) o.edges.splice(i + 1, 0, o.edges[i] || 'auto'); Model.commit(); UI.toast('Точка добавлена'); return; }
     }
   },
 

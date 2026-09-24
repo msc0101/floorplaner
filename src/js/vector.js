@@ -150,7 +150,7 @@ const Vector = {
     const ctx = new VectorCtx();
     const k = scaleN / 10;                       // единиц чертежа (см) на 1 мм листа
     let x = 0, Hmax = 0, page = 0;
-    const sheets = IO.drawingSheets(o);
+    const sheets = IO.drawingSheets(o, scaleN);
     for (const sh of sheets) {
       page++;
       const reg = sh.region, W = reg.x1 - reg.x0, H = reg.y1 - reg.y0;

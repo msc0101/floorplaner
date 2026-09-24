@@ -7,8 +7,24 @@ const $ = (id) => document.getElementById(id);
 
 /* ---------------------------- конструктор форм --------------------------- */
 const F = {
+  /** Раздел панели; клик по заголовку сворачивает его (состояние запоминается) */
+  _collapsed: (() => { try { return new Set(JSON.parse(localStorage.getItem('fp:collapsed') || '[]')); } catch (e) { return new Set(); } })(),
   section(title, ...kids) {
-    return U.el('section', { class: 'sect' }, title ? U.el('h4', {}, title) : null, ...kids);
+    const sec = U.el('section', { class: 'sect' + (title && F._collapsed.has(title) ? ' collapsed' : '') });
+    if (title) {
+      const h = U.el('h4', { class: 'sect-h', tabindex: '0', role: 'button', 'aria-expanded': String(!F._collapsed.has(title)), title: 'Свернуть / развернуть' }, title);
+      const toggle = () => {
+        const c = sec.classList.toggle('collapsed');
+        h.setAttribute('aria-expanded', String(!c));
+        if (c) F._collapsed.add(title); else F._collapsed.delete(title);
+        try { localStorage.setItem('fp:collapsed', JSON.stringify([...F._collapsed])); } catch (e) { /* нет доступа */ }
+      };
+      h.addEventListener('click', toggle);
+      h.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+      sec.append(h);
+    }
+    sec.append(...kids.flat().filter(k => k != null && k !== false));
+    return sec;
   },
   row(label, control, unit) {
     return U.el('label', { class: 'frow' }, U.el('span', { class: 'flabel' }, label), control, unit ? U.el('span', { class: 'funit' }, unit) : null);
@@ -258,6 +274,7 @@ const UI = {
   renderToolOpts() {
     const box = $('toolOpts');
     box.textContent = '';
+    box.classList.toggle('is-hint', Tools.cur === 'select');
     const t = Tools.cur, o = Tools.opts;
     const title = U.el('b', { class: 'to-title' }, TOOL_INFO[t]?.name || '');
     box.append(title);
@@ -419,6 +436,12 @@ const UI = {
   head(body, title, sub) { body.append(U.el('div', { class: 'phead' }, U.el('b', {}, title), sub ? U.el('span', {}, sub) : null)); },
 
   propsNone(body) {
+    if (App.isEmpty()) {
+      UI.head(body, 'Пустой проект');
+      body.append(F.note('С чего начать: инструмент <b>Стена</b> (W) или <b>Комната</b> (Q) — для дома, <b>Зона → Граница участка</b> (B) — для участка. Мебель, сантехника, септик, постройки — в библиотеке слева. Размеры — в сантиметрах, как в жизни.'),
+        F.btns([['Открыть пример', () => IO.loadDemo(), 'primary'], ['Справка (F1)', () => $('dlgHelp').showModal()]]));
+      return;
+    }
     UI.head(body, 'Ничего не выделено');
     body.append(F.note('Кликните по объекту, чтобы изменить его размеры, поворот и свойства. Рамкой слева направо — выбрать целиком попавшие, справа налево — задетые.'));
     body.append(F.section('Весь план',
@@ -895,6 +918,13 @@ const UI = {
       F.num('Широта', g.lat, (v) => { g.lat = U.clamp(v, -89, 89); g.city = ''; Model.commit(); }, { unit: '°', step: 0.01 }),
       F.num('Долгота', g.lon, (v) => { g.lon = U.clamp(v, -180, 180); g.city = ''; Model.commit(); }, { unit: '°', step: 0.01 }),
       F.num('Часовой пояс UTC+', g.tz, (v) => { g.tz = U.clamp(v, -12, 14); Model.commit(); }, { unit: 'ч', step: 1 })));
+    // быстрый участок и проверка отступов — сразу после ориентации
+    const wIn = U.el('input', { type: 'number', value: 20, step: 0.5, min: 1 }), dIn = U.el('input', { type: 'number', value: 30, step: 0.5, min: 1 });
+    if (!App.doc.areas.some(a => a.kind === 'plot')) body.append(F.section('Быстрый участок',
+      U.el('div', { class: 'frow' }, U.el('span', { class: 'flabel' }, 'Ширина × длина'), wIn, U.el('span', { class: 'funit' }, '×'), dIn, U.el('span', { class: 'funit' }, 'м')),
+      F.btns([['Создать участок', () => App.createPlot(U.num(wIn.value, 20) * 100, U.num(dIn.value, 30) * 100), 'primary']]),
+      F.note('6 соток ≈ 20×30 м, 10 соток ≈ 25×40 м, 15 соток ≈ 30×50 м.')));
+    body.append(UI.checksSection());
     // дата и время
     const date = U.el('input', { type: 'date', value: st.date });
     date.addEventListener('change', () => { if (date.value) { st.date = date.value; if (App.heat) App.heat.stale = true; App.saveSoon(); UI.refresh(); App.redraw(); } });
@@ -956,13 +986,6 @@ const UI = {
       roomsSec.append(F.info('Дата', dd.split('-').reverse().join('.')), tbl);
     }
     body.append(roomsSec);
-    body.append(UI.checksSection());
-    // участок
-    const wIn = U.el('input', { type: 'number', value: 20, step: 0.5, min: 1 }), dIn = U.el('input', { type: 'number', value: 30, step: 0.5, min: 1 });
-    body.append(F.section('Быстрый участок',
-      U.el('div', { class: 'frow' }, U.el('span', { class: 'flabel' }, 'Ширина × длина'), wIn, U.el('span', { class: 'funit' }, '×'), dIn, U.el('span', { class: 'funit' }, 'м')),
-      F.btns([['Создать участок', () => App.createPlot(U.num(wIn.value, 20) * 100, U.num(dIn.value, 30) * 100), 'primary']]),
-      F.note('6 соток ≈ 20×30 м, 10 соток ≈ 25×40 м, 15 соток ≈ 30×50 м.')));
   },
   checksSection() {
     const s = App.doc.settings;
