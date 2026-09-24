@@ -185,7 +185,13 @@ const Render = {
     const steps = [1, 5, 10, 50, 100, 500, 1000, 5000];
     let minor = steps.find(s => s * env.scale >= 9) || 5000;
     const major = minor < 100 ? 100 : minor * 10;
-    const v = env.view;
+    // сетка может быть повёрнута (угол и начало — в настройках): рисуем в её системе координат
+    const gf = Tools.gridFrame();
+    const w = env.view;
+    const cs = [{ x: w.x0, y: w.y0 }, { x: w.x1, y: w.y0 }, { x: w.x1, y: w.y1 }, { x: w.x0, y: w.y1 }].map(Tools.gL);
+    const v = { x0: Math.min(...cs.map(p => p.x)), x1: Math.max(...cs.map(p => p.x)), y0: Math.min(...cs.map(p => p.y)), y1: Math.max(...cs.map(p => p.y)) };
+    ctx.save();
+    ctx.translate(gf.o.x, gf.o.y); ctx.rotate(U.rad(gf.a));
     const draw = (step, color) => {
       ctx.beginPath();
       for (let x = Math.floor(v.x0 / step) * step; x <= v.x1; x += step) { ctx.moveTo(x, v.y0); ctx.lineTo(x, v.y1); }
@@ -196,6 +202,7 @@ const Render = {
     draw(major, C.gridMajor);
     ctx.beginPath(); ctx.moveTo(0, v.y0); ctx.lineTo(0, v.y1); ctx.moveTo(v.x0, 0); ctx.lineTo(v.x1, 0);
     ctx.strokeStyle = C.gridAxis; ctx.lineWidth = px; ctx.stroke();
+    ctx.restore();
   },
 
   underlay(env) {

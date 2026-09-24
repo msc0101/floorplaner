@@ -41,10 +41,12 @@ await shot('floors.png');
 await page.evaluate(() => { App.sel.clear(); Model.setFloor('f1'); });
 
 // 3D
-await page.evaluate(() => { View3D.toggle(true); });
-await page.waitForTimeout(600);
+// 3D: вечернее солнце (длинные тени), панель свёрнута
+const sun0 = await page.evaluate(() => { const st = Sun.state(), prev = { ...st }; st.min = 17 * 60; return prev; });
+await page.evaluate(() => { View3D.toggle(true); document.querySelector('.p3d-head').click(); View3D.fit(); View3D.cam.dist *= 0.72; View3D.redraw(); });
+await page.waitForTimeout(700);
 await shot('3d.png');
-await page.evaluate(() => { View3D.toggle(false); });
+await page.evaluate((s0) => { document.querySelector('.p3d-head').click(); Object.assign(Sun.state(), s0); View3D.toggle(false); }, sun0);
 
 // проверка отступов
 await page.evaluate(() => { UI.showTab('sun'); document.querySelector('#tab-sun').scrollTop = 420; View.fit(Model.contentBBox(), 30); });

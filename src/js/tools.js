@@ -44,7 +44,7 @@ const Tools = {
     Tools.cur = name;
     Tools.st = {};
     Tools.input = '';
-    if (name === 'place') { Tools.opts.placeKey = opt.key; Tools.opts.placeRot = 0; }
+    if (name === 'place') { Tools.opts.placeKey = opt.key; Tools.opts.placeRot = Math.round(Tools.gridFrame().a * 10) / 10; }
     if (name !== 'select') App.hover = null;
     UI.syncTool();
     App.redraw();
@@ -62,6 +62,17 @@ const Tools = {
   /* ------------------------------ привязки ------------------------------- */
   tol() { return 9 / View.scale; },
   gridStep() { return App.doc.settings.grid || 5; },
+  /** Система координат сетки: угол a (°) и начало o. Прямоугольники и «ортогонально» — по её осям */
+  gridFrame() { const s = App.doc.settings; return { a: s.gridAngle || 0, o: s.gridOrigin || { x: 0, y: 0 } }; },
+  gL(p) { const f = Tools.gridFrame(); return f.a ? G.toLocal(p, f.o.x, f.o.y, f.a) : { x: p.x - f.o.x, y: p.y - f.o.y }; },
+  gW(p) { const f = Tools.gridFrame(); return f.a ? G.toWorld(p, f.o.x, f.o.y, f.a) : { x: p.x + f.o.x, y: p.y + f.o.y }; },
+  /** Прямоугольник по диагонали a–b, стороны параллельны осям сетки */
+  gridRect(a, b) {
+    const la = Tools.gL(a), lb = Tools.gL(b);
+    const x0 = Math.min(la.x, lb.x), x1 = Math.max(la.x, lb.x), y0 = Math.min(la.y, lb.y), y1 = Math.max(la.y, lb.y);
+    const pts = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }].map(Tools.gW);
+    return { pts, w: x1 - x0, h: y1 - y0, c: Tools.gW({ x: (x0 + x1) / 2, y: (y0 + y1) / 2 }), rot: Tools.gridFrame().a };
+  },
   /** Привязка точки. o: {from, exclude:Set, items:bool, faces:bool, onWall:bool, noGrid} */
   snap(p, e, o = {}) {
     Tools.snapInfo = null; Tools.guides = [];
@@ -108,28 +119,38 @@ const Tools = {
     let q = { ...p };
     // угол от предыдущей точки
     if (o.from) {
+      // углы считаются от осей сетки (сетку можно повернуть)
+      const ga = Tools.gridFrame().a;
       const ang = G.angle(o.from, p), L = G.dist(o.from, p);
       const stepA = e && e.shiftKey ? 15 : 45;
-      const snapped = Math.round(U.deg(ang) / stepA) * stepA;
-      if ((e && e.shiftKey) || Math.abs(U.normDeg(U.deg(ang) - snapped)) < 4) {
+      const rel = U.deg(ang) - ga;
+      const snapped = Math.round(rel / stepA) * stepA;
+      if ((e && e.shiftKey) || Math.abs(U.normDeg(rel - snapped)) < 4) {
         const len = doSnap ? U.round(L, Math.min(Tools.gridStep(), 5)) : L;
-        q = G.add(o.from, G.fromAngle(U.rad(snapped), len));
-        Tools.snapInfo = { p: q, kind: snapped % 90 === 0 ? 'ортогонально' : snapped + '°' };
+        q = G.add(o.from, G.fromAngle(U.rad(snapped + ga), len));
+        const sn = ((snapped % 360) + 360) % 360;
+        Tools.snapInfo = { p: q, kind: sn % 90 === 0 ? (ga ? 'по сетке' : 'ортогонально') : sn + '°' };
         return q;
       }
     }
-    // выравнивание по X/Y с существующими углами
+    // выравнивание по осям сетки с существующими углами (в системе координат сетки)
     const al = [];
     for (const w of App.V.walls) if (!ex.has(w.id)) al.push(w.a, w.b);
     if (o.from) al.push(o.from);
+    const lp = Tools.gL(p);
     let ax = null, ay = null;
     for (const v of al) {
-      if (Math.abs(v.x - p.x) < tol && (!ax || Math.abs(v.x - p.x) < Math.abs(ax.x - p.x))) ax = v;
-      if (Math.abs(v.y - p.y) < tol && (!ay || Math.abs(v.y - p.y) < Math.abs(ay.y - p.y))) ay = v;
+      const lv = Tools.gL(v);
+      if (Math.abs(lv.x - lp.x) < tol && (!ax || Math.abs(lv.x - lp.x) < Math.abs(ax.l.x - lp.x))) ax = { v, l: lv };
+      if (Math.abs(lv.y - lp.y) < tol && (!ay || Math.abs(lv.y - lp.y) < Math.abs(ay.l.y - lp.y))) ay = { v, l: lv };
     }
-    if (doSnap && !o.noGrid) { const g = Tools.gridStep(); q = { x: U.round(p.x, g), y: U.round(p.y, g) }; }
-    if (ax) { q.x = ax.x; Tools.guides.push([ax, { x: ax.x, y: q.y }]); }
-    if (ay) { q.y = ay.y; Tools.guides.push([ay, { x: q.x, y: ay.y }]); }
+    let lq = { ...lp };
+    if (doSnap && !o.noGrid) { const g = Tools.gridStep(); lq = { x: U.round(lp.x, g), y: U.round(lp.y, g) }; }
+    if (ax) lq.x = ax.l.x;
+    if (ay) lq.y = ay.l.y;
+    q = Tools.gW(lq);
+    if (ax) Tools.guides.push([ax.v, Tools.gW({ x: ax.l.x, y: lq.y })]);
+    if (ay) Tools.guides.push([ay.v, Tools.gW({ x: lq.x, y: ay.l.y })]);
     return q;
   },
 
@@ -613,7 +634,7 @@ const Tools = {
       if (m.length !== 2) { UI.toast('Введите размеры как 400x300', 'err'); return; }
       const W = U.parseLen(m[0]), H = U.parseLen(m[1]);
       if (!(W > 0 && H > 0)) { UI.toast('Не понял размеры', 'err'); return; }
-      const b = { x: st.a.x + W, y: st.a.y + H };
+      const la = Tools.gL(st.a), b = Tools.gW({ x: la.x + W, y: la.y + H });
       if (t === 'room' || t === 'roof') Tools.roomFinish(st.a, b); else Tools.areaRectFinish(st.a, b);
       return;
     }
@@ -627,21 +648,21 @@ const Tools = {
     Tools.roomFinish(st.a, q);
   },
   roomFinish(a, b) {
-    if (Math.abs(a.x - b.x) < 20 || Math.abs(a.y - b.y) < 20) { Tools.st = {}; App.redraw(); return; }
-    const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+    const R = Tools.gridRect(a, b);
+    if (R.w < 20 || R.h < 20) { Tools.st = {}; App.redraw(); return; }
     if (Tools.cur === 'roof') {
-      let w = x1 - x0, d = y1 - y0, rot = 0;
-      if (d > w) { [w, d] = [d, w]; rot = 90; }
+      let w = R.w, d = R.h, rot = R.rot;
+      if (d > w) { [w, d] = [d, w]; rot += 90; }
       Tools.st = {};
-      App.addRoof({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, w, d, rot });
+      App.addRoof({ x: R.c.x, y: R.c.y, w, d, rot: U.normDeg(rot) });
       return;
     }
-    const c = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+    const c = R.pts;
     const d = Tools.wallDefaults();
     for (let i = 0; i < 4; i++) Model.add('walls', { ...d, a: { ...c[i] }, b: { ...c[(i + 1) % 4] } });
     Tools.st = {};
     Model.commit();
-    UI.toast(`Комната ${U.fmtLen(x1 - x0)} × ${U.fmtLen(y1 - y0)} (по осям)`);
+    UI.toast(`Комната ${U.fmtLen(R.w)} × ${U.fmtLen(R.h)} (по осям)`);
   },
 
   /* ------------------------------- проёмы -------------------------------- */
@@ -730,9 +751,9 @@ const Tools = {
   },
   areaRectFinish(a, b) {
     Tools.st = {};
-    if (Math.abs(a.x - b.x) < 20 || Math.abs(a.y - b.y) < 20) { App.redraw(); return; }
-    const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
-    Tools.addArea([{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]);
+    const R = Tools.gridRect(a, b);
+    if (R.w < 20 || R.h < 20) { App.redraw(); return; }
+    Tools.addArea(R.pts);
   },
   finishArea() {
     const st = Tools.st;
@@ -922,7 +943,7 @@ const Tools = {
     } else if (t === 'roof') {
       const q = st.a ? st.b : Tools.snap(cur, e, {});
       if (st.a && st.b) {
-        const r = [{ x: st.a.x, y: st.a.y }, { x: st.b.x, y: st.a.y }, { x: st.b.x, y: st.b.y }, { x: st.a.x, y: st.b.y }];
+        const r = Tools.gridRect(st.a, st.b).pts;
         Render.polyPath(ctx, r); ctx.fillStyle = C.accentSoft; ctx.fill(); ctx.setLineDash([8 * px, 4 * px]); ctx.stroke(); ctx.setLineDash([]);
         lenLabel(r[0], r[1]); lenLabel(r[1], r[2]);
       }
@@ -931,12 +952,12 @@ const Tools = {
       const q = st.a ? st.b : Tools.snap(cur, e, {});
       if (st.a && st.b) {
         const a = st.a, b = st.b;
-        const r = [{ x: a.x, y: a.y }, { x: b.x, y: a.y }, { x: b.x, y: b.y }, { x: a.x, y: b.y }];
+        const R = Tools.gridRect(a, b), r = R.pts;
         const th = Tools.wallDefaults().th;
         ctx.lineWidth = th; ctx.strokeStyle = C.accentSoft; Render.polyPath(ctx, r); ctx.stroke();
         ctx.lineWidth = 1.2 * px; ctx.strokeStyle = C.accent; Render.polyPath(ctx, r); ctx.stroke();
         lenLabel(r[0], r[1]); lenLabel(r[1], r[2]);
-        const inner = { w: Math.abs(b.x - a.x) - th, h: Math.abs(b.y - a.y) - th };
+        const inner = { w: R.w - th, h: R.h - th };
         if (inner.w > 0 && inner.h > 0) Render.label(env, `внутри ${U.fmtLen(inner.w)} × ${U.fmtLen(inner.h)} = ${U.fmtArea(inner.w * inner.h)}`, G.mid(a, b), 0, { size: 11, color: C.accent, bg: true });
       }
       Tools.drawSnapMark(env, q);
@@ -975,9 +996,9 @@ const Tools = {
       ctx.strokeStyle = color;
       if (t === 'area' && Tools.opts.areaRect) {
         if (st.a && st.b) {
-          const r = [{ x: st.a.x, y: st.a.y }, { x: st.b.x, y: st.a.y }, { x: st.b.x, y: st.b.y }, { x: st.a.x, y: st.b.y }];
+          const R = Tools.gridRect(st.a, st.b), r = R.pts;
           Render.polyPath(ctx, r); ctx.stroke(); lenLabel(r[0], r[1]); lenLabel(r[1], r[2]);
-          const ar = Math.abs((st.b.x - st.a.x) * (st.b.y - st.a.y));
+          const ar = R.w * R.h;
           Render.label(env, `${(ar / 1e4).toFixed(1)} м² · ${(ar / 1e6).toFixed(2)} сот.`, G.mid(st.a, st.b), 0, { size: 12, bold: true, color, bg: true });
         }
         Tools.drawSnapMark(env, st.a ? st.b : Tools.snap(cur, e, {}));

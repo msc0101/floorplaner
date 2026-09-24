@@ -120,7 +120,21 @@ console.log('extra', JSON.stringify(extra));
 await page.evaluate(() => View3D.toggle(true));
 await page.waitForTimeout(500);
 await page.screenshot({ path: join(shots, '11-3d.png') });
+const v3 = await page.evaluate(() => { const r = { tris: View3D.mesh.count / 3, shadow: View3D.shadowOK }; for (const k of ['s', 'n', 'e', 'w', 'top', 'eye']) View3D.view(k); View3D.opts.shadows = false; View3D.draw(); View3D.opts.shadows = true; return r; });
+console.log('3d', JSON.stringify(v3));
+if (!(v3.tris > 5000)) errors.push('3D: слишком мало геометрии');
 await page.evaluate(() => View3D.toggle(false));
+// поворот сетки: прямоугольная комната строится по осям сетки, сетка поворачивается вместе с планом
+const gr = await page.evaluate(() => {
+  const n0 = App.doc.walls.length;
+  App.setGrid(30, { x: 0, y: 0 }); Tools.set('room');
+  Tools.roomFinish({ x: 5000, y: 5000 }, G.add({ x: 5000, y: 5000 }, G.add(G.fromAngle(U.rad(30), 400), G.fromAngle(U.rad(120), 300))));
+  const ang = App.doc.walls.slice(n0).map(w => Math.round(U.normDeg(U.deg(G.angle(w.a, w.b)))));
+  App.rotateAll(10); const a1 = App.doc.settings.gridAngle; Model.undo(); Model.undo(); Model.undo(); Tools.set('select');
+  return { ang, a1, back: App.doc.settings.gridAngle };
+});
+console.log('grid', JSON.stringify(gr));
+if (gr.ang.join() !== '30,120,-150,-60' || gr.a1 !== 40 || gr.back !== 0) errors.push('Поворот сетки работает неверно: ' + JSON.stringify(gr));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

@@ -1,3 +1,7 @@
 node_modules/
 tmp-shots/
 *.log
+dist/index.html
+dist/robots.txt
+dist/sitemap.xml
+dist/og.png

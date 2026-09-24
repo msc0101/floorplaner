@@ -162,6 +162,10 @@ const App = {
     const u = App.doc.underlay;
     if (u) { const q = G.rotate(u, c, U.rad(deg)); u.x = q.x; u.y = q.y; u.rot = U.normDeg((u.rot || 0) + deg); }
     if (keepNorth) App.doc.north = U.normDeg(App.doc.north + deg);
+    // сетка поворачивается вместе с планом
+    const s = App.doc.settings;
+    s.gridOrigin = G.rotate(s.gridOrigin || { x: 0, y: 0 }, c, U.rad(deg));
+    s.gridAngle = App.gridMod(s.gridAngle + deg);
     Model.commit();
     UI.toast(keepNorth ? `План повёрнут на ${deg}° вместе с компасом` : `План повёрнут на ${deg}° относительно сторон света`);
   },
@@ -169,8 +173,38 @@ const App = {
     const ids = Model.allIds(true);
     const b = Model.contentBBox();
     if (!b) return;
-    Model.mirror(ids, { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 }, axis);
+    const c = { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 };
+    Model.mirror(ids, c, axis);
+    const s = App.doc.settings, o = { ...(s.gridOrigin || { x: 0, y: 0 }) };
+    if (axis === 'x') o.x = 2 * c.x - o.x; else o.y = 2 * c.y - o.y;
+    s.gridOrigin = o; s.gridAngle = App.gridMod(-s.gridAngle);
     Model.commit();
+  },
+  /** Угол сетки приводится к [0; 90): сетка симметрична относительно поворота на 90° */
+  gridMod(a) { a = ((a % 90) + 90) % 90; a = Math.round(a * 1000) / 1000; return a >= 90 - 1e-6 ? 0 : a; },
+  setGrid(angle, origin) {
+    const s = App.doc.settings;
+    s.gridAngle = App.gridMod(angle || 0);
+    if (origin) s.gridOrigin = { x: origin.x, y: origin.y };
+    Model.commit();
+  },
+  /** Повернуть сетку по выделенному объекту: стене, краю зоны/дороги, предмету, крыше */
+  gridToSel(id) {
+    id = id || App.selIds()[0];
+    const o = id && Model.get(id), c = id && Model.coll(id);
+    let ang = null, org = null;
+    const longest = (pts, closed) => {
+      let best = null;
+      for (let i = 0; i < pts.length - (closed ? 0 : 1); i++) { const a = pts[i], b = pts[(i + 1) % pts.length], L = G.dist(a, b); if (!best || L > best.L) best = { a, b, L }; }
+      return best;
+    };
+    if (!o) { UI.toast('Выделите стену, зону, дорогу, предмет или крышу — сетка встанет по ним'); return; }
+    if (c === 'walls' || c === 'dims') { ang = U.deg(G.angle(o.a, o.b)); org = o.a; }
+    else if ((c === 'areas' || c === 'roads' || c === 'lines') && o.pts.length >= 2) { const e = longest(o.pts, c === 'areas'); ang = U.deg(G.angle(e.a, e.b)); org = e.a; }
+    else if (U.isNum(o.rot)) { ang = o.rot; org = { x: o.x, y: o.y }; }
+    if (ang === null) { UI.toast('У этого объекта нет направления для сетки'); return; }
+    App.setGrid(ang, org);
+    UI.toast(`Сетка повёрнута на ${App.doc.settings.gridAngle}° — по выделенному`);
   },
   selectAll() {
     App.sel.clear();

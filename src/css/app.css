@@ -471,3 +471,9 @@ button.mini:disabled { opacity: .35; }
   .rep th, .rep td { border: .3mm solid #999; padding: 1mm 1.5mm; text-align: left; vertical-align: top; }
   .rep th { background: #eee; }
 }
+.fbtns.views3d button { flex: 1 1 30%; padding: 5px 4px; }
+.p3d-head { all: unset; cursor: pointer; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+.p3d-head::after { content: '▾'; color: var(--muted); font-weight: 400; }
+.panel3d.collapsed { width: auto; }
+.panel3d.collapsed > :not(.p3d-head) { display: none; }
+.panel3d.collapsed .p3d-head::after { content: '▸'; margin-left: 10px; }

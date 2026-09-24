@@ -238,12 +238,22 @@ const UI = {
     p.textContent = '';
     const o = View3D.opts;
     const chk = (label, key) => F.check(label, o[key], (v) => { o[key] = v; View3D.dirty = true; View3D.redraw(); });
-    p.append(U.el('b', {}, '3D-вид'),
+    const head = U.el('button', { type: 'button', class: 'p3d-head', title: 'Свернуть / развернуть панель' }, '3D-вид');
+    head.onclick = () => { p.classList.toggle('collapsed'); try { localStorage.setItem('fp:p3d', p.classList.contains('collapsed') ? '1' : ''); } catch (e) { /* нет хранилища */ } };
+    try { p.classList.toggle('collapsed', localStorage.getItem('fp:p3d') === '1'); } catch (e) { /* нет хранилища */ }
+    p.append(head,
       chk('Этажи выше текущего', 'upper'), chk('Крыша', 'roof'), chk('Мебель и предметы', 'items'), chk('Участок', 'site'),
       F.check('Свет от солнца (дата/время — «Участок»)', o.sun, (v) => { o.sun = v; View3D.redraw(); }),
+      F.check('Тени', o.shadows, (v) => { o.shadows = v; View3D.redraw(); }),
+      U.el('div', { class: 'fbtns views3d' },
+        U.el('button', { type: 'button', title: 'Вид с южной стороны', onclick: () => View3D.view('s') }, 'С юга'),
+        U.el('button', { type: 'button', title: 'Вид с северной стороны', onclick: () => View3D.view('n') }, 'С севера'),
+        U.el('button', { type: 'button', title: 'Вид с восточной стороны', onclick: () => View3D.view('e') }, 'С востока'),
+        U.el('button', { type: 'button', title: 'Вид с западной стороны', onclick: () => View3D.view('w') }, 'С запада'),
+        U.el('button', { type: 'button', title: 'Вид сверху', onclick: () => View3D.view('top') }, 'Сверху'),
+        U.el('button', { type: 'button', title: 'С высоты человеческого роста', onclick: () => View3D.view('eye') }, 'Глаза')),
       U.el('div', { class: 'fbtns' },
         U.el('button', { type: 'button', onclick: () => { View3D.fit(); View3D.redraw(); } }, 'Показать всё'),
-        U.el('button', { type: 'button', onclick: () => { View3D.cam.pitch = 1.5; View3D.redraw(); } }, 'Сверху'),
         U.el('button', { type: 'button', onclick: () => View3D.snapshot() }, 'PNG'),
         U.el('button', { type: 'button', onclick: () => View3D.exportOBJ(), title: '3D-модель для Blender, SketchUp, Twinmotion' }, 'OBJ'),
         U.el('button', { type: 'button', onclick: () => IFC.export(), title: 'BIM-модель для Revit, ArchiCAD, Renga' }, 'IFC')),
@@ -1222,6 +1232,9 @@ const UI = {
       F.select('Единицы подписей', s.units, [['m', 'метры (3.45 м)'], ['cm', 'сантиметры (345 см)'], ['mm', 'миллиметры (3450 мм)']], (v) => { s.units = v; Model.commit(); }),
       F.select('Шаг сетки / привязки', s.grid, [[1, '1 см'], [5, '5 см'], [10, '10 см'], [25, '25 см'], [50, '50 см'], [100, '1 м']], (v) => { s.grid = +v; Model.commit(); }),
       F.check('Привязка к сетке и объектам', s.snap, (v) => { s.snap = v; Model.commit(); }),
+      F.num('Поворот сетки', s.gridAngle || 0, (v) => App.setGrid(v), { unit: '°', step: 0.5, field: 'gridAngle' }),
+      F.btns([['Сетку — по выделенному', () => App.gridToSel(), '', 'Сетка, привязка и прямоугольники комнат пойдут вдоль выделенной стены, края зоны или предмета'], ['Прямо', () => App.setGrid(0, { x: 0, y: 0 }), '', 'Вернуть сетку по осям экрана']]),
+      F.note('Сетка задаёт направления: «ортогонально», прямоугольные комнаты, зоны и крыши строятся вдоль её осей. При повороте всего плана сетка поворачивается вместе с ним.'),
       F.select('Тема', Theme.mode, [['auto', 'Как в системе'], ['light', 'Светлая'], ['dark', 'Тёмная']], (v) => Theme.set(v))));
     const tbl = U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, 'Тип стены'), U.el('th', {}, 'Материал'), U.el('th', {}, 'Толщ., см'), U.el('th', {}, 'Выс., см')));
     for (const [k, v] of Object.entries(WALL_KINDS)) {
@@ -1259,6 +1272,7 @@ const UI = {
       if (c === 'lines' || c === 'areas') add('Добавить/удалить точку', () => Tools.editVertex(Model.get(id), p, c === 'areas'));
       if (c === 'openings') { const op = Model.get(id); add('Петли на другую сторону', () => { op.hinge = op.hinge ? 0 : 1; Model.commit(); }); add('Открывание внутрь/наружу', () => { op.side = -(op.side || 1); Model.commit(); }); }
       if (c !== 'openings') { add('Повернуть на 90° ⟳', () => App.rotateSel(90)); add('Повернуть на 90° ⟲', () => App.rotateSel(-90)); add('Отразить ↔', () => App.mirrorSel('x')); }
+      if (['walls', 'areas', 'roads', 'lines', 'items', 'roofs'].includes(c)) add('Сетку — по этому объекту', () => App.gridToSel(id));
       add('Дублировать', () => App.duplicate());
       add('Копировать', () => App.copy());
       add('Удалить', () => App.deleteSel(), 'danger');

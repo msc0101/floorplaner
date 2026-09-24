@@ -18,7 +18,7 @@ const Model = {
       north: 0,                       // куда смотрит «север» — угол по часовой от верха экрана, °
       geo: { lat: 55.75, lon: 37.62, tz: 3, city: 'Москва' },
       settings: {
-        units: 'm', grid: 10, snap: true, showWallDims: true, showItemDims: false, showChecks: true,
+        units: 'm', grid: 10, gridAngle: 0, gridOrigin: { x: 0, y: 0 }, snap: true, showWallDims: true, showItemDims: false, showChecks: true,
         areaMode: 'floor',
         layers: Object.fromEntries(LAYERS.map(l => [l.id, !['heat', 'shadows'].includes(l.id)])),
       },
@@ -42,6 +42,9 @@ const Model = {
       const L = Object.assign({}, d.settings.layers, raw.settings.layers || {});
       Object.assign(d.settings, raw.settings);
       d.settings.layers = L;
+      d.settings.gridAngle = U.isNum(d.settings.gridAngle) ? U.normDeg(d.settings.gridAngle) : 0;
+      const go = d.settings.gridOrigin;
+      d.settings.gridOrigin = go && U.isNum(go.x) && U.isNum(go.y) ? { x: go.x, y: go.y } : { x: 0, y: 0 };
     }
     if (raw.defaults && raw.defaults.wall) for (const k of Object.keys(d.defaults.wall)) Object.assign(d.defaults.wall[k], raw.defaults.wall[k] || {});
     if (Array.isArray(raw.floors) && raw.floors.length) {
