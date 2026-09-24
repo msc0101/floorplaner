@@ -711,7 +711,7 @@ const Render = {
     const P = { ctx, px, C, it, def, upright: true, rotRad: U.rad(it.rot || 0), flip: !!it.flip, symMul: 1 };
     try { painter(P, w, d); } catch (e) { console.warn('painter', def.shape, e); }
     ctx.restore();
-    if (it.label && !['building', 'garage', 'canopy', 'canopyLean', 'gazebo', 'greenhouse', 'labelbox', 'deck'].includes(def.shape) && Math.min(w, d) * env.scale > 30) {
+    if (it.label && !['building', 'garage', 'canopy', 'canopyLean', 'gazebo', 'greenhouse', 'labelbox', 'deck', 'veranda'].includes(def.shape) && Math.min(w, d) * env.scale > 30) {
       Render.label(env, it.label, { x: it.x, y: it.y }, 0, { size: 11, bg: true, prio: 6 });
     }
     if (App.doc.settings.showItemDims && !def.sym && Math.max(w, d) * env.scale > 45) {

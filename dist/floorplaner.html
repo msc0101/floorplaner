@@ -39,8 +39,8 @@
   "featureList": [
     "Стены с выбором материала и толщины, утепление",
     "Окна и двери разных размеров и направлений открывания",
-    "Более 160 объектов мебели, сантехники, техники и построек в реальных размерах",
-    "Несколько этажей с общей лестницей, крыша с расчётом площади кровли",
+    "Более 180 объектов мебели, сантехники, техники и построек в реальных размерах, кухонные гарнитуры всех планировок",
+    "Несколько этажей с общей лестницей, крыша с расчётом площади кровли, крыльцо, веранда и терраса (открытые и остеклённые)",
     "3D-вид с тенями от солнца",
     "Ориентация участка по сторонам света, тени и инсоляция окон",
     "Септик, водопровод, канализация, газ, ЛЭП и проводка",
@@ -1249,6 +1249,21 @@ const CATALOG = [
   { id: 'kitchen', name: 'Кухня и столовая', layer: 'furniture', items: [
     { key: 'kitchenI', name: 'Кухонный гарнитур прямой', shape: 'kitchenI', w: 240, d: 60, h: 90 },
     { key: 'kitchenL', name: 'Кухонный гарнитур угловой', shape: 'kitchenL', w: 240, d: 180, h: 90, flip: true },
+    { key: 'kitchenMini', name: 'Мини-кухня 120 см', shape: 'kitchenI', w: 120, d: 60, h: 90 },
+    { key: 'kitchenI180', name: 'Кухня прямая 180 см', shape: 'kitchenI', w: 180, d: 60, h: 90 },
+    { key: 'kitchenI300', name: 'Кухня прямая 300 см', shape: 'kitchenI', w: 300, d: 60, h: 90 },
+    { key: 'kitchenTall', name: 'Кухня прямая с пеналами', shape: 'kitchenTall', w: 360, d: 60, h: 90 },
+    { key: 'kitchenL300', name: 'Кухня угловая большая', shape: 'kitchenL', w: 300, d: 240, h: 90, flip: true },
+    { key: 'kitchenU', name: 'Кухня П-образная', shape: 'kitchenU', w: 300, d: 240, h: 90 },
+    { key: 'kitchenII', name: 'Кухня параллельная (2 ряда)', shape: 'kitchenII', w: 270, d: 240, h: 90 },
+    { key: 'kitchenIsland', name: 'Кухня с островом', shape: 'kitchenIsland', w: 300, d: 300, h: 90 },
+    { key: 'kitchenBar', name: 'Кухня с барной стойкой', shape: 'kitchenBar', w: 270, d: 220, h: 90 },
+    { key: 'kitchenPen', name: 'Кухня угловая с полуостровом', shape: 'kitchenPen', w: 300, d: 250, h: 90, flip: true },
+    { key: 'tallUnit', name: 'Пенал / шкаф-колонна', shape: 'tall', w: 60, d: 60, h: 215, label: 'П' },
+    { key: 'ovenTower', name: 'Колонна под духовку и СВЧ', shape: 'tall', w: 60, d: 60, h: 215, label: 'Д' },
+    { key: 'cornerUnit', name: 'Угловой нижний модуль', shape: 'kitchenL', w: 100, d: 100, h: 90, flip: true },
+    { key: 'barCounter', name: 'Барная стойка', shape: 'bar', w: 150, d: 50, h: 110 },
+    { key: 'hood', name: 'Вытяжка', shape: 'hood', w: 60, d: 50, h: 60 },
     { key: 'counter60', name: 'Нижний модуль 60 см', shape: 'counter', w: 60, d: 60, h: 90 },
     { key: 'counter40', name: 'Нижний модуль 40 см', shape: 'counter', w: 40, d: 60, h: 90 },
     { key: 'upper', name: 'Навесной шкаф', shape: 'upper', w: 80, d: 32, h: 70 },
@@ -1383,7 +1398,6 @@ const CATALOG = [
     { key: 'outhouse', name: 'Туалет уличный', shape: 'building', w: 100, d: 130, h: 230, shadow: true },
     { key: 'showerOut', name: 'Душ летний', shape: 'building', w: 100, d: 120, h: 230, shadow: true },
     { key: 'pool', name: 'Бассейн', shape: 'pool', w: 400, d: 800, h: 0 },
-    { key: 'terrace', name: 'Терраса / веранда', shape: 'deck', w: 600, d: 300, h: 0 },
     { key: 'bbq', name: 'Мангал / барбекю', shape: 'bbq', w: 100, d: 40, h: 90 },
     { key: 'playground', name: 'Детская площадка', shape: 'labelbox', w: 500, d: 500, h: 0, label: 'Площадка' },
     { key: 'compost', name: 'Компостер', shape: 'labelbox', w: 100, d: 100, h: 90, label: 'Компост' },
@@ -1402,6 +1416,16 @@ const CATALOG = [
     { key: 'bed', name: 'Грядка', shape: 'gardenbed', w: 120, d: 400, h: 20 },
     { key: 'flowerbed', name: 'Клумба', shape: 'flowerbed', w: 200, d: 200, h: 20 },
   ]},
+  { id: 'porch', name: 'Крыльцо, веранда, терраса', layer: 'siteobj', items: [
+    { key: 'porch', name: 'Крыльцо с козырьком', shape: 'veranda', w: 200, d: 150, h: 300, ph: 60, encl: 'rail', roofed: true, attached: true, stepW: 120, shadow: true },
+    { key: 'porchOpen', name: 'Крыльцо открытое (площадка + ступени)', shape: 'veranda', w: 160, d: 120, h: 60, ph: 45, encl: 'open', roofed: false, attached: true, stepW: 120 },
+    { key: 'veranda', name: 'Веранда остеклённая', shape: 'veranda', w: 600, d: 300, h: 330, ph: 45, encl: 'glazed', roofed: true, attached: true, stepW: 100, shadow: true },
+    { key: 'verandaWarm', name: 'Веранда закрытая утеплённая', shape: 'veranda', w: 600, d: 300, h: 330, ph: 45, encl: 'closed', roofed: true, attached: true, stepW: 100, shadow: true },
+    { key: 'verandaOpen', name: 'Веранда открытая (под крышей)', shape: 'veranda', w: 600, d: 300, h: 330, ph: 45, encl: 'rail', roofed: true, attached: true, stepW: 150, shadow: true },
+    { key: 'terraceRoof', name: 'Терраса под навесом', shape: 'veranda', w: 500, d: 400, h: 300, ph: 15, encl: 'open', roofed: true, attached: false, steps: 'none', stepW: 150, shadow: true },
+    { key: 'terrace', name: 'Терраса открытая (настил)', shape: 'veranda', w: 600, d: 300, h: 0, ph: 20, encl: 'open', roofed: false, attached: true, steps: 'none', stepW: 150 },
+    { key: 'terraceRail', name: 'Терраса с ограждением', shape: 'veranda', w: 600, d: 300, h: 0, ph: 60, encl: 'rail', roofed: false, attached: true, stepW: 120 },
+  ]},
   { id: 'misc', name: 'Произвольные', layer: 'furniture', items: [
     { key: 'box', name: 'Прямоугольник (произвольный)', shape: 'labelbox', w: 100, d: 100, h: 100, label: '' },
     { key: 'circle', name: 'Круг (произвольный)', shape: 'round', w: 100, d: 100, h: 100 },
@@ -1417,6 +1441,59 @@ for (const c of CATALOG) for (const it of c.items) {
   CAT_INDEX[it.key] = it;
 }
 function catItem(key) { return CAT_INDEX[key] || CAT_INDEX.box; }
+
+/* ======================= КРЫЛЬЦО / ВЕРАНДА / ТЕРРАСА ======================== */
+const PORCH_ENCL = {
+  open:   { name: 'Открытая', short: 'открытая' },
+  rail:   { name: 'Открытая с ограждением', short: 'с ограждением' },
+  glazed: { name: 'Закрытая остеклённая', short: 'остеклённая' },
+  closed: { name: 'Закрытая утеплённая (стены и окна)', short: 'утеплённая' },
+};
+const PORCH_KEYS = ['encl', 'roofed', 'attached', 'ph', 'steps', 'stepW'];
+/** Параметры веранды: из объекта, иначе — из каталога */
+function porchOpt(it) {
+  const d = catItem(it.key), g = (k, def) => it[k] ?? d[k] ?? def;
+  return { encl: g('encl', 'open'), roofed: !!g('roofed', false), attached: !!g('attached', true), ph: Math.max(0, +g('ph', 0) || 0), steps: g('steps', 'front'), stepW: Math.max(60, +g('stepW', 120) || 120) };
+}
+/** Геометрия в локальных координатах: стороны с ограждением (без прохода к ступеням), проход, ступени.
+ *  «Спинка» (−d/2) примыкает к дому, если attached; ступени — спереди (+d/2). */
+function porchGeom(it, w, d) {
+  const o = porchOpt(it);
+  const sw = Math.min(o.stepW, w - 20);
+  const hasSteps = o.steps !== 'none' && o.ph >= 15;
+  const gap = o.steps !== 'none' ? [-sw / 2, sw / 2] : null;
+  const sides = [[{ x: -w / 2, y: d / 2 }, { x: w / 2, y: d / 2 }], [{ x: -w / 2, y: -d / 2 }, { x: -w / 2, y: d / 2 }], [{ x: w / 2, y: -d / 2 }, { x: w / 2, y: d / 2 }]];
+  if (!o.attached) sides.push([{ x: -w / 2, y: -d / 2 }, { x: w / 2, y: -d / 2 }]);
+  const segs = [];
+  sides.forEach((s, i) => {
+    if (i === 0 && gap) { segs.push([s[0], { x: gap[0], y: d / 2 }]); segs.push([{ x: gap[1], y: d / 2 }, s[1]]); }
+    else segs.push(s);
+  });
+  // внутренняя нормаль стороны (к центру)
+  const inward = (a, b) => { const m = G.mid(a, b), n = G.perp(G.unit(G.sub(b, a))); return G.dot(n, m) > 0 ? G.mul(n, -1) : n; };
+  const n = hasSteps ? Math.max(2, Math.round(o.ph / 17)) : 0;
+  return { o, sw, gap, segs: segs.filter(([a, b]) => G.dist(a, b) > 5).map(([a, b]) => ({ a, b, n: inward(a, b) })), steps: n, rise: n ? o.ph / n : 0, tread: 30 };
+}
+
+/* ============================ КУХОННЫЕ ГАРНИТУРЫ ============================ */
+const KITCHEN_SHAPES = new Set(['kitchenI', 'kitchenL', 'kitchenU', 'kitchenII', 'kitchenIsland', 'kitchenBar', 'kitchenPen', 'kitchenTall']);
+/** Ленты модулей в локальных координатах (центр — 0,0; y вниз). front — сторона фасада,
+ *  wall — ряд у стены (над ним навесные шкафы), h — своя высота (барная стойка), tall — пеналы. */
+function kitchenLayout(shape, w, d) {
+  const D = Math.min(60, d), R = (x0, y0, x1, y1, front, wall = true, h) => ({ x0, y0, x1, y1, front, wall, h });
+  const back = R(-w / 2, -d / 2, w / 2, -d / 2 + D, 'down');
+  const bc = -d / 2 + D / 2;
+  switch (shape) {
+    case 'kitchenL': return { runs: [back, R(w / 2 - D, -d / 2 + D, w / 2, d / 2, 'left')], sink: w >= 180 ? { x: -w / 2 + 40, y: bc } : null, hob: d >= 150 ? { x: w / 2 - D / 2, y: d / 2 - 40, v: true } : null };
+    case 'kitchenU': return { runs: [back, R(-w / 2, -d / 2 + D, -w / 2 + D, d / 2, 'right'), R(w / 2 - D, -d / 2 + D, w / 2, d / 2, 'left')], sink: { x: 0, y: bc }, hob: { x: -w / 2 + D / 2, y: (d / 2 + D - d / 2) / 2 + 10, v: true } };
+    case 'kitchenII': return { runs: [back, R(-w / 2, d / 2 - D, w / 2, d / 2, 'up')], sink: { x: -w / 2 + 50, y: bc }, hob: { x: 0, y: d / 2 - D / 2 } };
+    case 'kitchenIsland': { const iw = Math.min(w * 0.6, 240); return { runs: [back, R(-iw / 2, d / 2 - 90, iw / 2, d / 2, 'up', false)], sink: { x: 0, y: d / 2 - 45 }, hob: { x: w / 2 - 50, y: bc } }; }
+    case 'kitchenBar': { const bw = Math.min(w * 0.7, 200); return { runs: [back, R(-bw / 2, d / 2 - 50, bw / 2, d / 2, 'up', false, 110)], sink: { x: -w / 2 + 50, y: bc }, hob: { x: w / 2 - 50, y: bc }, bar: true }; }
+    case 'kitchenPen': return { runs: [back, R(w / 2 - 90, -d / 2 + D, w / 2, d / 2, 'left', false)], sink: { x: -w / 2 + 50, y: bc }, hob: { x: 0, y: bc } };
+    case 'kitchenTall': { const tw = Math.min(120, w / 3); return { runs: [R(-w / 2 + tw, -d / 2, w / 2, d / 2, 'down')], tall: [R(-w / 2, -d / 2, -w / 2 + tw, d / 2, 'down')], sink: { x: -w / 2 + tw + 45, y: 0 }, hob: { x: w / 2 - 45, y: 0 } }; }
+    default: return { runs: [R(-w / 2, -d / 2, w / 2, d / 2, 'down')], sink: w >= 120 ? { x: -w / 2 + 40, y: 0 } : null, hob: w >= 120 ? { x: w / 2 - 45, y: 0 } : null };
+  }
+}
 
 /* ============================ ОТРИСОВКА ================================= */
 /* P — контекст отрисовки: ctx (уже в локальных координатах предмета), px — 1 экранный пиксель в см,
@@ -1656,6 +1733,38 @@ const Painters = (() => {
     for (let y = -d / 2 + D + 60; y < d / 2 - 10; y += 60) line(P, [w / 2 - D + 4, y, w / 2 - D, y]);
     if (w >= 180) sinkBowl(P, -w / 2 + 40, -d / 2 + D / 2 - 2, 44, D - 20);
     if (d >= 150) burners(P, w / 2 - D / 2 - 2, d / 2 - 40, D - 12, 54);
+  };
+  /** Гарнитуры из «лент» модулей (П-образная, параллельная, с островом и т. д.) */
+  const kitchenRuns = (P, w, d) => {
+    const K = kitchenLayout(P.def.shape, w, d);
+    const run = (r, tall) => {
+      const rw = r.x1 - r.x0, rd = r.y1 - r.y0;
+      P.ctx.fillStyle = P.C.itemFill; lw(P, 1.4); box(P, r.x0, r.y0, rw, rd, 0);
+      thin(P);
+      if (tall) { line(P, [r.x0, r.y0, r.x1, r.y1]); line(P, [r.x1, r.y0, r.x0, r.y1]); return; }
+      const f = r.front, vert = f === 'left' || f === 'right';
+      const L = vert ? rd : rw, n = Math.max(1, Math.round(L / 60));
+      if (f === 'down') line(P, [r.x0, r.y1 - 4, r.x1, r.y1 - 4]);
+      if (f === 'up') line(P, [r.x0, r.y0 + 4, r.x1, r.y0 + 4]);
+      if (f === 'left') line(P, [r.x0 + 4, r.y0, r.x0 + 4, r.y1]);
+      if (f === 'right') line(P, [r.x1 - 4, r.y0, r.x1 - 4, r.y1]);
+      for (let i = 1; i < n; i++) {
+        if (vert) { const y = r.y0 + rd * i / n, x = f === 'left' ? r.x0 : r.x1 - 4; line(P, [x, y, x + 4, y]); }
+        else { const x = r.x0 + rw * i / n, y = f === 'down' ? r.y1 - 4 : r.y0; line(P, [x, y, x, y + 4]); }
+      }
+      if (r.h > 100) { P.ctx.setLineDash([4 * P.px, 3 * P.px]); box(P, r.x0 + 6, r.y0 + 6, rw - 12, rd - 12, 0, false); P.ctx.setLineDash([]); }
+    };
+    for (const r of K.runs) run(r);
+    for (const r of K.tall || []) { run(r, true); text(P, 'пеналы', (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2, 11); }
+    if (K.sink) sinkBowl(P, K.sink.x, K.sink.y, K.sink.v ? 40 : 44, K.sink.v ? 44 : 40);
+    if (K.hob) { P.ctx.fillStyle = P.C.itemFill; burners(P, K.hob.x, K.hob.y, K.hob.v ? 46 : 54, K.hob.v ? 54 : 46); }
+  };
+  for (const k of ['kitchenU', 'kitchenII', 'kitchenIsland', 'kitchenBar', 'kitchenPen', 'kitchenTall']) S[k] = kitchenRuns;
+  S.tall = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); line(P, [-w / 2, -d / 2, w / 2, d / 2]); line(P, [w / 2, -d / 2, -w / 2, d / 2]); text(P, P.it.label || P.def.label || 'П', 0, 0, Math.min(w, d) * 0.35, { bold: true }); };
+  S.bar = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 3); thin(P); P.ctx.setLineDash([4 * P.px, 3 * P.px]); line(P, [-w / 2 + 5, 0, w / 2 - 5, 0]); P.ctx.setLineDash([]); };
+  S.hood = (P, w, d) => {
+    P.ctx.setLineDash([6 * P.px, 4 * P.px]); box(P, -w / 2, -d / 2, w, d, 0, false); P.ctx.setLineDash([]);
+    thin(P); box(P, -w / 4, -d / 2, w / 2, d * 0.45, 0, false); text(P, 'В', 0, d * 0.15, Math.min(w, d) * 0.3, { bold: true });
   };
   S.fridge = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 2); thin(P);
@@ -1947,6 +2056,71 @@ const Painters = (() => {
     box(P, -w / 2, -d / 2, w, d, 0); P.ctx.save(); P.ctx.strokeStyle = P.C.hatch; thin(P);
     for (let x = -w / 2 + 14; x < w / 2; x += 14) line(P, [x, -d / 2, x, d / 2]);
     P.ctx.restore(); text(P, P.it.label || 'Терраса', 0, 0, Math.min(40, w / 8), { bold: true });
+  };
+  /** Крыльцо / веранда / терраса: настил, ограждение или остекление, крыша, ступени */
+  S.veranda = (P, w, d) => {
+    const c = P.ctx, g = porchGeom(P.it, w, d), o = g.o;
+    // крыша (контур со свесом), у пристроенной — без свеса со стороны дома
+    if (o.roofed) {
+      c.save(); lw(P, 1); c.setLineDash([10 * P.px, 6 * P.px]);
+      box(P, -w / 2 - 25, o.attached ? -d / 2 : -d / 2 - 25, w + 50, d + 25 + (o.attached ? 0 : 25), 0, false);
+      c.restore();
+    }
+    // ступени
+    if (g.steps) {
+      c.fillStyle = P.C.itemFill; thin(P);
+      for (let i = 0; i < g.steps - 1; i++) box(P, -g.sw / 2, d / 2 + i * g.tread, g.sw, g.tread, 0);
+    }
+    // площадка и доски настила
+    c.fillStyle = P.C.itemFill; lw(P, 1.4); box(P, -w / 2, -d / 2, w, d, 0);
+    c.save(); rr(c, -w / 2, -d / 2, w, d, 0); c.clip(); c.strokeStyle = P.C.hatch; thin(P);
+    for (let x = -w / 2 + 14; x < w / 2; x += 14) line(P, [x, -d / 2, x, d / 2]);
+    c.restore();
+    if (o.attached) { lw(P, 2.4); line(P, [-w / 2, -d / 2, w / 2, -d / 2]); }
+    // ограждающие элементы по сторонам
+    const band = (s, t, fill) => {
+      const a2 = G.add(s.a, G.mul(s.n, t)), b2 = G.add(s.b, G.mul(s.n, t));
+      c.beginPath(); c.moveTo(s.a.x, s.a.y); c.lineTo(s.b.x, s.b.y); c.lineTo(b2.x, b2.y); c.lineTo(a2.x, a2.y); c.closePath();
+      if (fill) { c.fillStyle = fill; c.fill(); }
+      c.stroke();
+    };
+    const along = (s, step, fn) => { const L = G.dist(s.a, s.b), k = Math.max(1, Math.round(L / step)), u = G.unit(G.sub(s.b, s.a)); for (let i = 1; i < k; i++) fn(G.add(s.a, G.mul(u, L * i / k)), u); };
+    thin(P);
+    if (o.encl === 'rail') for (const s of g.segs) { band(s, 6, null); }
+    if (o.encl === 'glazed') for (const s of g.segs) { lw(P, 1); band(s, 8, P.C.glass); thin(P); along(s, 90, (q) => line(P, [q.x, q.y, q.x + s.n.x * 8, q.y + s.n.y * 8])); }
+    if (o.encl === 'closed') for (const s of g.segs) {
+      lw(P, 1.2); band(s, 15, P.C.inkSoft);
+      // окна в стене
+      const L = G.dist(s.a, s.b), u = G.unit(G.sub(s.b, s.a)), k = Math.floor(L / 200);
+      c.fillStyle = P.C.glass; thin(P);
+      for (let i = 0; i < k; i++) {
+        const m = (i + 0.5) * L / k, p0 = G.add(s.a, G.mul(u, m - 50)), p1 = G.add(s.a, G.mul(u, m + 50));
+        band({ a: p0, b: p1, n: s.n }, 15, P.C.opening);
+        line(P, [p0.x + s.n.x * 7.5, p0.y + s.n.y * 7.5, p1.x + s.n.x * 7.5, p1.y + s.n.y * 7.5]);
+      }
+    }
+    // дверь в проходе у закрытой веранды
+    if (g.gap && (o.encl === 'glazed' || o.encl === 'closed')) {
+      const dw = Math.min(90, g.sw);
+      thin(P); line(P, [g.gap[0], d / 2, g.gap[0], d / 2 - dw]);
+      c.beginPath(); c.arc(g.gap[0], d / 2, dw, -Math.PI / 2, 0); c.stroke();
+    }
+    // столбы под крышей у открытых
+    if (o.roofed && (o.encl === 'open' || o.encl === 'rail')) {
+      c.fillStyle = P.C.ink;
+      const posts = [[-w / 2 + 7, d / 2 - 7], [w / 2 - 7, d / 2 - 7]];
+      if (!o.attached) posts.push([-w / 2 + 7, -d / 2 + 7], [w / 2 - 7, -d / 2 + 7]);
+      const k = Math.max(1, Math.round(w / 300));
+      for (let i = 1; i < k; i++) posts.push([-w / 2 + 7 + (w - 14) * i / k, d / 2 - 7]);
+      for (const [x, y] of posts) box(P, x - 6, y - 6, 12, 12, 0);
+      c.fillStyle = P.C.itemFill;
+    }
+    const nm = P.it.label || P.def.name.split(' ')[0];
+    const sz = Math.min(36, w / 7, d / 3);
+    // «вниз по экрану» в локальных координатах — чтобы вторая строка шла под первой при любом повороте
+    const dn = { x: Math.sin(P.rotRad) * (P.flip ? -1 : 1), y: Math.cos(P.rotRad) };
+    text(P, nm, -dn.x * sz * 0.35, -dn.y * sz * 0.35, sz, { bold: true });
+    text(P, PORCH_ENCL[o.encl] ? PORCH_ENCL[o.encl].short + (o.roofed && o.encl !== 'closed' && o.encl !== 'glazed' ? ', под крышей' : '') : '', dn.x * sz * 0.75, dn.y * sz * 0.75, sz * 0.55, { color: P.C.muted });
   };
   S.bbq = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 2); thin(P); for (let x = -w / 2 + 10; x < w / 2; x += 8) line(P, [x, -d / 2 + 5, x, d / 2 - 5]); };
   S.parking = (P, w, d) => {
@@ -2731,7 +2905,7 @@ const Rooms = {
     const footprint = fd[0].outlines.reduce((s, o) => s + o.area, 0);
     const perFloor = fd.map(x => ({ floor: x.floor, total: x.rooms.reduce((s, r) => s + r.areaFloor, 0), rooms: x.rooms.length }));
     // постройки на участке (предметы-постройки)
-    const outb = App.doc.items.filter(it => ['building', 'garage', 'canopy', 'canopyLean', 'gazebo', 'greenhouse', 'pool', 'deck'].includes(catItem(it.key).shape));
+    const outb = App.doc.items.filter(it => ['building', 'garage', 'canopy', 'canopyLean', 'gazebo', 'greenhouse', 'pool', 'deck', 'veranda'].includes(catItem(it.key).shape));
     const outbArea = outb.reduce((s, it) => s + it.w * it.d, 0);
     const plots = App.doc.areas.filter(a => a.kind === 'plot');
     const plotArea = plots.reduce((s, a) => s + Math.abs(G.polyArea(a.pts)), 0);
@@ -2744,7 +2918,9 @@ const Rooms = {
       const z = zones['road:' + r.kind] || (zones['road:' + r.kind] = { name: ROAD_KINDS[r.kind].name, area: 0, count: 0 });
       z.area += G.polyPerimeter(r.pts, false) * r.width; z.count++;
     }
-    const built = footprint + outb.filter(it => catItem(it.key).shape !== 'deck' && catItem(it.key).shape !== 'pool').reduce((s, it) => s + it.w * it.d, 0);
+    // в застройку идут постройки под крышей; открытые настилы и бассейны — нет
+    const roofless = (it) => { const sh = catItem(it.key).shape; return sh === 'deck' || sh === 'pool' || (sh === 'veranda' && !porchOpt(it).roofed); };
+    const built = footprint + outb.filter(it => !roofless(it)).reduce((s, it) => s + it.w * it.d, 0);
     return { total, living, axis, footprint, outb, outbArea, plotArea, zones, built, free: plotArea ? plotArea - built : 0, perFloor };
   },
   at(p) {
@@ -4147,7 +4323,7 @@ const Render = {
     const P = { ctx, px, C, it, def, upright: true, rotRad: U.rad(it.rot || 0), flip: !!it.flip, symMul: 1 };
     try { painter(P, w, d); } catch (e) { console.warn('painter', def.shape, e); }
     ctx.restore();
-    if (it.label && !['building', 'garage', 'canopy', 'canopyLean', 'gazebo', 'greenhouse', 'labelbox', 'deck'].includes(def.shape) && Math.min(w, d) * env.scale > 30) {
+    if (it.label && !['building', 'garage', 'canopy', 'canopyLean', 'gazebo', 'greenhouse', 'labelbox', 'deck', 'veranda'].includes(def.shape) && Math.min(w, d) * env.scale > 30) {
       Render.label(env, it.label, { x: it.x, y: it.y }, 0, { size: 11, bg: true, prio: 6 });
     }
     if (App.doc.settings.showItemDims && !def.sym && Math.max(w, d) * env.scale > 45) {
@@ -4964,6 +5140,8 @@ const View3D = {
       return;
     }
     if (sh === 'pool') { box(it.x, it.y, it.w + 60, it.d + 60, rot, e, e + 8, C('#e5e1d6')); box(it.x, it.y, it.w, it.d, rot, e + 8, e + 9, C('#3f97d8')); return; }
+    if (sh === 'veranda') { View3D.veranda(it, e); return; }
+    if (KITCHEN_SHAPES.has(sh)) { View3D.kitchen(it, def, e); return; }
     if (sh === 'deck') { box(it.x, it.y, it.w, it.d, rot, e, e + 25, C('#a8805a')); for (let x = -it.w / 2 + 7; x < it.w / 2; x += 14) { const q = G.toWorld({ x, y: 0 }, it.x, it.y, rot); box(q.x, q.y, 1, it.d, rot, e + 25, e + 25.3, C('#8c6848')); } return; }
     if (sh === 'parking') { box(it.x, it.y, it.w, it.d, rot, e, e + 3, C('#a9abb0')); return; }
     if (sh === 'gardenbed' || sh === 'flowerbed') { box(it.x, it.y, it.w, it.d, rot, e, e + Math.max(20, H), C('#7a5a3a')); return; }
@@ -4995,12 +5173,12 @@ const View3D = {
     }
     if (!(H > 0)) return;
     // --- мебель и оборудование: цвет по назначению, простые детали ---
-    const upperZ = sh === 'upper' ? 140 : 0;
+    const upperZ = sh === 'upper' ? 140 : sh === 'hood' ? 155 : 0;
     const z0 = e + upperZ, z1 = z0 + Math.max(2, H);
     const colorOf = {
       bed: C('#f3efe7'), sofa: fabric, sofaL: fabric, armchair: fabric, officechair: dark, chair: wood, bench: wood,
       table: wood, diningtable: wood, roundtable: wood, desk: wood, deskL: wood, wardrobe: C('#c9a57a'), cabinet: C('#c9a57a'), shelf: C('#c9a57a'),
-      tv: dark, piano: C('#2b2622'), counter: white, kitchenI: white, kitchenL: white, ksink: white, upper: white, fridge: white, fridge2: C('#c8ccd1'),
+      tv: dark, piano: C('#2b2622'), counter: white, tall: C('#eef0f1'), bar: wood, hood: C('#c8ccd1'), kitchenI: white, kitchenL: white, ksink: white, upper: white, fridge: white, fridge2: C('#c8ccd1'),
       stove: C('#e2e4e6'), oven: dark, washer: white, bath: white, bathCorner: white, shower: C('#dfe9f0'), toilet: white, bidet: white, urinal: white,
       sink: white, vanity: C('#e8e2d8'), radiator: white, stoveHeat: C('#b5654a'), fireplace: C('#9c8f86'), fireplaceCorner: C('#9c8f86'), stoveMetal: dark,
       chimney: C('#8f5a45'), column: C('#d6d2ca'), septic: C('#5e7d4f'), capsule: C('#dfe3e6'), bbq: dark, gateSlide: metal, wicket: metal, labelbox: C('#d0ccc4'),
@@ -5033,6 +5211,110 @@ const View3D = {
       for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const b = G.toWorld({ x: sx * 13, y: sy * 12 }, q.x, q.y, rot); cyl(b.x, b.y, 8, z1, z1 + 0.6, dark, 10); }
     }
     void face;
+  },
+  /** Крыльцо / веранда / терраса: цоколь, настил, ступени, ограждение или остекление, крыша */
+  veranda(it, e) {
+    const { box } = View3D._g, C = View3D.hex, rot = it.rot || 0;
+    const w = it.w, d = it.d, g = porchGeom(it, w, d), o = g.o;
+    const L = (x, y) => G.toWorld({ x, y }, it.x, it.y, rot);
+    const bx = (x, y, bw, bd, z0, z1, col, opt) => { const q = L(x, y); box(q.x, q.y, bw, bd, rot, z0, z1, col, opt); };
+    const ph = Math.max(o.ph, 10);
+    const deck = C('#a8805a'), base = C('#9b958b'), post = C('#6b5a44'), frame = C('#eeeeea'), wall = C('#ddd3c3'), glass = [0.8, 0.9, 0.95];
+    // цоколь и настил
+    if (ph > 20) bx(0, 0, w - 8, d - 8, e, e + ph - 4, base);
+    bx(0, 0, w, d, e + ph - 4, e + ph, deck);
+    for (let x = -w / 2 + 7; x < w / 2; x += 14) bx(x, 0, 1, d, e + ph, e + ph + 0.3, C('#8c6848'));
+    // ступени: от площадки вниз, наружу
+    for (let i = 1; i < g.steps; i++) bx(0, d / 2 + (i - 0.5) * g.tread, g.sw, g.tread, e, e + ph - i * g.rise, i % 2 ? base.map(x => x * 1.05) : base);
+    const z0 = e + ph;
+    const eave = z0 + 230;
+    // сегмент стороны: построить «ленту» элементов вдоль неё (локальные координаты)
+    const seg = (s, t, za, zb, col, opt) => {
+      const m = G.add(G.mid(s.a, s.b), G.mul(s.n, t / 2)), L2 = G.dist(s.a, s.b);
+      const horiz = Math.abs(s.a.y - s.b.y) < 0.5;
+      bx(m.x, m.y, horiz ? L2 : t, horiz ? t : L2, za, zb, col, opt);
+    };
+    const pts = (s, step) => { const L2 = G.dist(s.a, s.b), k = Math.max(1, Math.round(L2 / step)), u = G.unit(G.sub(s.b, s.a)); return Array.from({ length: k + 1 }, (_, i) => G.add(G.add(s.a, G.mul(u, L2 * i / k)), G.mul(s.n, 4))); };
+    if (o.encl === 'rail') for (const s of g.segs) {
+      seg(s, 6, z0 + 88, z0 + 95, post);
+      for (const q of pts(s, 15)) bx(q.x, q.y, 3, 3, z0, z0 + 88, post);
+    }
+    if (o.encl === 'glazed' || o.encl === 'closed') for (const s of g.segs) {
+      const closed = o.encl === 'closed';
+      seg(s, closed ? 15 : 8, z0, z0 + 85, closed ? wall : frame);            // парапет
+      if (closed) {
+        seg(s, 15, z0 + 205, eave, wall);                                        // над окнами
+        const L2 = G.dist(s.a, s.b), u = G.unit(G.sub(s.b, s.a)), k = Math.floor(L2 / 200);
+        const wins = Array.from({ length: k }, (_, i) => (i + 0.5) * L2 / k);
+        // простенки между окнами (окна 100 см)
+        let from = 0;
+        for (const m of [...wins, L2 + 50]) {
+          const to = Math.min(L2, m - 50);
+          if (to - from > 1) seg({ a: G.add(s.a, G.mul(u, from)), b: G.add(s.a, G.mul(u, to)), n: s.n }, 15, z0 + 85, z0 + 205, wall);
+          from = m + 50;
+        }
+        for (const m of wins) seg({ a: G.add(s.a, G.mul(u, m - 50)), b: G.add(s.a, G.mul(u, m + 50)), n: s.n }, 4, z0 + 85, z0 + 205, glass, { glass: true });
+      } else {
+        seg(s, 3, z0 + 85, eave - 12, glass, { glass: true });
+        for (const q of pts(s, 90)) bx(q.x, q.y, 6, 6, z0, eave, frame);
+        seg(s, 8, eave - 12, eave, frame);
+      }
+    }
+    // дверь в проходе
+    if (g.gap && (o.encl === 'glazed' || o.encl === 'closed')) {
+      bx(0, d / 2 - 4, g.sw, 4, z0, z0 + 205, o.encl === 'glazed' ? glass : C('#7a5236'), o.encl === 'glazed' ? { glass: true } : undefined);
+      bx(0, d / 2 - (o.encl === 'closed' ? 7.5 : 4), g.sw, o.encl === 'closed' ? 15 : 8, z0 + 205, eave, o.encl === 'closed' ? wall : frame);
+    }
+    if (!o.roofed) return;
+    // столбы у открытых
+    if (o.encl === 'open' || o.encl === 'rail') {
+      const posts = [[-w / 2 + 7, d / 2 - 7], [w / 2 - 7, d / 2 - 7]];
+      if (!o.attached) posts.push([-w / 2 + 7, -d / 2 + 7], [w / 2 - 7, -d / 2 + 7]);
+      const k = Math.max(1, Math.round(w / 300));
+      for (let i = 1; i < k; i++) posts.push([-w / 2 + 7 + (w - 14) * i / k, d / 2 - 7]);
+      for (const [x, y] of posts) bx(x, y, 12, 12, z0, eave, post);
+      bx(0, d / 2 - 7, w, 12, eave - 15, eave, post);
+    }
+    // крыша: у пристроенной — односкатная от дома, у отдельной — двускатная
+    const top = Math.max(it.h || 0, o.ph + 260);
+    if (o.attached) {
+      const rd = d + 30, rise = Math.max(15, top - (eave - e));
+      const c = L(0, 15);
+      View3D.roof({ x: c.x, y: c.y, w: w + 50, d: rd, rot, type: 'shed', pitch: U.deg(Math.atan(rise / rd)), base: eave, mat: 'profile', floor: null });
+    } else {
+      const along = w >= d;
+      View3D.roof({ x: it.x, y: it.y, w: (along ? w : d) + 50, d: (along ? d : w) + 50, rot: along ? rot : rot + 90, type: 'gable', pitch: 25, base: eave, mat: 'metaltile', floor: null });
+    }
+  },
+  /** Кухонный гарнитур: цоколь, корпуса, столешница, мойка, варочная панель, навесные шкафы, пеналы */
+  kitchen(it, def, e) {
+    const { box, cyl } = View3D._g, C = View3D.hex, rot = it.rot || 0;
+    const K = kitchenLayout(def.shape, it.w, it.d);
+    const fx = it.flip ? -1 : 1;
+    const L = (x, y) => G.toWorld({ x: x * fx, y }, it.x, it.y, rot);
+    const bx = (x0, y0, x1, y1, z0, z1, col, opt) => { const q = L((x0 + x1) / 2, (y0 + y1) / 2); box(q.x, q.y, Math.abs(x1 - x0), Math.abs(y1 - y0), rot, z0, z1, col, opt); };
+    const facade = C('#eef0f1'), plinth = C('#4a4d52'), top = C('#8d8478'), upper = C('#f5f6f7');
+    const H = it.h || 90;
+    for (const r of K.runs) {
+      const h = r.h || H;
+      // цоколь утоплен от фасада на 5 см
+      const inset = { down: [0, 0, 0, -5], up: [0, 5, 0, 0], left: [5, 0, 0, 0], right: [0, 0, -5, 0] }[r.front] || [0, 0, 0, 0];
+      bx(r.x0 + inset[0], r.y0 + inset[1], r.x1 + inset[2], r.y1 + inset[3], e, e + 10, plinth);
+      bx(r.x0, r.y0, r.x1, r.y1, e + 10, e + h - 4, r.h ? C('#b88a5a') : facade);
+      bx(r.x0 - 1, r.y0 - 1, r.x1 + 1, r.y1 + 1, e + h - 4, e + h, top);
+      // навесные шкафы над рядом у стены — у задней кромки
+      if (r.wall && !r.h) {
+        const b = { down: [r.x0, r.y0, r.x1, r.y0 + 35], up: [r.x0, r.y1 - 35, r.x1, r.y1], left: [r.x1 - 35, r.y0, r.x1, r.y1], right: [r.x0, r.y0, r.x0 + 35, r.y1] }[r.front];
+        if (b) bx(b[0], b[1], b[2], b[3], e + 145, e + 215, upper);
+      }
+    }
+    for (const r of K.tall || []) bx(r.x0, r.y0, r.x1, r.y1, e, e + 215, facade);
+    if (K.sink) { const s = K.sink; bx(s.x - 22, s.y - 18, s.x + 22, s.y + 18, e + H - 0.5, e + H + 0.3, C('#b9c3cc')); }
+    if (K.hob) {
+      const hb = K.hob, hw = hb.v ? 25 : 28, hd = hb.v ? 28 : 25;
+      bx(hb.x - hw, hb.y - hd, hb.x + hw, hb.y + hd, e + H, e + H + 0.6, C('#1f2226'));
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const q = L(hb.x + sx * hw * 0.5, hb.y + sy * hd * 0.5); cyl(q.x, q.y, 7, e + H + 0.6, e + H + 1, C('#3a3d42'), 10); }
+    }
   },
   _g: null,
 
@@ -7214,12 +7496,24 @@ const UI = {
     // варианты того же вида
     const same = CATALOG.find(c => c.id === def.cat).items.filter(x => x.shape === def.shape && x.key !== def.key);
     body.append(F.section('Размеры',
-      same.length ? F.select('Типоразмер', '', [['', `${def.name} (${def.w}×${def.d})`], ...same.map(x => [x.key, `${x.name} (${x.w}×${x.d})`])], (v) => { if (!v) return; const d2 = catItem(v); it.key = v; it.w = d2.w; it.d = d2.d; it.h = d2.h; Model.commit(); }) : null,
+      same.length ? F.select('Типоразмер', '', [['', `${def.name} (${def.w}×${def.d})`], ...same.map(x => [x.key, `${x.name} (${x.w}×${x.d})`])], (v) => { if (!v) return; const d2 = catItem(v); it.key = v; it.w = d2.w; it.d = d2.d; it.h = d2.h; for (const k of PORCH_KEYS) delete it[k]; Model.commit(); }) : null,
       F.num('Ширина', it.w, (v) => UI.set(it, 'w', v), { min: 1, field: 'w' }),
       F.num('Глубина', it.d, (v) => UI.set(it, 'd', v), { min: 1 }),
       F.num('Высота', it.h, (v) => UI.set(it, 'h', v), { min: 0 }),
       F.btns([['Сбросить к типовым', () => { it.w = def.w; it.d = def.d; it.h = def.h; Model.commit(); }], ['Поменять Ш↔Г', () => { [it.w, it.d] = [it.d, it.w]; Model.commit(); }]]),
     ));
+    if (def.shape === 'veranda') {
+      const o = porchOpt(it), g = porchGeom(it, it.w, it.d);
+      body.append(F.section('Исполнение',
+        F.select('Тип', o.encl, Object.entries(PORCH_ENCL).map(([k, v]) => [k, v.name]), (v) => { it.encl = v; if ((v === 'glazed' || v === 'closed') && !o.roofed) { it.roofed = true; if (it.h < o.ph + 240) it.h = o.ph + 280; } Model.commit(); }, { field: 'encl' }),
+        F.check('С крышей / козырьком', o.roofed, (v) => { it.roofed = v; if (v && it.h < o.ph + 240) it.h = o.ph + 280; Model.commit(); }),
+        F.check('Пристроена к дому (задняя сторона — у стены)', o.attached, (v) => { it.attached = v; Model.commit(); }),
+        F.num('Высота площадки над землёй', o.ph, (v) => { it.ph = U.clamp(v, 0, 300); Model.commit(); }, { min: 0, max: 300 }),
+        F.select('Ступени', o.steps === 'none' ? 'none' : 'front', [['front', 'Спереди'], ['none', 'Нет']], (v) => { it.steps = v; Model.commit(); }),
+        o.steps !== 'none' ? F.num('Ширина ступеней / прохода', o.stepW, (v) => { it.stepW = U.clamp(v, 60, 1000); Model.commit(); }, { min: 60 }) : null,
+        g.steps ? F.info('Ступени', `${g.steps - 1} шт. + площадка, подъём ${U.fmtLen(g.rise)}, проступь ${g.tread} см`) : null,
+        F.note('Спереди — сторона со ступенями. Высота объекта — до верха крыши. Ступени и проход можно убрать, веранду — развернуть ручкой поворота.')));
+    }
     body.append(F.section('Положение',
       F.num('X', it.x / 100, (v) => UI.set(it, 'x', v * 100), { unit: 'м', step: 0.01 }),
       F.num('Y', it.y / 100, (v) => UI.set(it, 'y', v * 100), { unit: 'м', step: 0.01 }),
@@ -8480,7 +8774,7 @@ const IFC = {
       // ---- предметы ----
       for (const it of App.V.items) {
         const def = catItem(it.key);
-        if (!(it.h > 0) && !['pool', 'deck', 'parking'].includes(def.shape)) continue;
+        if (!(it.h > 0) && !['pool', 'deck', 'parking', 'veranda'].includes(def.shape)) continue;
         const siteObj = f === d.floors[0] && ['buildings', 'green', 'water', 'gas'].includes(def.cat) && def.layer !== 'plumbing' || ['siteobj'].includes(def.layer) || ['pole', 'lightpole'].includes(def.shape);
         const base = siteObj ? sitePl : S.pl;
         const ang = U.rad(it.rot || 0);
@@ -8488,7 +8782,7 @@ const IFC = {
         const z = siteObj ? f.elev * 10 : (def.shape === 'upper' ? 1400 : 0);
         const pl = LP(base, A3(X(it), Y(it), z, xdir));
         const size = def.sym ? Tools.itemDrawSize(it) : it;
-        const h = Math.max(10, (it.h || 2) * 10);
+        const h = Math.max(10, ((def.shape === 'veranda' ? Math.max(it.h || 0, porchOpt(it).ph) : it.h) || 2) * 10);
         const round = ['round', 'boiler', 'ring', 'well', 'borehole', 'roundtable', 'columnRound', 'tree', 'conifer', 'bush', 'pump'].includes(def.shape);
         const solid = round
           ? add('IFCEXTRUDEDAREASOLID', add('IFCCIRCLEPROFILEDEF', E('AREA'), null, add('IFCAXIS2PLACEMENT2D', P2(0, 0), null), Math.min(size.w, size.d) * 5), A3(), dz, h)

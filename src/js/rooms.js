@@ -229,7 +229,7 @@ const Rooms = {
     const footprint = fd[0].outlines.reduce((s, o) => s + o.area, 0);
     const perFloor = fd.map(x => ({ floor: x.floor, total: x.rooms.reduce((s, r) => s + r.areaFloor, 0), rooms: x.rooms.length }));
     // постройки на участке (предметы-постройки)
-    const outb = App.doc.items.filter(it => ['building', 'garage', 'canopy', 'canopyLean', 'gazebo', 'greenhouse', 'pool', 'deck'].includes(catItem(it.key).shape));
+    const outb = App.doc.items.filter(it => ['building', 'garage', 'canopy', 'canopyLean', 'gazebo', 'greenhouse', 'pool', 'deck', 'veranda'].includes(catItem(it.key).shape));
     const outbArea = outb.reduce((s, it) => s + it.w * it.d, 0);
     const plots = App.doc.areas.filter(a => a.kind === 'plot');
     const plotArea = plots.reduce((s, a) => s + Math.abs(G.polyArea(a.pts)), 0);
@@ -242,7 +242,9 @@ const Rooms = {
       const z = zones['road:' + r.kind] || (zones['road:' + r.kind] = { name: ROAD_KINDS[r.kind].name, area: 0, count: 0 });
       z.area += G.polyPerimeter(r.pts, false) * r.width; z.count++;
     }
-    const built = footprint + outb.filter(it => catItem(it.key).shape !== 'deck' && catItem(it.key).shape !== 'pool').reduce((s, it) => s + it.w * it.d, 0);
+    // в застройку идут постройки под крышей; открытые настилы и бассейны — нет
+    const roofless = (it) => { const sh = catItem(it.key).shape; return sh === 'deck' || sh === 'pool' || (sh === 'veranda' && !porchOpt(it).roofed); };
+    const built = footprint + outb.filter(it => !roofless(it)).reduce((s, it) => s + it.w * it.d, 0);
     return { total, living, axis, footprint, outb, outbArea, plotArea, zones, built, free: plotArea ? plotArea - built : 0, perFloor };
   },
   at(p) {

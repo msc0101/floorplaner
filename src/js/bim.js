@@ -219,7 +219,7 @@ const IFC = {
       // ---- предметы ----
       for (const it of App.V.items) {
         const def = catItem(it.key);
-        if (!(it.h > 0) && !['pool', 'deck', 'parking'].includes(def.shape)) continue;
+        if (!(it.h > 0) && !['pool', 'deck', 'parking', 'veranda'].includes(def.shape)) continue;
         const siteObj = f === d.floors[0] && ['buildings', 'green', 'water', 'gas'].includes(def.cat) && def.layer !== 'plumbing' || ['siteobj'].includes(def.layer) || ['pole', 'lightpole'].includes(def.shape);
         const base = siteObj ? sitePl : S.pl;
         const ang = U.rad(it.rot || 0);
@@ -227,7 +227,7 @@ const IFC = {
         const z = siteObj ? f.elev * 10 : (def.shape === 'upper' ? 1400 : 0);
         const pl = LP(base, A3(X(it), Y(it), z, xdir));
         const size = def.sym ? Tools.itemDrawSize(it) : it;
-        const h = Math.max(10, (it.h || 2) * 10);
+        const h = Math.max(10, ((def.shape === 'veranda' ? Math.max(it.h || 0, porchOpt(it).ph) : it.h) || 2) * 10);
         const round = ['round', 'boiler', 'ring', 'well', 'borehole', 'roundtable', 'columnRound', 'tree', 'conifer', 'bush', 'pump'].includes(def.shape);
         const solid = round
           ? add('IFCEXTRUDEDAREASOLID', add('IFCCIRCLEPROFILEDEF', E('AREA'), null, add('IFCAXIS2PLACEMENT2D', P2(0, 0), null), Math.min(size.w, size.d) * 5), A3(), dz, h)

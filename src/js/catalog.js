@@ -166,6 +166,21 @@ const CATALOG = [
   { id: 'kitchen', name: 'Кухня и столовая', layer: 'furniture', items: [
     { key: 'kitchenI', name: 'Кухонный гарнитур прямой', shape: 'kitchenI', w: 240, d: 60, h: 90 },
     { key: 'kitchenL', name: 'Кухонный гарнитур угловой', shape: 'kitchenL', w: 240, d: 180, h: 90, flip: true },
+    { key: 'kitchenMini', name: 'Мини-кухня 120 см', shape: 'kitchenI', w: 120, d: 60, h: 90 },
+    { key: 'kitchenI180', name: 'Кухня прямая 180 см', shape: 'kitchenI', w: 180, d: 60, h: 90 },
+    { key: 'kitchenI300', name: 'Кухня прямая 300 см', shape: 'kitchenI', w: 300, d: 60, h: 90 },
+    { key: 'kitchenTall', name: 'Кухня прямая с пеналами', shape: 'kitchenTall', w: 360, d: 60, h: 90 },
+    { key: 'kitchenL300', name: 'Кухня угловая большая', shape: 'kitchenL', w: 300, d: 240, h: 90, flip: true },
+    { key: 'kitchenU', name: 'Кухня П-образная', shape: 'kitchenU', w: 300, d: 240, h: 90 },
+    { key: 'kitchenII', name: 'Кухня параллельная (2 ряда)', shape: 'kitchenII', w: 270, d: 240, h: 90 },
+    { key: 'kitchenIsland', name: 'Кухня с островом', shape: 'kitchenIsland', w: 300, d: 300, h: 90 },
+    { key: 'kitchenBar', name: 'Кухня с барной стойкой', shape: 'kitchenBar', w: 270, d: 220, h: 90 },
+    { key: 'kitchenPen', name: 'Кухня угловая с полуостровом', shape: 'kitchenPen', w: 300, d: 250, h: 90, flip: true },
+    { key: 'tallUnit', name: 'Пенал / шкаф-колонна', shape: 'tall', w: 60, d: 60, h: 215, label: 'П' },
+    { key: 'ovenTower', name: 'Колонна под духовку и СВЧ', shape: 'tall', w: 60, d: 60, h: 215, label: 'Д' },
+    { key: 'cornerUnit', name: 'Угловой нижний модуль', shape: 'kitchenL', w: 100, d: 100, h: 90, flip: true },
+    { key: 'barCounter', name: 'Барная стойка', shape: 'bar', w: 150, d: 50, h: 110 },
+    { key: 'hood', name: 'Вытяжка', shape: 'hood', w: 60, d: 50, h: 60 },
     { key: 'counter60', name: 'Нижний модуль 60 см', shape: 'counter', w: 60, d: 60, h: 90 },
     { key: 'counter40', name: 'Нижний модуль 40 см', shape: 'counter', w: 40, d: 60, h: 90 },
     { key: 'upper', name: 'Навесной шкаф', shape: 'upper', w: 80, d: 32, h: 70 },
@@ -300,7 +315,6 @@ const CATALOG = [
     { key: 'outhouse', name: 'Туалет уличный', shape: 'building', w: 100, d: 130, h: 230, shadow: true },
     { key: 'showerOut', name: 'Душ летний', shape: 'building', w: 100, d: 120, h: 230, shadow: true },
     { key: 'pool', name: 'Бассейн', shape: 'pool', w: 400, d: 800, h: 0 },
-    { key: 'terrace', name: 'Терраса / веранда', shape: 'deck', w: 600, d: 300, h: 0 },
     { key: 'bbq', name: 'Мангал / барбекю', shape: 'bbq', w: 100, d: 40, h: 90 },
     { key: 'playground', name: 'Детская площадка', shape: 'labelbox', w: 500, d: 500, h: 0, label: 'Площадка' },
     { key: 'compost', name: 'Компостер', shape: 'labelbox', w: 100, d: 100, h: 90, label: 'Компост' },
@@ -319,6 +333,16 @@ const CATALOG = [
     { key: 'bed', name: 'Грядка', shape: 'gardenbed', w: 120, d: 400, h: 20 },
     { key: 'flowerbed', name: 'Клумба', shape: 'flowerbed', w: 200, d: 200, h: 20 },
   ]},
+  { id: 'porch', name: 'Крыльцо, веранда, терраса', layer: 'siteobj', items: [
+    { key: 'porch', name: 'Крыльцо с козырьком', shape: 'veranda', w: 200, d: 150, h: 300, ph: 60, encl: 'rail', roofed: true, attached: true, stepW: 120, shadow: true },
+    { key: 'porchOpen', name: 'Крыльцо открытое (площадка + ступени)', shape: 'veranda', w: 160, d: 120, h: 60, ph: 45, encl: 'open', roofed: false, attached: true, stepW: 120 },
+    { key: 'veranda', name: 'Веранда остеклённая', shape: 'veranda', w: 600, d: 300, h: 330, ph: 45, encl: 'glazed', roofed: true, attached: true, stepW: 100, shadow: true },
+    { key: 'verandaWarm', name: 'Веранда закрытая утеплённая', shape: 'veranda', w: 600, d: 300, h: 330, ph: 45, encl: 'closed', roofed: true, attached: true, stepW: 100, shadow: true },
+    { key: 'verandaOpen', name: 'Веранда открытая (под крышей)', shape: 'veranda', w: 600, d: 300, h: 330, ph: 45, encl: 'rail', roofed: true, attached: true, stepW: 150, shadow: true },
+    { key: 'terraceRoof', name: 'Терраса под навесом', shape: 'veranda', w: 500, d: 400, h: 300, ph: 15, encl: 'open', roofed: true, attached: false, steps: 'none', stepW: 150, shadow: true },
+    { key: 'terrace', name: 'Терраса открытая (настил)', shape: 'veranda', w: 600, d: 300, h: 0, ph: 20, encl: 'open', roofed: false, attached: true, steps: 'none', stepW: 150 },
+    { key: 'terraceRail', name: 'Терраса с ограждением', shape: 'veranda', w: 600, d: 300, h: 0, ph: 60, encl: 'rail', roofed: false, attached: true, stepW: 120 },
+  ]},
   { id: 'misc', name: 'Произвольные', layer: 'furniture', items: [
     { key: 'box', name: 'Прямоугольник (произвольный)', shape: 'labelbox', w: 100, d: 100, h: 100, label: '' },
     { key: 'circle', name: 'Круг (произвольный)', shape: 'round', w: 100, d: 100, h: 100 },
@@ -334,6 +358,59 @@ for (const c of CATALOG) for (const it of c.items) {
   CAT_INDEX[it.key] = it;
 }
 function catItem(key) { return CAT_INDEX[key] || CAT_INDEX.box; }
+
+/* ======================= КРЫЛЬЦО / ВЕРАНДА / ТЕРРАСА ======================== */
+const PORCH_ENCL = {
+  open:   { name: 'Открытая', short: 'открытая' },
+  rail:   { name: 'Открытая с ограждением', short: 'с ограждением' },
+  glazed: { name: 'Закрытая остеклённая', short: 'остеклённая' },
+  closed: { name: 'Закрытая утеплённая (стены и окна)', short: 'утеплённая' },
+};
+const PORCH_KEYS = ['encl', 'roofed', 'attached', 'ph', 'steps', 'stepW'];
+/** Параметры веранды: из объекта, иначе — из каталога */
+function porchOpt(it) {
+  const d = catItem(it.key), g = (k, def) => it[k] ?? d[k] ?? def;
+  return { encl: g('encl', 'open'), roofed: !!g('roofed', false), attached: !!g('attached', true), ph: Math.max(0, +g('ph', 0) || 0), steps: g('steps', 'front'), stepW: Math.max(60, +g('stepW', 120) || 120) };
+}
+/** Геометрия в локальных координатах: стороны с ограждением (без прохода к ступеням), проход, ступени.
+ *  «Спинка» (−d/2) примыкает к дому, если attached; ступени — спереди (+d/2). */
+function porchGeom(it, w, d) {
+  const o = porchOpt(it);
+  const sw = Math.min(o.stepW, w - 20);
+  const hasSteps = o.steps !== 'none' && o.ph >= 15;
+  const gap = o.steps !== 'none' ? [-sw / 2, sw / 2] : null;
+  const sides = [[{ x: -w / 2, y: d / 2 }, { x: w / 2, y: d / 2 }], [{ x: -w / 2, y: -d / 2 }, { x: -w / 2, y: d / 2 }], [{ x: w / 2, y: -d / 2 }, { x: w / 2, y: d / 2 }]];
+  if (!o.attached) sides.push([{ x: -w / 2, y: -d / 2 }, { x: w / 2, y: -d / 2 }]);
+  const segs = [];
+  sides.forEach((s, i) => {
+    if (i === 0 && gap) { segs.push([s[0], { x: gap[0], y: d / 2 }]); segs.push([{ x: gap[1], y: d / 2 }, s[1]]); }
+    else segs.push(s);
+  });
+  // внутренняя нормаль стороны (к центру)
+  const inward = (a, b) => { const m = G.mid(a, b), n = G.perp(G.unit(G.sub(b, a))); return G.dot(n, m) > 0 ? G.mul(n, -1) : n; };
+  const n = hasSteps ? Math.max(2, Math.round(o.ph / 17)) : 0;
+  return { o, sw, gap, segs: segs.filter(([a, b]) => G.dist(a, b) > 5).map(([a, b]) => ({ a, b, n: inward(a, b) })), steps: n, rise: n ? o.ph / n : 0, tread: 30 };
+}
+
+/* ============================ КУХОННЫЕ ГАРНИТУРЫ ============================ */
+const KITCHEN_SHAPES = new Set(['kitchenI', 'kitchenL', 'kitchenU', 'kitchenII', 'kitchenIsland', 'kitchenBar', 'kitchenPen', 'kitchenTall']);
+/** Ленты модулей в локальных координатах (центр — 0,0; y вниз). front — сторона фасада,
+ *  wall — ряд у стены (над ним навесные шкафы), h — своя высота (барная стойка), tall — пеналы. */
+function kitchenLayout(shape, w, d) {
+  const D = Math.min(60, d), R = (x0, y0, x1, y1, front, wall = true, h) => ({ x0, y0, x1, y1, front, wall, h });
+  const back = R(-w / 2, -d / 2, w / 2, -d / 2 + D, 'down');
+  const bc = -d / 2 + D / 2;
+  switch (shape) {
+    case 'kitchenL': return { runs: [back, R(w / 2 - D, -d / 2 + D, w / 2, d / 2, 'left')], sink: w >= 180 ? { x: -w / 2 + 40, y: bc } : null, hob: d >= 150 ? { x: w / 2 - D / 2, y: d / 2 - 40, v: true } : null };
+    case 'kitchenU': return { runs: [back, R(-w / 2, -d / 2 + D, -w / 2 + D, d / 2, 'right'), R(w / 2 - D, -d / 2 + D, w / 2, d / 2, 'left')], sink: { x: 0, y: bc }, hob: { x: -w / 2 + D / 2, y: (d / 2 + D - d / 2) / 2 + 10, v: true } };
+    case 'kitchenII': return { runs: [back, R(-w / 2, d / 2 - D, w / 2, d / 2, 'up')], sink: { x: -w / 2 + 50, y: bc }, hob: { x: 0, y: d / 2 - D / 2 } };
+    case 'kitchenIsland': { const iw = Math.min(w * 0.6, 240); return { runs: [back, R(-iw / 2, d / 2 - 90, iw / 2, d / 2, 'up', false)], sink: { x: 0, y: d / 2 - 45 }, hob: { x: w / 2 - 50, y: bc } }; }
+    case 'kitchenBar': { const bw = Math.min(w * 0.7, 200); return { runs: [back, R(-bw / 2, d / 2 - 50, bw / 2, d / 2, 'up', false, 110)], sink: { x: -w / 2 + 50, y: bc }, hob: { x: w / 2 - 50, y: bc }, bar: true }; }
+    case 'kitchenPen': return { runs: [back, R(w / 2 - 90, -d / 2 + D, w / 2, d / 2, 'left', false)], sink: { x: -w / 2 + 50, y: bc }, hob: { x: 0, y: bc } };
+    case 'kitchenTall': { const tw = Math.min(120, w / 3); return { runs: [R(-w / 2 + tw, -d / 2, w / 2, d / 2, 'down')], tall: [R(-w / 2, -d / 2, -w / 2 + tw, d / 2, 'down')], sink: { x: -w / 2 + tw + 45, y: 0 }, hob: { x: w / 2 - 45, y: 0 } }; }
+    default: return { runs: [R(-w / 2, -d / 2, w / 2, d / 2, 'down')], sink: w >= 120 ? { x: -w / 2 + 40, y: 0 } : null, hob: w >= 120 ? { x: w / 2 - 45, y: 0 } : null };
+  }
+}
 
 /* ============================ ОТРИСОВКА ================================= */
 /* P — контекст отрисовки: ctx (уже в локальных координатах предмета), px — 1 экранный пиксель в см,
@@ -573,6 +650,38 @@ const Painters = (() => {
     for (let y = -d / 2 + D + 60; y < d / 2 - 10; y += 60) line(P, [w / 2 - D + 4, y, w / 2 - D, y]);
     if (w >= 180) sinkBowl(P, -w / 2 + 40, -d / 2 + D / 2 - 2, 44, D - 20);
     if (d >= 150) burners(P, w / 2 - D / 2 - 2, d / 2 - 40, D - 12, 54);
+  };
+  /** Гарнитуры из «лент» модулей (П-образная, параллельная, с островом и т. д.) */
+  const kitchenRuns = (P, w, d) => {
+    const K = kitchenLayout(P.def.shape, w, d);
+    const run = (r, tall) => {
+      const rw = r.x1 - r.x0, rd = r.y1 - r.y0;
+      P.ctx.fillStyle = P.C.itemFill; lw(P, 1.4); box(P, r.x0, r.y0, rw, rd, 0);
+      thin(P);
+      if (tall) { line(P, [r.x0, r.y0, r.x1, r.y1]); line(P, [r.x1, r.y0, r.x0, r.y1]); return; }
+      const f = r.front, vert = f === 'left' || f === 'right';
+      const L = vert ? rd : rw, n = Math.max(1, Math.round(L / 60));
+      if (f === 'down') line(P, [r.x0, r.y1 - 4, r.x1, r.y1 - 4]);
+      if (f === 'up') line(P, [r.x0, r.y0 + 4, r.x1, r.y0 + 4]);
+      if (f === 'left') line(P, [r.x0 + 4, r.y0, r.x0 + 4, r.y1]);
+      if (f === 'right') line(P, [r.x1 - 4, r.y0, r.x1 - 4, r.y1]);
+      for (let i = 1; i < n; i++) {
+        if (vert) { const y = r.y0 + rd * i / n, x = f === 'left' ? r.x0 : r.x1 - 4; line(P, [x, y, x + 4, y]); }
+        else { const x = r.x0 + rw * i / n, y = f === 'down' ? r.y1 - 4 : r.y0; line(P, [x, y, x, y + 4]); }
+      }
+      if (r.h > 100) { P.ctx.setLineDash([4 * P.px, 3 * P.px]); box(P, r.x0 + 6, r.y0 + 6, rw - 12, rd - 12, 0, false); P.ctx.setLineDash([]); }
+    };
+    for (const r of K.runs) run(r);
+    for (const r of K.tall || []) { run(r, true); text(P, 'пеналы', (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2, 11); }
+    if (K.sink) sinkBowl(P, K.sink.x, K.sink.y, K.sink.v ? 40 : 44, K.sink.v ? 44 : 40);
+    if (K.hob) { P.ctx.fillStyle = P.C.itemFill; burners(P, K.hob.x, K.hob.y, K.hob.v ? 46 : 54, K.hob.v ? 54 : 46); }
+  };
+  for (const k of ['kitchenU', 'kitchenII', 'kitchenIsland', 'kitchenBar', 'kitchenPen', 'kitchenTall']) S[k] = kitchenRuns;
+  S.tall = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); line(P, [-w / 2, -d / 2, w / 2, d / 2]); line(P, [w / 2, -d / 2, -w / 2, d / 2]); text(P, P.it.label || P.def.label || 'П', 0, 0, Math.min(w, d) * 0.35, { bold: true }); };
+  S.bar = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 3); thin(P); P.ctx.setLineDash([4 * P.px, 3 * P.px]); line(P, [-w / 2 + 5, 0, w / 2 - 5, 0]); P.ctx.setLineDash([]); };
+  S.hood = (P, w, d) => {
+    P.ctx.setLineDash([6 * P.px, 4 * P.px]); box(P, -w / 2, -d / 2, w, d, 0, false); P.ctx.setLineDash([]);
+    thin(P); box(P, -w / 4, -d / 2, w / 2, d * 0.45, 0, false); text(P, 'В', 0, d * 0.15, Math.min(w, d) * 0.3, { bold: true });
   };
   S.fridge = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 2); thin(P);
@@ -864,6 +973,71 @@ const Painters = (() => {
     box(P, -w / 2, -d / 2, w, d, 0); P.ctx.save(); P.ctx.strokeStyle = P.C.hatch; thin(P);
     for (let x = -w / 2 + 14; x < w / 2; x += 14) line(P, [x, -d / 2, x, d / 2]);
     P.ctx.restore(); text(P, P.it.label || 'Терраса', 0, 0, Math.min(40, w / 8), { bold: true });
+  };
+  /** Крыльцо / веранда / терраса: настил, ограждение или остекление, крыша, ступени */
+  S.veranda = (P, w, d) => {
+    const c = P.ctx, g = porchGeom(P.it, w, d), o = g.o;
+    // крыша (контур со свесом), у пристроенной — без свеса со стороны дома
+    if (o.roofed) {
+      c.save(); lw(P, 1); c.setLineDash([10 * P.px, 6 * P.px]);
+      box(P, -w / 2 - 25, o.attached ? -d / 2 : -d / 2 - 25, w + 50, d + 25 + (o.attached ? 0 : 25), 0, false);
+      c.restore();
+    }
+    // ступени
+    if (g.steps) {
+      c.fillStyle = P.C.itemFill; thin(P);
+      for (let i = 0; i < g.steps - 1; i++) box(P, -g.sw / 2, d / 2 + i * g.tread, g.sw, g.tread, 0);
+    }
+    // площадка и доски настила
+    c.fillStyle = P.C.itemFill; lw(P, 1.4); box(P, -w / 2, -d / 2, w, d, 0);
+    c.save(); rr(c, -w / 2, -d / 2, w, d, 0); c.clip(); c.strokeStyle = P.C.hatch; thin(P);
+    for (let x = -w / 2 + 14; x < w / 2; x += 14) line(P, [x, -d / 2, x, d / 2]);
+    c.restore();
+    if (o.attached) { lw(P, 2.4); line(P, [-w / 2, -d / 2, w / 2, -d / 2]); }
+    // ограждающие элементы по сторонам
+    const band = (s, t, fill) => {
+      const a2 = G.add(s.a, G.mul(s.n, t)), b2 = G.add(s.b, G.mul(s.n, t));
+      c.beginPath(); c.moveTo(s.a.x, s.a.y); c.lineTo(s.b.x, s.b.y); c.lineTo(b2.x, b2.y); c.lineTo(a2.x, a2.y); c.closePath();
+      if (fill) { c.fillStyle = fill; c.fill(); }
+      c.stroke();
+    };
+    const along = (s, step, fn) => { const L = G.dist(s.a, s.b), k = Math.max(1, Math.round(L / step)), u = G.unit(G.sub(s.b, s.a)); for (let i = 1; i < k; i++) fn(G.add(s.a, G.mul(u, L * i / k)), u); };
+    thin(P);
+    if (o.encl === 'rail') for (const s of g.segs) { band(s, 6, null); }
+    if (o.encl === 'glazed') for (const s of g.segs) { lw(P, 1); band(s, 8, P.C.glass); thin(P); along(s, 90, (q) => line(P, [q.x, q.y, q.x + s.n.x * 8, q.y + s.n.y * 8])); }
+    if (o.encl === 'closed') for (const s of g.segs) {
+      lw(P, 1.2); band(s, 15, P.C.inkSoft);
+      // окна в стене
+      const L = G.dist(s.a, s.b), u = G.unit(G.sub(s.b, s.a)), k = Math.floor(L / 200);
+      c.fillStyle = P.C.glass; thin(P);
+      for (let i = 0; i < k; i++) {
+        const m = (i + 0.5) * L / k, p0 = G.add(s.a, G.mul(u, m - 50)), p1 = G.add(s.a, G.mul(u, m + 50));
+        band({ a: p0, b: p1, n: s.n }, 15, P.C.opening);
+        line(P, [p0.x + s.n.x * 7.5, p0.y + s.n.y * 7.5, p1.x + s.n.x * 7.5, p1.y + s.n.y * 7.5]);
+      }
+    }
+    // дверь в проходе у закрытой веранды
+    if (g.gap && (o.encl === 'glazed' || o.encl === 'closed')) {
+      const dw = Math.min(90, g.sw);
+      thin(P); line(P, [g.gap[0], d / 2, g.gap[0], d / 2 - dw]);
+      c.beginPath(); c.arc(g.gap[0], d / 2, dw, -Math.PI / 2, 0); c.stroke();
+    }
+    // столбы под крышей у открытых
+    if (o.roofed && (o.encl === 'open' || o.encl === 'rail')) {
+      c.fillStyle = P.C.ink;
+      const posts = [[-w / 2 + 7, d / 2 - 7], [w / 2 - 7, d / 2 - 7]];
+      if (!o.attached) posts.push([-w / 2 + 7, -d / 2 + 7], [w / 2 - 7, -d / 2 + 7]);
+      const k = Math.max(1, Math.round(w / 300));
+      for (let i = 1; i < k; i++) posts.push([-w / 2 + 7 + (w - 14) * i / k, d / 2 - 7]);
+      for (const [x, y] of posts) box(P, x - 6, y - 6, 12, 12, 0);
+      c.fillStyle = P.C.itemFill;
+    }
+    const nm = P.it.label || P.def.name.split(' ')[0];
+    const sz = Math.min(36, w / 7, d / 3);
+    // «вниз по экрану» в локальных координатах — чтобы вторая строка шла под первой при любом повороте
+    const dn = { x: Math.sin(P.rotRad) * (P.flip ? -1 : 1), y: Math.cos(P.rotRad) };
+    text(P, nm, -dn.x * sz * 0.35, -dn.y * sz * 0.35, sz, { bold: true });
+    text(P, PORCH_ENCL[o.encl] ? PORCH_ENCL[o.encl].short + (o.roofed && o.encl !== 'closed' && o.encl !== 'glazed' ? ', под крышей' : '') : '', dn.x * sz * 0.75, dn.y * sz * 0.75, sz * 0.55, { color: P.C.muted });
   };
   S.bbq = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 2); thin(P); for (let x = -w / 2 + 10; x < w / 2; x += 8) line(P, [x, -d / 2 + 5, x, d / 2 - 5]); };
   S.parking = (P, w, d) => {

@@ -695,12 +695,24 @@ const UI = {
     // варианты того же вида
     const same = CATALOG.find(c => c.id === def.cat).items.filter(x => x.shape === def.shape && x.key !== def.key);
     body.append(F.section('Размеры',
-      same.length ? F.select('Типоразмер', '', [['', `${def.name} (${def.w}×${def.d})`], ...same.map(x => [x.key, `${x.name} (${x.w}×${x.d})`])], (v) => { if (!v) return; const d2 = catItem(v); it.key = v; it.w = d2.w; it.d = d2.d; it.h = d2.h; Model.commit(); }) : null,
+      same.length ? F.select('Типоразмер', '', [['', `${def.name} (${def.w}×${def.d})`], ...same.map(x => [x.key, `${x.name} (${x.w}×${x.d})`])], (v) => { if (!v) return; const d2 = catItem(v); it.key = v; it.w = d2.w; it.d = d2.d; it.h = d2.h; for (const k of PORCH_KEYS) delete it[k]; Model.commit(); }) : null,
       F.num('Ширина', it.w, (v) => UI.set(it, 'w', v), { min: 1, field: 'w' }),
       F.num('Глубина', it.d, (v) => UI.set(it, 'd', v), { min: 1 }),
       F.num('Высота', it.h, (v) => UI.set(it, 'h', v), { min: 0 }),
       F.btns([['Сбросить к типовым', () => { it.w = def.w; it.d = def.d; it.h = def.h; Model.commit(); }], ['Поменять Ш↔Г', () => { [it.w, it.d] = [it.d, it.w]; Model.commit(); }]]),
     ));
+    if (def.shape === 'veranda') {
+      const o = porchOpt(it), g = porchGeom(it, it.w, it.d);
+      body.append(F.section('Исполнение',
+        F.select('Тип', o.encl, Object.entries(PORCH_ENCL).map(([k, v]) => [k, v.name]), (v) => { it.encl = v; if ((v === 'glazed' || v === 'closed') && !o.roofed) { it.roofed = true; if (it.h < o.ph + 240) it.h = o.ph + 280; } Model.commit(); }, { field: 'encl' }),
+        F.check('С крышей / козырьком', o.roofed, (v) => { it.roofed = v; if (v && it.h < o.ph + 240) it.h = o.ph + 280; Model.commit(); }),
+        F.check('Пристроена к дому (задняя сторона — у стены)', o.attached, (v) => { it.attached = v; Model.commit(); }),
+        F.num('Высота площадки над землёй', o.ph, (v) => { it.ph = U.clamp(v, 0, 300); Model.commit(); }, { min: 0, max: 300 }),
+        F.select('Ступени', o.steps === 'none' ? 'none' : 'front', [['front', 'Спереди'], ['none', 'Нет']], (v) => { it.steps = v; Model.commit(); }),
+        o.steps !== 'none' ? F.num('Ширина ступеней / прохода', o.stepW, (v) => { it.stepW = U.clamp(v, 60, 1000); Model.commit(); }, { min: 60 }) : null,
+        g.steps ? F.info('Ступени', `${g.steps - 1} шт. + площадка, подъём ${U.fmtLen(g.rise)}, проступь ${g.tread} см`) : null,
+        F.note('Спереди — сторона со ступенями. Высота объекта — до верха крыши. Ступени и проход можно убрать, веранду — развернуть ручкой поворота.')));
+    }
     body.append(F.section('Положение',
       F.num('X', it.x / 100, (v) => UI.set(it, 'x', v * 100), { unit: 'м', step: 0.01 }),
       F.num('Y', it.y / 100, (v) => UI.set(it, 'y', v * 100), { unit: 'м', step: 0.01 }),

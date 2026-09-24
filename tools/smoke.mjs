@@ -173,6 +173,24 @@ const rm = await page.evaluate(() => {
 });
 console.log('rooms/move', JSON.stringify(rm));
 if (!rm.labelCentered || rm.n1 !== 2 || rm.n2 !== 2 || rm.px !== 350 || rm.top !== 700 || rm.bottom !== 700) errors.push('Разбивка помещений / сдвиг стен: ' + JSON.stringify(rm));
+// крыльцо / веранда / терраса и кухни: все варианты рисуются в плане и в 3D, исполнение меняется в свойствах
+const pv3 = await page.evaluate(() => {
+  const f = App.doc.floors[0].id, keys = [...CATALOG.find(c => c.id === 'porch').items.map(i => i.key), 'kitchenU', 'kitchenII', 'kitchenIsland', 'kitchenBar', 'kitchenPen', 'kitchenTall', 'tallUnit', 'barCounter', 'hood'];
+  const made = keys.map((key, i) => { const d = catItem(key); return Model.add('items', { key, x: 30000 + i * 700, y: 30000, w: d.w, d: d.d, h: d.h, rot: 0, flip: false, floor: f }); });
+  Model.commit();
+  const v = made[2];
+  App.sel.clear(); App.sel.add(v.id); App.selChanged();
+  const sel = document.querySelector('#tab-props [data-field=encl]');
+  sel.value = 'open'; sel.dispatchEvent(new Event('change'));
+  const encl = Model.get(v.id).encl;
+  View3D.build();
+  const g = porchGeom(Model.get(made[0].id), 200, 150);
+  const r = { n: made.length, encl, steps: g.steps, segs: g.segs.length, tris: View3D.build().P.length > 0 };
+  Model.undo(); Model.undo(); App.sel.clear(); App.selChanged();
+  return r;
+});
+console.log('porch/kitchen', JSON.stringify(pv3));
+if (pv3.encl !== 'open' || pv3.steps !== 4 || pv3.segs !== 4) errors.push('Веранда/крыльцо: ' + JSON.stringify(pv3));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

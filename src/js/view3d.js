@@ -438,6 +438,8 @@ const View3D = {
       return;
     }
     if (sh === 'pool') { box(it.x, it.y, it.w + 60, it.d + 60, rot, e, e + 8, C('#e5e1d6')); box(it.x, it.y, it.w, it.d, rot, e + 8, e + 9, C('#3f97d8')); return; }
+    if (sh === 'veranda') { View3D.veranda(it, e); return; }
+    if (KITCHEN_SHAPES.has(sh)) { View3D.kitchen(it, def, e); return; }
     if (sh === 'deck') { box(it.x, it.y, it.w, it.d, rot, e, e + 25, C('#a8805a')); for (let x = -it.w / 2 + 7; x < it.w / 2; x += 14) { const q = G.toWorld({ x, y: 0 }, it.x, it.y, rot); box(q.x, q.y, 1, it.d, rot, e + 25, e + 25.3, C('#8c6848')); } return; }
     if (sh === 'parking') { box(it.x, it.y, it.w, it.d, rot, e, e + 3, C('#a9abb0')); return; }
     if (sh === 'gardenbed' || sh === 'flowerbed') { box(it.x, it.y, it.w, it.d, rot, e, e + Math.max(20, H), C('#7a5a3a')); return; }
@@ -469,12 +471,12 @@ const View3D = {
     }
     if (!(H > 0)) return;
     // --- мебель и оборудование: цвет по назначению, простые детали ---
-    const upperZ = sh === 'upper' ? 140 : 0;
+    const upperZ = sh === 'upper' ? 140 : sh === 'hood' ? 155 : 0;
     const z0 = e + upperZ, z1 = z0 + Math.max(2, H);
     const colorOf = {
       bed: C('#f3efe7'), sofa: fabric, sofaL: fabric, armchair: fabric, officechair: dark, chair: wood, bench: wood,
       table: wood, diningtable: wood, roundtable: wood, desk: wood, deskL: wood, wardrobe: C('#c9a57a'), cabinet: C('#c9a57a'), shelf: C('#c9a57a'),
-      tv: dark, piano: C('#2b2622'), counter: white, kitchenI: white, kitchenL: white, ksink: white, upper: white, fridge: white, fridge2: C('#c8ccd1'),
+      tv: dark, piano: C('#2b2622'), counter: white, tall: C('#eef0f1'), bar: wood, hood: C('#c8ccd1'), kitchenI: white, kitchenL: white, ksink: white, upper: white, fridge: white, fridge2: C('#c8ccd1'),
       stove: C('#e2e4e6'), oven: dark, washer: white, bath: white, bathCorner: white, shower: C('#dfe9f0'), toilet: white, bidet: white, urinal: white,
       sink: white, vanity: C('#e8e2d8'), radiator: white, stoveHeat: C('#b5654a'), fireplace: C('#9c8f86'), fireplaceCorner: C('#9c8f86'), stoveMetal: dark,
       chimney: C('#8f5a45'), column: C('#d6d2ca'), septic: C('#5e7d4f'), capsule: C('#dfe3e6'), bbq: dark, gateSlide: metal, wicket: metal, labelbox: C('#d0ccc4'),
@@ -507,6 +509,110 @@ const View3D = {
       for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const b = G.toWorld({ x: sx * 13, y: sy * 12 }, q.x, q.y, rot); cyl(b.x, b.y, 8, z1, z1 + 0.6, dark, 10); }
     }
     void face;
+  },
+  /** Крыльцо / веранда / терраса: цоколь, настил, ступени, ограждение или остекление, крыша */
+  veranda(it, e) {
+    const { box } = View3D._g, C = View3D.hex, rot = it.rot || 0;
+    const w = it.w, d = it.d, g = porchGeom(it, w, d), o = g.o;
+    const L = (x, y) => G.toWorld({ x, y }, it.x, it.y, rot);
+    const bx = (x, y, bw, bd, z0, z1, col, opt) => { const q = L(x, y); box(q.x, q.y, bw, bd, rot, z0, z1, col, opt); };
+    const ph = Math.max(o.ph, 10);
+    const deck = C('#a8805a'), base = C('#9b958b'), post = C('#6b5a44'), frame = C('#eeeeea'), wall = C('#ddd3c3'), glass = [0.8, 0.9, 0.95];
+    // цоколь и настил
+    if (ph > 20) bx(0, 0, w - 8, d - 8, e, e + ph - 4, base);
+    bx(0, 0, w, d, e + ph - 4, e + ph, deck);
+    for (let x = -w / 2 + 7; x < w / 2; x += 14) bx(x, 0, 1, d, e + ph, e + ph + 0.3, C('#8c6848'));
+    // ступени: от площадки вниз, наружу
+    for (let i = 1; i < g.steps; i++) bx(0, d / 2 + (i - 0.5) * g.tread, g.sw, g.tread, e, e + ph - i * g.rise, i % 2 ? base.map(x => x * 1.05) : base);
+    const z0 = e + ph;
+    const eave = z0 + 230;
+    // сегмент стороны: построить «ленту» элементов вдоль неё (локальные координаты)
+    const seg = (s, t, za, zb, col, opt) => {
+      const m = G.add(G.mid(s.a, s.b), G.mul(s.n, t / 2)), L2 = G.dist(s.a, s.b);
+      const horiz = Math.abs(s.a.y - s.b.y) < 0.5;
+      bx(m.x, m.y, horiz ? L2 : t, horiz ? t : L2, za, zb, col, opt);
+    };
+    const pts = (s, step) => { const L2 = G.dist(s.a, s.b), k = Math.max(1, Math.round(L2 / step)), u = G.unit(G.sub(s.b, s.a)); return Array.from({ length: k + 1 }, (_, i) => G.add(G.add(s.a, G.mul(u, L2 * i / k)), G.mul(s.n, 4))); };
+    if (o.encl === 'rail') for (const s of g.segs) {
+      seg(s, 6, z0 + 88, z0 + 95, post);
+      for (const q of pts(s, 15)) bx(q.x, q.y, 3, 3, z0, z0 + 88, post);
+    }
+    if (o.encl === 'glazed' || o.encl === 'closed') for (const s of g.segs) {
+      const closed = o.encl === 'closed';
+      seg(s, closed ? 15 : 8, z0, z0 + 85, closed ? wall : frame);            // парапет
+      if (closed) {
+        seg(s, 15, z0 + 205, eave, wall);                                        // над окнами
+        const L2 = G.dist(s.a, s.b), u = G.unit(G.sub(s.b, s.a)), k = Math.floor(L2 / 200);
+        const wins = Array.from({ length: k }, (_, i) => (i + 0.5) * L2 / k);
+        // простенки между окнами (окна 100 см)
+        let from = 0;
+        for (const m of [...wins, L2 + 50]) {
+          const to = Math.min(L2, m - 50);
+          if (to - from > 1) seg({ a: G.add(s.a, G.mul(u, from)), b: G.add(s.a, G.mul(u, to)), n: s.n }, 15, z0 + 85, z0 + 205, wall);
+          from = m + 50;
+        }
+        for (const m of wins) seg({ a: G.add(s.a, G.mul(u, m - 50)), b: G.add(s.a, G.mul(u, m + 50)), n: s.n }, 4, z0 + 85, z0 + 205, glass, { glass: true });
+      } else {
+        seg(s, 3, z0 + 85, eave - 12, glass, { glass: true });
+        for (const q of pts(s, 90)) bx(q.x, q.y, 6, 6, z0, eave, frame);
+        seg(s, 8, eave - 12, eave, frame);
+      }
+    }
+    // дверь в проходе
+    if (g.gap && (o.encl === 'glazed' || o.encl === 'closed')) {
+      bx(0, d / 2 - 4, g.sw, 4, z0, z0 + 205, o.encl === 'glazed' ? glass : C('#7a5236'), o.encl === 'glazed' ? { glass: true } : undefined);
+      bx(0, d / 2 - (o.encl === 'closed' ? 7.5 : 4), g.sw, o.encl === 'closed' ? 15 : 8, z0 + 205, eave, o.encl === 'closed' ? wall : frame);
+    }
+    if (!o.roofed) return;
+    // столбы у открытых
+    if (o.encl === 'open' || o.encl === 'rail') {
+      const posts = [[-w / 2 + 7, d / 2 - 7], [w / 2 - 7, d / 2 - 7]];
+      if (!o.attached) posts.push([-w / 2 + 7, -d / 2 + 7], [w / 2 - 7, -d / 2 + 7]);
+      const k = Math.max(1, Math.round(w / 300));
+      for (let i = 1; i < k; i++) posts.push([-w / 2 + 7 + (w - 14) * i / k, d / 2 - 7]);
+      for (const [x, y] of posts) bx(x, y, 12, 12, z0, eave, post);
+      bx(0, d / 2 - 7, w, 12, eave - 15, eave, post);
+    }
+    // крыша: у пристроенной — односкатная от дома, у отдельной — двускатная
+    const top = Math.max(it.h || 0, o.ph + 260);
+    if (o.attached) {
+      const rd = d + 30, rise = Math.max(15, top - (eave - e));
+      const c = L(0, 15);
+      View3D.roof({ x: c.x, y: c.y, w: w + 50, d: rd, rot, type: 'shed', pitch: U.deg(Math.atan(rise / rd)), base: eave, mat: 'profile', floor: null });
+    } else {
+      const along = w >= d;
+      View3D.roof({ x: it.x, y: it.y, w: (along ? w : d) + 50, d: (along ? d : w) + 50, rot: along ? rot : rot + 90, type: 'gable', pitch: 25, base: eave, mat: 'metaltile', floor: null });
+    }
+  },
+  /** Кухонный гарнитур: цоколь, корпуса, столешница, мойка, варочная панель, навесные шкафы, пеналы */
+  kitchen(it, def, e) {
+    const { box, cyl } = View3D._g, C = View3D.hex, rot = it.rot || 0;
+    const K = kitchenLayout(def.shape, it.w, it.d);
+    const fx = it.flip ? -1 : 1;
+    const L = (x, y) => G.toWorld({ x: x * fx, y }, it.x, it.y, rot);
+    const bx = (x0, y0, x1, y1, z0, z1, col, opt) => { const q = L((x0 + x1) / 2, (y0 + y1) / 2); box(q.x, q.y, Math.abs(x1 - x0), Math.abs(y1 - y0), rot, z0, z1, col, opt); };
+    const facade = C('#eef0f1'), plinth = C('#4a4d52'), top = C('#8d8478'), upper = C('#f5f6f7');
+    const H = it.h || 90;
+    for (const r of K.runs) {
+      const h = r.h || H;
+      // цоколь утоплен от фасада на 5 см
+      const inset = { down: [0, 0, 0, -5], up: [0, 5, 0, 0], left: [5, 0, 0, 0], right: [0, 0, -5, 0] }[r.front] || [0, 0, 0, 0];
+      bx(r.x0 + inset[0], r.y0 + inset[1], r.x1 + inset[2], r.y1 + inset[3], e, e + 10, plinth);
+      bx(r.x0, r.y0, r.x1, r.y1, e + 10, e + h - 4, r.h ? C('#b88a5a') : facade);
+      bx(r.x0 - 1, r.y0 - 1, r.x1 + 1, r.y1 + 1, e + h - 4, e + h, top);
+      // навесные шкафы над рядом у стены — у задней кромки
+      if (r.wall && !r.h) {
+        const b = { down: [r.x0, r.y0, r.x1, r.y0 + 35], up: [r.x0, r.y1 - 35, r.x1, r.y1], left: [r.x1 - 35, r.y0, r.x1, r.y1], right: [r.x0, r.y0, r.x0 + 35, r.y1] }[r.front];
+        if (b) bx(b[0], b[1], b[2], b[3], e + 145, e + 215, upper);
+      }
+    }
+    for (const r of K.tall || []) bx(r.x0, r.y0, r.x1, r.y1, e, e + 215, facade);
+    if (K.sink) { const s = K.sink; bx(s.x - 22, s.y - 18, s.x + 22, s.y + 18, e + H - 0.5, e + H + 0.3, C('#b9c3cc')); }
+    if (K.hob) {
+      const hb = K.hob, hw = hb.v ? 25 : 28, hd = hb.v ? 28 : 25;
+      bx(hb.x - hw, hb.y - hd, hb.x + hw, hb.y + hd, e + H, e + H + 0.6, C('#1f2226'));
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const q = L(hb.x + sx * hw * 0.5, hb.y + sy * hd * 0.5); cyl(q.x, q.y, 7, e + H + 0.6, e + H + 1, C('#3a3d42'), 10); }
+    }
   },
   _g: null,
 
