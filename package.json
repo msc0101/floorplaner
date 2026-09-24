@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "description": "Планировщик дома и участка: стены, окна, двери, мебель, инженерные сети, стороны света, тени и инсоляция",
+  "homepage": "https://msc0101.github.io/floorplaner/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/msc0101/floorplaner.git"
+  },
   "scripts": {
     "build": "node tools/build.mjs",
     "test": "node tools/build.mjs && node tools/smoke.mjs",

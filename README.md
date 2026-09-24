@@ -2,14 +2,18 @@
 
 Редактор планировок в браузере: стены, окна, двери, мебель и техника в реальных размерах, несколько этажей, крыша, участок с постройками, улицы и дорожки, инженерные сети, ориентация по сторонам света, тени и инсоляция. Есть 3D-вид, проверка отступов по нормам, смета и чертежи с размерами. Экспорт в PDF, DXF (AutoCAD), SVG, IFC (BIM) и OBJ. Всё в одном HTML-файле, без сервера, без установки и без внешних библиотек.
 
+**▶ Открыть онлайн: [msc0101.github.io/floorplaner](https://msc0101.github.io/floorplaner/)**
+
 ![Общий вид: участок 10 соток с домом, постройками, сетями и улицей](docs/screenshots/overview.png)
 
 ## Как запустить
 
+* **Онлайн:** **https://msc0101.github.io/floorplaner/** — открыть в браузере, ничего не устанавливая.
 * **Проще всего:** скачайте [`dist/floorplaner.html`](dist/floorplaner.html) и откройте двойным кликом. Работает офлайн.
 * **Из исходников:** `npm run serve` (или любой статический сервер для папки `src/`) и откройте http://localhost:8080.
 * **Пересобрать один файл:** `npm run build` (Node 18+) создаёт `dist/floorplaner.html` из `src/`.
-* **Опубликовать на сайте:** в странице уже есть заголовок и описание для выдачи, ключевые слова, микроразметка schema.org (`WebApplication`), Open Graph, favicon и текст в `<noscript>` для роботов Google и Яндекса. Для сайта соберите `SITE_URL=https://ваш-сайт.ru/ npm run build`. Кроме `floorplaner.html` появятся `dist/index.html` (с canonical, Open Graph и картинкой-превью), `robots.txt`, `sitemap.xml` и `og.png`. Коды подтверждения прав для Google Search Console и Яндекс Вебмастера передаются так: `GOOGLE_VERIFY=… YANDEX_VERIFY=…`. Выложите содержимое `dist/` в корень сайта (robots.txt работает только в корне домена) и добавьте sitemap в обе панели.
+* **Сайт на GitHub Pages** собирается сам: при каждом пуше workflow [`.github/workflows/pages.yml`](.github/workflows/pages.yml) собирает страницу с адресом `https://msc0101.github.io/floorplaner/` и выкладывает её в ветку `gh-pages`. Коды подтверждения для Google Search Console и Яндекс Вебмастера задаются в **Settings → Secrets and variables → Actions → Variables** как `GOOGLE_VERIFY` и `YANDEX_VERIFY`.
+* **Опубликовать на своём сайте:** в странице уже есть заголовок и описание для выдачи, ключевые слова, микроразметка schema.org (`WebApplication`), Open Graph, favicon и текст в `<noscript>` для роботов Google и Яндекса. Для сайта соберите `SITE_URL=https://ваш-сайт.ru/ npm run build`. Кроме `floorplaner.html` появятся `dist/index.html` (с canonical, Open Graph и картинкой-превью), `robots.txt`, `sitemap.xml` и `og.png`. Коды подтверждения прав для Google Search Console и Яндекс Вебмастера передаются так: `GOOGLE_VERIFY=… YANDEX_VERIFY=…`. Выложите содержимое `dist/` в корень сайта (robots.txt работает только в корне домена) и добавьте sitemap в обе панели.
 
 План автоматически сохраняется в браузере. Чтобы перенести его на другой компьютер, выберите **Файл → Сохранить (.json)**.
 

@@ -1,0 +1,44 @@
+# Сайт на GitHub Pages: при каждом пуше собирает страницу с SEO-тегами
+# и выкладывает её в ветку gh-pages → https://msc0101.github.io/floorplaner/
+name: Сайт (GitHub Pages)
+
+on:
+  push:
+    branches: [main, master, 'claude/clever-curie-uxfuq5']
+    paths: ['src/**', 'tools/build.mjs', 'docs/screenshots/overview.png', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Сборка
+        env:
+          SITE_URL: https://msc0101.github.io/floorplaner/
+          GOOGLE_VERIFY: ${{ vars.GOOGLE_VERIFY }}
+          YANDEX_VERIFY: ${{ vars.YANDEX_VERIFY }}
+        run: |
+          node tools/build.mjs
+          mkdir site
+          cp dist/index.html dist/robots.txt dist/sitemap.xml dist/og.png site/
+          touch site/.nojekyll
+      - name: Публикация в gh-pages
+        run: |
+          cd site
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Сайт: ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
