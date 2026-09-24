@@ -2383,6 +2383,60 @@ const Model = {
     for (const op of App.doc.openings) if (walls.has(op.wall)) op.side = -op.side;
   },
   /** Выбор + связанные проёмы не нужны: проёмы следуют за стеной автоматически */
+  /** Сдвинуть стены на (dx, dy) так, чтобы стыки сохранились: примыкающие стены (к концам и T-стыки
+   *  в середине) удлиняются/укорачиваются вдоль себя, а концы сдвигаемой стены скользят по соседям.
+   *  Проёмы остаются на месте относительно стены. */
+  moveWalls(ids, dx, dy) {
+    const W = ids.map(Model.get).filter(w => w && Model.coll(w.id) === 'walls');
+    if (!W.length) return;
+    const inW = new Set(W.map(w => w.id));
+    const d = { x: dx, y: dy };
+    const others = App.V.walls.filter(w => !inW.has(w.id));
+    const near = (p, q) => G.dist(p, q) <= 1;
+    // исходная геометрия
+    const orig = new Map(W.map(w => [w.id, { a: { ...w.a }, b: { ...w.b } }]));
+    const lineOf = (w) => { const o = orig.get(w.id); return [G.add(o.a, d), G.add(o.b, d)]; };
+    const shared = (p, self) => W.some(o => o !== self && (near(orig.get(o.id).a, p) || near(orig.get(o.id).b, p)));
+    // точка на новой линии стены w, лежащая на линии соседа n (или просто сдвиг, если почти параллельны)
+    const slide = (w, n, p) => {
+      const [a, b] = lineOf(w);
+      const un = G.unit(G.sub(n.b, n.a)), uw = G.unit(G.sub(b, a));
+      if (Math.abs(G.cross(un, uw)) < 0.2) return G.add(p, d);
+      return G.lineInter(a, b, n.a, n.b) || G.add(p, d);
+    };
+    const moves = [];   // [объект-точка, новое положение]
+    for (const w of W) {
+      const o = orig.get(w.id);
+      for (const e of ['a', 'b']) {
+        const p = o[e];
+        if (shared(p, w)) { moves.push([w[e], G.add(p, d)]); for (const n of others) for (const ne of ['a', 'b']) if (near(n[ne], p)) moves.push([n[ne], G.add(p, d)]); continue; }
+        const nbs = others.flatMap(n => ['a', 'b'].filter(ne => near(n[ne], p)).map(ne => ({ n, ne })));
+        const cross = (n) => Math.abs(G.cross(G.unit(G.sub(n.b, n.a)), G.unit(G.sub(o.b, o.a))));
+        // по чему скользить: сосед с общим концом или стена, в середину которой упирается этот конец
+        const guide = (nbs.find(({ n }) => cross(n) >= 0.2) || {}).n || others.find(n => cross(n) >= 0.2 && G.distSeg(p, n.a, n.b) <= 1.5);
+        const np = guide ? slide(w, guide, p) : G.add(p, d);
+        moves.push([w[e], np]);
+        for (const { n, ne } of nbs) moves.push([n[ne], np]);
+      }
+      // T-стыки: концы других стен в середине этой стены
+      for (const n of others) for (const ne of ['a', 'b']) {
+        const pr = G.proj(n[ne], o.a, o.b);
+        if (pr.d <= 1.5 && pr.t > 0.001 && pr.t < 0.999) moves.push([n[ne], slide(w, n, n[ne])]);
+      }
+    }
+    // проёмы — на прежнем месте вдоль стены
+    const opShift = new Map();
+    for (const w of W) {
+      const o = orig.get(w.id), u = G.unit(G.sub(o.b, o.a));
+      const na = moves.find(([pt]) => pt === w.a);
+      if (na) opShift.set(w.id, G.dot(G.sub(G.add(o.a, d), na[1]), u));
+    }
+    for (const [pt, np] of moves) { pt.x = np.x; pt.y = np.y; }
+    for (const op of App.doc.openings) if (opShift.has(op.wall)) {
+      const w = Model.get(op.wall), L = Model.wallLen(w);
+      op.pos = U.clamp(op.pos + opShift.get(op.wall), Math.min(op.w / 2, L / 2), Math.max(L - op.w / 2, L / 2));
+    }
+  },
   expandForTransform(ids) { return ids.filter(id => Model.coll(id) !== 'openings'); },
 
   /** Разделить стену точкой (по параметру t) — проёмы переносятся */
@@ -2472,6 +2526,7 @@ const Rooms = {
     const walls = allWalls.filter(w => w.kind !== 'fence' && G.dist(w.a, w.b) > 1);
     Rooms.outlines = [];
     if (!walls.length) return [];
+    walls.push(...Rooms.closures(walls));
     const at = (w, t) => ({ x: w.a.x + (w.b.x - w.a.x) * t, y: w.a.y + (w.b.y - w.a.y) * t });
     const splits = walls.map(() => new Set([0, 1]));
     for (let i = 0; i < walls.length; i++) {
@@ -2606,6 +2661,38 @@ const Rooms = {
     return rooms;
   },
 
+  /** Невидимые «доводки» стен для поиска помещений. Стену часто дотягивают не до оси соседней,
+   *  а до её грани или в угол — на чертеже стык есть (он внутри толщины стены), а по осям — зазор,
+   *  и соседние помещения сливаются. Конец стены продлеваем вперёд до оси стены, в тело которой он
+   *  упирается; если попали за её конец (в угол) — ещё и вдоль неё до этого конца. */
+  closures(walls) {
+    const out = [];
+    for (const W of walls) for (const e of ['a', 'b']) {
+      const p = W[e], q = e === 'a' ? W.b : W.a;
+      const d = G.unit(G.sub(p, q));
+      let best = null;
+      for (const A of walls) {
+        if (A === W) continue;
+        if (G.distSeg(p, A.a, A.b) <= this.EPS_PERP) {
+          if (G.dist(p, A.a) <= this.EPS_MERGE * 2 || G.dist(p, A.b) <= this.EPS_MERGE * 2) continue;   // общий угол — не цель
+          best = null; break;                                                                         // уже примыкает (T-стык)
+        }
+        const LA = G.dist(A.a, A.b), uA = G.unit(G.sub(A.b, A.a));
+        if (Math.abs(G.cross(d, uA)) < 0.25) continue;                          // почти параллельны
+        const h = G.lineInter(p, G.add(p, d), A.a, A.b);
+        if (!h) continue;
+        const s = G.dot(G.sub(h, p), d), reach = A.th / 2 + 2;
+        if (s <= this.EPS_PERP || s > reach) continue;
+        const t = G.dot(G.sub(h, A.a), uA) / LA, over = (A.th / 2 + 2) / LA;
+        if (t < -over || t > 1 + over) continue;
+        if (!best || s < best.s) best = { s, h: { x: h.x, y: h.y }, A, t };
+      }
+      if (!best) continue;
+      out.push({ id: '_c' + out.length, kind: W.kind, th: W.th, a: { ...p }, b: best.h, virtual: true });
+      if (best.t < 0 || best.t > 1) out.push({ id: '_c' + out.length, kind: best.A.kind, th: best.A.th, a: best.h, b: { ...(best.t < 0 ? best.A.a : best.A.b) }, virtual: true });
+    }
+    return out;
+  },
   area(r) { return App.doc.settings.areaMode === 'axis' ? r.areaAxis : r.areaFloor; },
   /** Ведомость материалов стен: длина, площадь (без проёмов), объём, оценка кол-ва */
   materials() {
@@ -5227,7 +5314,7 @@ const View3D = {
    ========================================================================== */
 
 const TOOL_INFO = {
-  select:  { name: 'Выделение', key: 'V', hint: 'Клик — выбрать, Shift — добавить, рамка — выбор нескольких. Тяните объект, ручки — размер и поворот. ПКМ — меню.' },
+  select:  { name: 'Выделение', key: 'V', hint: 'Клик — выбрать, Shift — добавить, рамка — выбор нескольких. Тяните объект; стену — поперёк, соседние стены подтянутся. Ручки — размер и поворот. ПКМ — меню.' },
   pan:     { name: 'Рука', key: 'H', hint: 'Перетаскивайте план. Колесо — масштаб.' },
   wall:    { name: 'Стена', key: 'W', hint: 'Клик — начало, клики — следующие углы. Введите длину с клавиатуры (например 350 или 3.5м) и Enter. Shift — шаг 15°. Esc / ПКМ / двойной клик — завершить.' },
   room:    { name: 'Комната', key: 'Q', hint: 'Тяните прямоугольник по осям стен. Или клик и введите размеры «400x300» + Enter.' },
@@ -5660,9 +5747,10 @@ const Tools = {
           const k = U.round(dx * n.x + dy * n.y, g); dx = n.x * k; dy = n.y * k;
         } else { dx = U.round(dx, g); dy = U.round(dy, g); }
       }
-      // восстановить исходное и применить полный сдвиг
+      // восстановить исходное и применить полный сдвиг; только стены — со «скольжением» стыков
       Model.restore(st.origAll);
-      Model.translate(ids, dx, dy);
+      if (ids.every(id => Model.coll(id) === 'walls')) Model.moveWalls(ids, dx, dy);
+      else Model.translate(ids, dx, dy);
       if (App.sel.has('underlay') && st.origU) { App.doc.underlay.x = st.origU.x + dx; App.doc.underlay.y = st.origU.y + dy; }
       // прилипание настенных предметов
       if (ids.length === 1 && Model.coll(ids[0]) === 'items' && !e.altKey) {
@@ -7031,6 +7119,17 @@ const UI = {
         for (const r of att) { r.w[r.end].x = nb.x; r.w[r.end].y = nb.y; }
         Model.commit();
       }, { unit: '°', step: 1 }),
+      (() => {
+        // сдвиг поперёк стены: «+» — вправо для вертикальных, вниз для горизонтальных
+        let n = G.perp(Model.wallDir(w));
+        const horiz = Math.abs(n.x) > Math.abs(n.y);
+        if ((horiz ? n.x : n.y) < 0) n = G.mul(n, -1);
+        return F.num(horiz ? 'Сдвинуть вправо (+) / влево (−)' : 'Сдвинуть вниз (+) / вверх (−)', 0, (v) => {
+          if (!v) return;
+          Model.moveWalls([w.id], n.x * v, n.y * v); Model.commit();
+          UI.toast(`Стена сдвинута на ${U.fmtLen(Math.abs(v))}, примыкающие стены подтянуты`);
+        }, { field: 'shift' });
+      })(),
       F.info('Азимут фасада', (() => { const n = G.perp(Model.wallDir(w)); const b1 = Sun.bearingOf(n), b2 = Sun.bearingOf(G.mul(n, -1)); return `${U.compass8(b1)} ${Math.round(b1)}° / ${U.compass8(b2)} ${Math.round(b2)}°`; })()),
       F.info('Площадь стены (без проёмов)', U.fmtArea(L * w.h - App.doc.openings.filter(o => o.wall === w.id).reduce((s, o) => s + o.w * (o.h || 0), 0))),
     ));
@@ -9334,7 +9433,8 @@ const App = {
     const ids = App.selIds().filter(id => Model.coll(id) !== 'openings' && !Model.get(id).locked);
     const ops = App.selIds().filter(id => Model.coll(id) === 'openings');
     if (!ids.length && !ops.length) return;
-    Model.translate(ids, dx, dy);
+    if (ids.length && ids.every(id => Model.coll(id) === 'walls')) Model.moveWalls(ids, dx, dy);
+    else Model.translate(ids, dx, dy);
     for (const id of ops) { const op = Model.get(id); const g = Model.opGeom(op); if (g) op.pos = U.clamp(op.pos + G.dot({ x: dx, y: dy }, g.u), op.w / 2, g.L - op.w / 2); }
     Model.commit();
   },

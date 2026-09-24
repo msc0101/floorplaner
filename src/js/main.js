@@ -274,7 +274,8 @@ const App = {
     const ids = App.selIds().filter(id => Model.coll(id) !== 'openings' && !Model.get(id).locked);
     const ops = App.selIds().filter(id => Model.coll(id) === 'openings');
     if (!ids.length && !ops.length) return;
-    Model.translate(ids, dx, dy);
+    if (ids.length && ids.every(id => Model.coll(id) === 'walls')) Model.moveWalls(ids, dx, dy);
+    else Model.translate(ids, dx, dy);
     for (const id of ops) { const op = Model.get(id); const g = Model.opGeom(op); if (g) op.pos = U.clamp(op.pos + G.dot({ x: dx, y: dy }, g.u), op.w / 2, g.L - op.w / 2); }
     Model.commit();
   },

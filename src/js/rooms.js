@@ -24,6 +24,7 @@ const Rooms = {
     const walls = allWalls.filter(w => w.kind !== 'fence' && G.dist(w.a, w.b) > 1);
     Rooms.outlines = [];
     if (!walls.length) return [];
+    walls.push(...Rooms.closures(walls));
     const at = (w, t) => ({ x: w.a.x + (w.b.x - w.a.x) * t, y: w.a.y + (w.b.y - w.a.y) * t });
     const splits = walls.map(() => new Set([0, 1]));
     for (let i = 0; i < walls.length; i++) {
@@ -158,6 +159,38 @@ const Rooms = {
     return rooms;
   },
 
+  /** Невидимые «доводки» стен для поиска помещений. Стену часто дотягивают не до оси соседней,
+   *  а до её грани или в угол — на чертеже стык есть (он внутри толщины стены), а по осям — зазор,
+   *  и соседние помещения сливаются. Конец стены продлеваем вперёд до оси стены, в тело которой он
+   *  упирается; если попали за её конец (в угол) — ещё и вдоль неё до этого конца. */
+  closures(walls) {
+    const out = [];
+    for (const W of walls) for (const e of ['a', 'b']) {
+      const p = W[e], q = e === 'a' ? W.b : W.a;
+      const d = G.unit(G.sub(p, q));
+      let best = null;
+      for (const A of walls) {
+        if (A === W) continue;
+        if (G.distSeg(p, A.a, A.b) <= this.EPS_PERP) {
+          if (G.dist(p, A.a) <= this.EPS_MERGE * 2 || G.dist(p, A.b) <= this.EPS_MERGE * 2) continue;   // общий угол — не цель
+          best = null; break;                                                                         // уже примыкает (T-стык)
+        }
+        const LA = G.dist(A.a, A.b), uA = G.unit(G.sub(A.b, A.a));
+        if (Math.abs(G.cross(d, uA)) < 0.25) continue;                          // почти параллельны
+        const h = G.lineInter(p, G.add(p, d), A.a, A.b);
+        if (!h) continue;
+        const s = G.dot(G.sub(h, p), d), reach = A.th / 2 + 2;
+        if (s <= this.EPS_PERP || s > reach) continue;
+        const t = G.dot(G.sub(h, A.a), uA) / LA, over = (A.th / 2 + 2) / LA;
+        if (t < -over || t > 1 + over) continue;
+        if (!best || s < best.s) best = { s, h: { x: h.x, y: h.y }, A, t };
+      }
+      if (!best) continue;
+      out.push({ id: '_c' + out.length, kind: W.kind, th: W.th, a: { ...p }, b: best.h, virtual: true });
+      if (best.t < 0 || best.t > 1) out.push({ id: '_c' + out.length, kind: best.A.kind, th: best.A.th, a: best.h, b: { ...(best.t < 0 ? best.A.a : best.A.b) }, virtual: true });
+    }
+    return out;
+  },
   area(r) { return App.doc.settings.areaMode === 'axis' ? r.areaAxis : r.areaFloor; },
   /** Ведомость материалов стен: длина, площадь (без проёмов), объём, оценка кол-ва */
   materials() {

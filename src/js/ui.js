@@ -624,6 +624,17 @@ const UI = {
         for (const r of att) { r.w[r.end].x = nb.x; r.w[r.end].y = nb.y; }
         Model.commit();
       }, { unit: '°', step: 1 }),
+      (() => {
+        // сдвиг поперёк стены: «+» — вправо для вертикальных, вниз для горизонтальных
+        let n = G.perp(Model.wallDir(w));
+        const horiz = Math.abs(n.x) > Math.abs(n.y);
+        if ((horiz ? n.x : n.y) < 0) n = G.mul(n, -1);
+        return F.num(horiz ? 'Сдвинуть вправо (+) / влево (−)' : 'Сдвинуть вниз (+) / вверх (−)', 0, (v) => {
+          if (!v) return;
+          Model.moveWalls([w.id], n.x * v, n.y * v); Model.commit();
+          UI.toast(`Стена сдвинута на ${U.fmtLen(Math.abs(v))}, примыкающие стены подтянуты`);
+        }, { field: 'shift' });
+      })(),
       F.info('Азимут фасада', (() => { const n = G.perp(Model.wallDir(w)); const b1 = Sun.bearingOf(n), b2 = Sun.bearingOf(G.mul(n, -1)); return `${U.compass8(b1)} ${Math.round(b1)}° / ${U.compass8(b2)} ${Math.round(b2)}°`; })()),
       F.info('Площадь стены (без проёмов)', U.fmtArea(L * w.h - App.doc.openings.filter(o => o.wall === w.id).reduce((s, o) => s + o.w * (o.h || 0), 0))),
     ));

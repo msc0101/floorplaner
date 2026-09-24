@@ -344,6 +344,60 @@ const Model = {
     for (const op of App.doc.openings) if (walls.has(op.wall)) op.side = -op.side;
   },
   /** Выбор + связанные проёмы не нужны: проёмы следуют за стеной автоматически */
+  /** Сдвинуть стены на (dx, dy) так, чтобы стыки сохранились: примыкающие стены (к концам и T-стыки
+   *  в середине) удлиняются/укорачиваются вдоль себя, а концы сдвигаемой стены скользят по соседям.
+   *  Проёмы остаются на месте относительно стены. */
+  moveWalls(ids, dx, dy) {
+    const W = ids.map(Model.get).filter(w => w && Model.coll(w.id) === 'walls');
+    if (!W.length) return;
+    const inW = new Set(W.map(w => w.id));
+    const d = { x: dx, y: dy };
+    const others = App.V.walls.filter(w => !inW.has(w.id));
+    const near = (p, q) => G.dist(p, q) <= 1;
+    // исходная геометрия
+    const orig = new Map(W.map(w => [w.id, { a: { ...w.a }, b: { ...w.b } }]));
+    const lineOf = (w) => { const o = orig.get(w.id); return [G.add(o.a, d), G.add(o.b, d)]; };
+    const shared = (p, self) => W.some(o => o !== self && (near(orig.get(o.id).a, p) || near(orig.get(o.id).b, p)));
+    // точка на новой линии стены w, лежащая на линии соседа n (или просто сдвиг, если почти параллельны)
+    const slide = (w, n, p) => {
+      const [a, b] = lineOf(w);
+      const un = G.unit(G.sub(n.b, n.a)), uw = G.unit(G.sub(b, a));
+      if (Math.abs(G.cross(un, uw)) < 0.2) return G.add(p, d);
+      return G.lineInter(a, b, n.a, n.b) || G.add(p, d);
+    };
+    const moves = [];   // [объект-точка, новое положение]
+    for (const w of W) {
+      const o = orig.get(w.id);
+      for (const e of ['a', 'b']) {
+        const p = o[e];
+        if (shared(p, w)) { moves.push([w[e], G.add(p, d)]); for (const n of others) for (const ne of ['a', 'b']) if (near(n[ne], p)) moves.push([n[ne], G.add(p, d)]); continue; }
+        const nbs = others.flatMap(n => ['a', 'b'].filter(ne => near(n[ne], p)).map(ne => ({ n, ne })));
+        const cross = (n) => Math.abs(G.cross(G.unit(G.sub(n.b, n.a)), G.unit(G.sub(o.b, o.a))));
+        // по чему скользить: сосед с общим концом или стена, в середину которой упирается этот конец
+        const guide = (nbs.find(({ n }) => cross(n) >= 0.2) || {}).n || others.find(n => cross(n) >= 0.2 && G.distSeg(p, n.a, n.b) <= 1.5);
+        const np = guide ? slide(w, guide, p) : G.add(p, d);
+        moves.push([w[e], np]);
+        for (const { n, ne } of nbs) moves.push([n[ne], np]);
+      }
+      // T-стыки: концы других стен в середине этой стены
+      for (const n of others) for (const ne of ['a', 'b']) {
+        const pr = G.proj(n[ne], o.a, o.b);
+        if (pr.d <= 1.5 && pr.t > 0.001 && pr.t < 0.999) moves.push([n[ne], slide(w, n, n[ne])]);
+      }
+    }
+    // проёмы — на прежнем месте вдоль стены
+    const opShift = new Map();
+    for (const w of W) {
+      const o = orig.get(w.id), u = G.unit(G.sub(o.b, o.a));
+      const na = moves.find(([pt]) => pt === w.a);
+      if (na) opShift.set(w.id, G.dot(G.sub(G.add(o.a, d), na[1]), u));
+    }
+    for (const [pt, np] of moves) { pt.x = np.x; pt.y = np.y; }
+    for (const op of App.doc.openings) if (opShift.has(op.wall)) {
+      const w = Model.get(op.wall), L = Model.wallLen(w);
+      op.pos = U.clamp(op.pos + opShift.get(op.wall), Math.min(op.w / 2, L / 2), Math.max(L - op.w / 2, L / 2));
+    }
+  },
   expandForTransform(ids) { return ids.filter(id => Model.coll(id) !== 'openings'); },
 
   /** Разделить стену точкой (по параметру t) — проёмы переносятся */

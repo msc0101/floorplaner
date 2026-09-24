@@ -4,7 +4,7 @@
    ========================================================================== */
 
 const TOOL_INFO = {
-  select:  { name: 'Выделение', key: 'V', hint: 'Клик — выбрать, Shift — добавить, рамка — выбор нескольких. Тяните объект, ручки — размер и поворот. ПКМ — меню.' },
+  select:  { name: 'Выделение', key: 'V', hint: 'Клик — выбрать, Shift — добавить, рамка — выбор нескольких. Тяните объект; стену — поперёк, соседние стены подтянутся. Ручки — размер и поворот. ПКМ — меню.' },
   pan:     { name: 'Рука', key: 'H', hint: 'Перетаскивайте план. Колесо — масштаб.' },
   wall:    { name: 'Стена', key: 'W', hint: 'Клик — начало, клики — следующие углы. Введите длину с клавиатуры (например 350 или 3.5м) и Enter. Shift — шаг 15°. Esc / ПКМ / двойной клик — завершить.' },
   room:    { name: 'Комната', key: 'Q', hint: 'Тяните прямоугольник по осям стен. Или клик и введите размеры «400x300» + Enter.' },
@@ -437,9 +437,10 @@ const Tools = {
           const k = U.round(dx * n.x + dy * n.y, g); dx = n.x * k; dy = n.y * k;
         } else { dx = U.round(dx, g); dy = U.round(dy, g); }
       }
-      // восстановить исходное и применить полный сдвиг
+      // восстановить исходное и применить полный сдвиг; только стены — со «скольжением» стыков
       Model.restore(st.origAll);
-      Model.translate(ids, dx, dy);
+      if (ids.every(id => Model.coll(id) === 'walls')) Model.moveWalls(ids, dx, dy);
+      else Model.translate(ids, dx, dy);
       if (App.sel.has('underlay') && st.origU) { App.doc.underlay.x = st.origU.x + dx; App.doc.underlay.y = st.origU.y + dy; }
       // прилипание настенных предметов
       if (ids.length === 1 && Model.coll(ids[0]) === 'items' && !e.altKey) {

@@ -149,6 +149,26 @@ const wm = await page.evaluate(() => {
 });
 console.log('wall mat', wm);
 if (wm[0] !== 38 && wm[0] !== 25 || wm[1] !== 51) errors.push('Толщина стен не меняется: ' + wm);
+// помещения: перегородка, дотянутая до грани наружной стены (а не до оси), всё равно делит комнату;
+// сдвиг стены тянет за собой примыкающие (T-стык) стены
+const rm = await page.evaluate(() => {
+  const f = App.doc.floors[0].id, S = 20000, add = (a, b, kind, th) => Model.add('walls', { kind, th, h: 270, mat: 'aerated', a, b, floor: f });
+  const ids = [add({ x: S, y: S }, { x: S + 600, y: S }, 'ext', 40), add({ x: S + 600, y: S }, { x: S + 600, y: S + 400 }, 'ext', 40),
+    add({ x: S + 600, y: S + 400 }, { x: S, y: S + 400 }, 'ext', 40), add({ x: S, y: S + 400 }, { x: S, y: S }, 'ext', 40)];
+  const part = add({ x: S + 300, y: S + 20 }, { x: S + 300, y: S + 380 }, 'part', 10);   // до внутренних граней
+  Model.commit();
+  const inBox = () => App.rooms.filter(r => G.pointInPoly(r.label, [{ x: S, y: S }, { x: S + 600, y: S }, { x: S + 600, y: S + 400 }, { x: S, y: S + 400 }])).length;
+  const n1 = inBox();
+  Model.moveWalls([part.id], 50, 0); Model.commit();
+  const n2 = inBox(), px = Model.get(part.id).a.x - S;
+  Model.moveWalls([ids[1].id], 100, 0); Model.commit();
+  const w0 = ids[0], w2 = ids[2];
+  const r = { n1, n2, px, top: Math.round(w0.b.x - S), bottom: Math.round(w2.a.x - S) };
+  for (let i = 0; i < 3; i++) Model.undo();
+  return r;
+});
+console.log('rooms/move', JSON.stringify(rm));
+if (rm.n1 !== 2 || rm.n2 !== 2 || rm.px !== 350 || rm.top !== 700 || rm.bottom !== 700) errors.push('Разбивка помещений / сдвиг стен: ' + JSON.stringify(rm));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);
