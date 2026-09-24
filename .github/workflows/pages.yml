@@ -26,10 +26,12 @@ jobs:
       - name: Сборка
         env:
           SITE_URL: https://msc0101.github.io/floorplaner/
-          GOOGLE_VERIFY: ${{ vars.GOOGLE_VERIFY }}
-          YANDEX_VERIFY: ${{ vars.YANDEX_VERIFY }}
+          # переменная (Variables) или секрет (Secrets) — подойдёт любой вариант
+          GOOGLE_VERIFY: ${{ vars.GOOGLE_VERIFY || secrets.GOOGLE_VERIFY }}
+          YANDEX_VERIFY: ${{ vars.YANDEX_VERIFY || secrets.YANDEX_VERIFY }}
         run: |
           node tools/build.mjs
+          if [ -n "$GOOGLE_VERIFY" ]; then grep -q 'google-site-verification' dist/index.html && echo "Тег Google добавлен"; else echo "::warning::GOOGLE_VERIFY не задан — тег Google не добавлен"; fi
           mkdir site
           cp dist/index.html dist/robots.txt dist/sitemap.xml dist/og.png site/
           touch site/.nojekyll

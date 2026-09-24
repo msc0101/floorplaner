@@ -30,6 +30,9 @@ const site = (process.env.SITE_URL || '').trim();
 if (site) {
   const base = site.endsWith('/') ? site : site + '/';
   const esc = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  // код подтверждения: принимаем и сам код, и целиком тег <meta name="…" content="код">
+  const code = (v) => { v = (v || '').trim(); const m = v.match(/content\s*=\s*["']([^"']+)["']/i); return m ? m[1].trim() : v; };
+  const gv = code(process.env.GOOGLE_VERIFY), yv = code(process.env.YANDEX_VERIFY);
   const tags = [
     `<link rel="canonical" href="${esc(base)}">`,
     `<meta property="og:url" content="${esc(base)}">`,
@@ -37,8 +40,8 @@ if (site) {
     '<meta property="og:image:width" content="1440">',
     '<meta property="og:image:height" content="860">',
     `<meta name="twitter:image" content="${esc(base)}og.png">`,
-    process.env.GOOGLE_VERIFY && `<meta name="google-site-verification" content="${esc(process.env.GOOGLE_VERIFY)}">`,
-    process.env.YANDEX_VERIFY && `<meta name="yandex-verification" content="${esc(process.env.YANDEX_VERIFY)}">`,
+    gv && `<meta name="google-site-verification" content="${esc(gv)}">`,
+    yv && `<meta name="yandex-verification" content="${esc(yv)}">`,
   ].filter(Boolean).join('\n');
   const page = html.replace('<!-- build:seo -->', tags)
     .replace('"@type": "WebApplication",', `"@type": "WebApplication",\n  "url": "${base}",\n  "image": "${base}og.png",`);
