@@ -5,7 +5,7 @@ name: Сайт (GitHub Pages)
 on:
   push:
     branches: [main, master, 'claude/clever-curie-uxfuq5']
-    paths: ['src/**', 'tools/build.mjs', 'docs/screenshots/overview.png', '.github/workflows/pages.yml']
+    paths: ['src/**', 'public/**', 'tools/build.mjs', 'docs/screenshots/overview.png', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -34,6 +34,8 @@ jobs:
           if [ -n "$GOOGLE_VERIFY" ]; then grep -q 'google-site-verification' dist/index.html && echo "Тег Google добавлен"; else echo "::warning::GOOGLE_VERIFY не задан — тег Google не добавлен"; fi
           mkdir site
           cp dist/index.html dist/robots.txt dist/sitemap.xml dist/og.png site/
+          # файлы подтверждения (google…html, yandex_….html) и прочее — в корень сайта
+          if [ -d public ]; then cp -r public/. site/; fi
           touch site/.nojekyll
       - name: Публикация в gh-pages
         run: |
