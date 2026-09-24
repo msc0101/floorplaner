@@ -160,6 +160,78 @@ const UI = {
   },
   closeDrawers() { $('library').classList.remove('open'); $('panel').classList.remove('open'); $('scrim').hidden = true; },
 
+  /* ------------------------ подсказка при наведении ------------------------ */
+  _tipTimer: 0, _tipId: null,
+  /** Заголовок и строки подсказки для объекта плана */
+  tipFor(id) {
+    const L = (v) => U.fmtLen(v);
+    if (Tools.isRoom(id)) {
+      const r = App.rooms.find(x => x.id === id);
+      if (!r) return null;
+      const wins = Rooms.windowsOf(r);
+      return { title: r.name, lines: [`Площадь пола ${U.fmtArea(r.areaFloor)}`, `По осям ${U.fmtArea(r.areaAxis)} · периметр ${L(r.perimFloor)}`, wins.length ? 'Окна: ' + wins.map(w => U.compass8(w.info.bearing)).join(', ') : 'Без окон'], hint: 'Клик — выбрать, двойной клик — переименовать' };
+    }
+    if (id === 'underlay') return { title: 'Подложка', lines: [App.doc.underlay?.name || 'картинка плана'], hint: 'Тяните, чтобы сдвинуть' };
+    const o = Model.get(id), c = Model.coll(id);
+    if (!o) return null;
+    const note = App.doc.notes.filter(n => n.target === id).length;
+    const tail = note ? [`Примечаний: ${note}`] : [];
+    switch (c) {
+      case 'walls': {
+        if (o.kind === 'fence') return { title: 'Забор', lines: [(FENCE_MATERIALS[o.mat] || {}).name || '', `Длина ${L(Model.wallLen(o))}, высота ${L(o.h)}`, ...tail] };
+        const M = WALL_MATERIALS[o.mat];
+        const R = o.kind === 'ext' ? wallR(o) : null;
+        return { title: 'Стена: ' + WALL_KINDS[o.kind].name.toLowerCase(), lines: [M ? M.name : '', `Длина ${L(Model.wallLen(o))} · толщина ${Math.round(o.th)} см${o.ins ? ` (утепл. ${o.ins})` : ''} · высота ${L(o.h)}`, R ? `R = ${R.toFixed(2)} м²·°C/Вт` : '', ...tail].filter(Boolean), hint: 'Тяните — сдвиг поперёк, за конец — длина' };
+      }
+      case 'openings': {
+        const T = OPENING_TYPES[o.type], win = T.cat === 'window';
+        const info = win ? Sun.windowInfo(o) : null;
+        return { title: T.name, lines: [`${Math.round(o.w)} × ${Math.round(o.h)} см${win ? `, подоконник ${Math.round(o.sill || 0)} см` : ''}`, info && !info.interior ? `Смотрит на ${U.compass16(info.bearing)} (${Math.round(info.bearing)}°)` : '', ...tail].filter(Boolean), hint: 'Тяните вдоль стены; петли и сторона — в свойствах' };
+      }
+      case 'items': {
+        const d = catItem(o.key);
+        return { title: o.label || d.name, lines: [`${Math.round(o.w)} × ${Math.round(o.d)} см, высота ${Math.round(o.h)} см`, o.rot ? `Поворот ${Math.round(o.rot)}°` : '', o.note || '', ...tail].filter(Boolean), hint: 'Тяните — переместить, ручки — размер и поворот' };
+      }
+      case 'lines': {
+        const k = LINE_KINDS[o.kind];
+        return { title: `${k.code} — ${k.name}`, lines: [`Длина ${L(G.polyPerimeter(o.pts, false))}`, o.dia ? `Ø ${o.dia} мм` : (o.section || ''), o.depth ? `Глубина ${L(o.depth)}` : '', ...tail].filter(Boolean) };
+      }
+      case 'areas': {
+        const ar = Math.abs(G.polyArea(o.pts));
+        return { title: o.name || AREA_KINDS[o.kind].name, lines: [o.kind === 'plot' ? `${(ar / 1e6).toFixed(2)} сот. (${(ar / 1e4).toFixed(1)} м²)` : U.fmtArea(ar), `Периметр ${L(G.polyPerimeter(o.pts))}`, ...tail] };
+      }
+      case 'roads': return { title: o.name || ROAD_KINDS[o.kind].name, lines: [ROAD_KINDS[o.kind].name, `Ширина ${L(o.width)}, длина ${L(G.polyPerimeter(o.pts, false))}`, ...tail] };
+      case 'roofs': { const P = Roof.params(o); return { title: 'Крыша: ' + ROOF_TYPES[o.type].name.toLowerCase(), lines: [`Кровля ${U.fmtArea(P.area)} · ${(ROOF_MATERIALS[o.mat] || {}).name || ''}`, o.type !== 'flat' ? `Уклон ${Math.round(o.pitch)}°, конёк на ${L(P.top)}` : '', ...tail].filter(Boolean) }; }
+      case 'dims': return { title: 'Размер', lines: [o.text || L(G.dist(o.a, o.b))] };
+      case 'texts': return { title: 'Надпись', lines: [String(o.text || '').slice(0, 80)] };
+      case 'notes': return { title: 'Примечание №' + (App.doc.notes.indexOf(o) + 1), lines: [String(o.text || '(пусто)').slice(0, 160), o.target && Model.get(o.target) ? 'К объекту: ' + UI.targetName(o.target) : ''].filter(Boolean) };
+      case 'roomTags': return { title: 'Помещение «' + o.name + '»', lines: [] };
+    }
+    return null;
+  },
+  /** Показать подсказку для объекта id у экранной точки sp (с задержкой) */
+  hoverTip(id, sp) {
+    const tip = $('hovertip');
+    clearTimeout(UI._tipTimer);
+    if (!id || App.doc.settings.hoverTips === false) { tip.hidden = true; UI._tipId = null; return; }
+    if (UI._tipId !== id) tip.hidden = true;
+    UI._tipTimer = setTimeout(() => {
+      const t = UI.tipFor(id);
+      if (!t) { tip.hidden = true; return; }
+      tip.textContent = '';
+      tip.append(U.el('b', {}, t.title), ...t.lines.map(l => U.el('div', {}, l)), t.hint ? U.el('em', {}, t.hint) : null);
+      tip.hidden = false;
+      UI._tipId = id;
+      const W = App.cw, H = App.ch;
+      const w = tip.offsetWidth, h = tip.offsetHeight;
+      let x = sp.x + 16, y = sp.y + 18;
+      if (x + w > W - 8) x = sp.x - w - 12;
+      if (y + h > H - 30) y = sp.y - h - 12;
+      tip.style.left = Math.max(4, x) + 'px'; tip.style.top = Math.max(4, y) + 'px';
+    }, UI._tipId === id ? 60 : 380);
+  },
+  hideTip() { clearTimeout(UI._tipTimer); $('hovertip').hidden = true; UI._tipId = null; },
+
   /* ---------------------------------- 3D ---------------------------------- */
   render3dPanel() {
     const p = $('panel3d');
@@ -845,7 +917,8 @@ const UI = {
       F.check('Размеры предметов (Ш×Г)', s.showItemDims, (v) => { s.showItemDims = v; App.redraw(); App.saveSoon(); }),
       F.check('Расстояния до стен у выделенного', s.showGuides !== false, (v) => { s.showGuides = v; App.redraw(); App.saveSoon(); }),
       F.check('Открывание окон (дуги)', s.showSwing !== false, (v) => { s.showSwing = v; App.redraw(); App.saveSoon(); }),
-      F.check('Штриховка материалов стен (при приближении)', s.wallHatch !== false, (v) => { s.wallHatch = v; App.redraw(); App.saveSoon(); })));
+      F.check('Штриховка материалов стен (при приближении)', s.wallHatch !== false, (v) => { s.wallHatch = v; App.redraw(); App.saveSoon(); }),
+      F.check('Подсказки при наведении на объекты', s.hoverTips !== false, (v) => { s.hoverTips = v; if (!v) UI.hideTip(); App.saveSoon(); })));
     const used = [...new Set(App.doc.walls.filter(w => w.kind !== 'fence').map(w => w.mat))].filter(k => WALL_MATERIALS[k]);
     const usedF = [...new Set(App.doc.walls.filter(w => w.kind === 'fence').map(w => w.mat))].filter(k => FENCE_MATERIALS[k]);
     if (used.length || usedF.length) {

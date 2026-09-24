@@ -39,6 +39,7 @@ const Tools = {
 
   set(name, opt = {}) {
     if (Tools.cur === name && !opt.force && name !== 'place') return;
+    if (typeof UI !== 'undefined' && UI.hideTip) UI.hideTip();
     Tools.cancel(true);
     Tools.cur = name;
     Tools.st = {};
@@ -341,6 +342,7 @@ const Tools = {
 
   /* ------------------------------ выделение ------------------------------ */
   selDown(e, sp, p) {
+    UI.hideTip();
     const h = Tools.handleAt(sp);
     if (h) { Tools.beginHandle(h, p, e); return; }
     // компас: вращение стрелки севера
@@ -369,6 +371,7 @@ const Tools = {
       const id = Tools.hitTest(p);
       const hh = Tools.handleAt(sp);
       if (App.hover !== id) { App.hover = id; }
+      UI.hoverTip(hh || (e.buttons & 1) ? null : id, sp);
       App.canvas.style.cursor = hh ? (hh.kind === 'rotate' ? 'grab' : 'pointer') : id && !Tools.isRoom(id) ? 'move' : 'default';
       return;
     }
@@ -1073,7 +1076,8 @@ const Input = {
     cv.addEventListener('pointermove', Input.move);
     cv.addEventListener('pointerup', Input.up);
     cv.addEventListener('pointercancel', Input.up);
-    cv.addEventListener('pointerleave', () => { if (!Input.pointers.size) { App.hover = null; App.redraw(); } });
+    cv.addEventListener('pointerleave', () => { UI.hideTip(); if (!Input.pointers.size) { App.hover = null; App.redraw(); } });
+    cv.addEventListener('wheel', () => UI.hideTip(), { passive: true });
     cv.addEventListener('dblclick', (e) => { const sp = Input.sp(e); Tools.dbl(e, sp, View.toWorld(sp)); });
     cv.addEventListener('wheel', Input.wheel, { passive: false });
     cv.addEventListener('contextmenu', (e) => e.preventDefault());
