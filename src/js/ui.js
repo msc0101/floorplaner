@@ -319,7 +319,9 @@ const UI = {
     const list = $('libList');
     list.textContent = '';
     for (const cat of CATALOG) {
-      const items = cat.items.filter(it => !q || it.name.toLowerCase().includes(q) || cat.name.toLowerCase().includes(q));
+      // ищем по названию, группе и синонимам (kw), каждое слово запроса отдельно: «забор проф», «ограда»
+      const words = q.split(/\s+/).filter(Boolean);
+      const items = cat.items.filter(it => { const hay = (it.name + ' ' + cat.name + ' ' + (it.kw || '')).toLowerCase(); return words.every(wd => hay.includes(wd)); });
       if (!items.length) continue;
       const open = !!q || UI._openCats.has(cat.id);
       const det = U.el('details', { class: 'lib-cat', open });
@@ -327,11 +329,17 @@ const UI = {
       det.append(U.el('summary', {}, cat.name, U.el('span', { class: 'count' }, String(items.length))));
       const grid = U.el('div', { class: 'lib-grid' });
       for (const it of items) {
-        const b = U.el('button', { class: 'lib-item' + (Tools.cur === 'place' && Tools.opts.placeKey === it.key ? ' active' : ''), title: `${it.name}\n${it.w}×${it.d} см, высота ${it.h} см`, 'data-key': it.key, type: 'button' },
+        const tip = it.tool ? `${it.name}\nРисуется по точкам, как стена; высота ${it.h} см` : it.action ? `${it.name}\nЗабор по всем сторонам границы участка` : `${it.name}\n${it.w}×${it.d} см, высота ${it.h} см`;
+        const b = U.el('button', { class: 'lib-item' + (Tools.cur === 'place' && Tools.opts.placeKey === it.key ? ' active' : ''), title: tip, 'data-key': it.key, type: 'button' },
           U.el('img', { src: UI.thumb(it), alt: '' }),
           U.el('span', { class: 'lib-name' }, it.name),
-          U.el('span', { class: 'lib-size' }, `${it.w}×${it.d}`));
-        b.addEventListener('click', () => { Tools.set('place', { key: it.key }); UI.closeDrawers(); });
+          U.el('span', { class: 'lib-size' }, it.tool ? `выс. ${it.h}` : it.action ? 'по участку' : `${it.w}×${it.d}`));
+        b.addEventListener('click', () => {
+          if (it.tool) { Tools.set(it.tool, { mat: it.mat, h: it.h }); UI.toast(`${it.name}: кликайте точки забора, Esc — готово`); }
+          else if (it.action === 'fenceAround') App.fenceAroundPlot();
+          else Tools.set('place', { key: it.key });
+          UI.closeDrawers();
+        });
         grid.append(b);
       }
       det.append(grid);
@@ -345,20 +353,20 @@ const UI = {
     if (View3D.active && Tools.cur !== 'select') View3D.toggle(false);
     if (Tools.cur !== 'select') { UI._welcomeOff = true; $('welcome').hidden = true; }
     for (const b of document.querySelectorAll('.rail .tool')) {
-      const on = b.dataset.tool === Tools.cur;
+      const on = b.dataset.tool === Tools.vcur();
       b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on));
     }
     for (const b of document.querySelectorAll('.lib-item')) b.classList.toggle('active', Tools.cur === 'place' && b.dataset.key === Tools.opts.placeKey);
     UI.renderToolOpts();
-    $('stHint').textContent = TOOL_INFO[Tools.cur]?.hint || '';
+    $('stHint').textContent = TOOL_INFO[Tools.vcur()]?.hint || '';
     App.canvas.style.cursor = Tools.cur === 'pan' ? 'grab' : Tools.cur === 'select' ? 'default' : 'crosshair';
   },
   renderToolOpts() {
     const box = $('toolOpts');
     box.textContent = '';
     box.classList.toggle('is-hint', Tools.cur === 'select');
-    const t = Tools.cur, o = Tools.opts;
-    const title = U.el('b', { class: 'to-title' }, TOOL_INFO[t]?.name || '');
+    const t = Tools.cur, o = Tools.opts, vt = Tools.vcur();
+    const title = U.el('b', { class: 'to-title' }, TOOL_INFO[vt]?.name || '');
     box.append(title);
     const sel = (value, opts, fn, label) => { const s = F.select(null, value, opts, (v) => { fn(v); UI.renderToolOpts(); App.redraw(); }); return label ? U.el('label', { class: 'to-f' }, label, s) : s; };
     const num = (label, value, fn, unit = 'см', step = 1) => {
@@ -366,9 +374,14 @@ const UI = {
       i.addEventListener('change', () => { const v = U.num(i.value, NaN); if (v > 0) { fn(v); App.redraw(); App.saveSoon(); } });
       return U.el('label', { class: 'to-f' }, label, i, U.el('span', { class: 'funit' }, unit));
     };
-    if (t === 'wall' || t === 'room') {
+    if (vt === 'fence') {
+      const d = App.doc.defaults.wall.fence;
+      box.append(sel(d.mat, Object.entries(FENCE_MATERIALS).map(([k, v]) => [k, v.name]), (v) => { d.mat = v; App.saveSoon(); }, 'Материал'),
+        num('Высота', d.h, (v) => { d.h = U.clamp(v, 30, 600); }),
+        U.el('button', { class: 'to-btn', type: 'button', title: 'Забор по всем сторонам границы участка', onclick: () => App.fenceAroundPlot() }, 'По границе участка'));
+    } else if (t === 'wall' || t === 'room') {
       const d = App.doc.defaults.wall[o.wallKind];
-      box.append(sel(o.wallKind, Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name]), (v) => { o.wallKind = v; }, 'Тип'),
+      box.append(sel(o.wallKind, Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name]), (v) => { o.wallKind = v; UI.syncTool(); }, 'Тип'),
         sel(d.mat, Object.entries(materialsFor(o.wallKind)).map(([k, v]) => [k, v.name]), (v) => { d.mat = v; App.saveSoon(); }, 'Материал'),
         num('Толщина', d.th, (v) => { d.th = U.clamp(v, 2, 150); }),
         num('Высота', d.h, (v) => { d.h = U.clamp(v, 10, 2000); }));
@@ -413,7 +426,7 @@ const UI = {
     } else {
       box.append(U.el('span', { class: 'to-hint' }, TOOL_INFO[t]?.hint || ''));
     }
-    const k = TOOL_INFO[t]?.key;
+    const k = TOOL_INFO[vt]?.key;
     if (k) title.append(U.el('kbd', {}, k));
   },
 

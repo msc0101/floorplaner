@@ -175,7 +175,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .lib-cat[open] summary::before { transform: rotate(90deg); }
 .lib-cat summary:hover { background: var(--surface-2); }
 .lib-cat .count { margin-left: auto; color: var(--muted-2); font-weight: 400; font-size: 11px; }
-.lib-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 2px 2px 8px; }
+.lib-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 2px 2px 8px; }
 .lib-item {
   display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 3px; border-radius: 8px;
   background: var(--surface-2); border: 1px solid var(--border); min-height: 86px;
@@ -183,7 +183,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .lib-item:hover { border-color: var(--accent); }
 .lib-item.active { border-color: var(--accent); background: var(--accent-soft); }
 .lib-item img { width: 44px; height: 44px; }
-.lib-name { font-size: 10.5px; line-height: 1.15; text-align: center; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.lib-name { font-size: 10.5px; line-height: 1.15; text-align: center; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; hyphens: auto; }
 .lib-size { font-size: 9.5px; color: var(--muted-2); font-variant-numeric: tabular-nums; }
 .lib-foot { padding: 8px 10px; font-size: 11px; color: var(--muted-2); border-top: 1px solid var(--border); }
 
@@ -628,6 +628,7 @@ button.mini:disabled { opacity: .35; }
       <div class="rail-title">Участок</div>
       <div class="rail-group">
         <button class="tool" data-tool="area" title="Участок / зона (B)"><svg viewBox="0 0 24 24"><path d="M4 7l6-3 10 4-2 12-12-2z" stroke-dasharray="3 2"/></svg><span>Зона</span></button>
+        <button class="tool" data-tool="fence" title="Забор (F)"><svg viewBox="0 0 24 24"><path d="M5 20V7l2-3 2 3v13M15 20V7l2-3 2 3v13M3 10h18M3 16h18"/></svg><span>Забор</span></button>
         <button class="tool" data-tool="road" title="Улица, дорога, тропинка (P)"><svg viewBox="0 0 24 24"><path d="M7 21L10 3M17 21L14 3M12 5v3M12 11v3M12 17v3"/></svg><span>Дорога</span></button>
       </div>
       <div class="rail-title">Сети</div>
@@ -647,7 +648,7 @@ button.mini:disabled { opacity: .35; }
     <aside class="library" id="library" aria-label="Библиотека объектов">
       <div class="lib-head">
         <div class="panel-title">Библиотека</div>
-        <input type="search" id="libSearch" placeholder="Поиск: кровать, септик, розетка…" aria-label="Поиск по библиотеке">
+        <input type="search" id="libSearch" placeholder="Поиск: кровать, забор, септик, розетка…" aria-label="Поиск по библиотеке">
       </div>
       <div class="lib-list" id="libList"></div>
       <div class="lib-foot">Клик — выбрать, затем клик на плане. Размеры — реальные, в см (Ш×Г).</div>
@@ -773,7 +774,7 @@ button.mini:disabled { opacity: .35; }
           <tr><td>Стена / Комната</td><td><kbd>W</kbd> / <kbd>Q</kbd></td></tr>
           <tr><td>Дверь / Окно / Крыша</td><td><kbd>D</kbd> / <kbd>O</kbd> / <kbd>J</kbd></td></tr>
           <tr><td>3D-вид (и обратно)</td><td><kbd>3</kbd>, <kbd>Esc</kbd></td></tr>
-          <tr><td>Зона / Дорога / Сети</td><td><kbd>B</kbd> / <kbd>P</kbd> / <kbd>U</kbd></td></tr>
+          <tr><td>Зона / Забор / Дорога / Сети</td><td><kbd>B</kbd> / <kbd>F</kbd> / <kbd>P</kbd> / <kbd>U</kbd></td></tr>
           <tr><td>Размер / Рулетка / Текст</td><td><kbd>N</kbd> / <kbd>M</kbd> / <kbd>T</kbd></td></tr>
           <tr><td>Примечание к объекту</td><td><kbd>K</kbd></td></tr>
           <tr><td>Ввод длины при рисовании</td><td>цифры + <kbd>Enter</kbd></td></tr>
@@ -1403,8 +1404,6 @@ const CATALOG = [
     { key: 'compost', name: 'Компостер', shape: 'labelbox', w: 100, d: 100, h: 90, label: 'Компост' },
     { key: 'parking', name: 'Парковочное место', shape: 'parking', w: 250, d: 530, h: 0 },
     { key: 'car', name: 'Автомобиль', shape: 'car', w: 185, d: 460, h: 150, shadow: true },
-    { key: 'gate', name: 'Ворота откатные', shape: 'gateSlide', w: 400, d: 20, h: 200, shadow: true },
-    { key: 'wicket', name: 'Калитка', shape: 'wicket', w: 100, d: 10, h: 200, shadow: true },
   ]},
   { id: 'green', name: 'Озеленение', layer: 'siteobj', items: [
     { key: 'tree', name: 'Дерево лиственное', shape: 'tree', w: 600, d: 600, h: 1200, shadow: true },
@@ -1412,9 +1411,23 @@ const CATALOG = [
     { key: 'conifer', name: 'Дерево хвойное', shape: 'conifer', w: 400, d: 400, h: 1500, shadow: true },
     { key: 'thuja', name: 'Туя / можжевельник', shape: 'conifer', w: 120, d: 120, h: 300, shadow: true },
     { key: 'bush', name: 'Кустарник', shape: 'bush', w: 150, d: 150, h: 150, shadow: true },
-    { key: 'hedge', name: 'Живая изгородь', shape: 'hedge', w: 500, d: 80, h: 180, shadow: true },
+    { key: 'hedge', name: 'Живая изгородь', kw: 'забор ограда кусты', shape: 'hedge', w: 500, d: 80, h: 180, shadow: true },
     { key: 'bed', name: 'Грядка', shape: 'gardenbed', w: 120, d: 400, h: 20 },
     { key: 'flowerbed', name: 'Клумба', shape: 'flowerbed', w: 200, d: 200, h: 20 },
+  ]},
+  // заборы рисуются инструментом «Забор» (как стены): элемент библиотеки включает его с нужным материалом
+  { id: 'fences', name: 'Заборы и ворота', layer: 'siteobj', items: [
+    { key: 'fenceProfile', name: 'Забор из профлиста', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'profile', w: 300, d: 10, h: 200 },
+    { key: 'fenceEuro', name: 'Забор из евроштакетника', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'euro', w: 300, d: 10, h: 180 },
+    { key: 'fencePicket', name: 'Штакетник деревянный', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'picket', w: 300, d: 10, h: 150 },
+    { key: 'fenceWood', name: 'Забор деревянный сплошной', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'wood', w: 300, d: 10, h: 180 },
+    { key: 'fenceMesh', name: 'Сетка-рабица', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'mesh', w: 300, d: 10, h: 150 },
+    { key: 'fenceForged', name: 'Забор кованый / сварной', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'forged', w: 300, d: 10, h: 170 },
+    { key: 'fenceBrick', name: 'Забор кирпичный', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'brickF', w: 300, d: 10, h: 200 },
+    { key: 'fenceConcrete', name: 'Еврозабор (бетонный)', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'concreteF', w: 300, d: 10, h: 200 },
+    { key: 'fenceAround', name: 'Забор по границе участка', shape: 'fenceAroundIcon', kw: 'забор ограда ограждение периметр', action: 'fenceAround', w: 300, d: 300, h: 180 },
+    { key: 'gate', name: 'Ворота откатные', kw: 'въезд забор ограда', shape: 'gateSlide', w: 400, d: 20, h: 200, shadow: true },
+    { key: 'wicket', name: 'Калитка', kw: 'вход дверь забор ограда', shape: 'wicket', w: 100, d: 10, h: 200, shadow: true },
   ]},
   { id: 'porch', name: 'Крыльцо, веранда, терраса', layer: 'siteobj', items: [
     { key: 'porch', name: 'Крыльцо с козырьком', shape: 'veranda', w: 200, d: 150, h: 300, ph: 60, encl: 'rail', roofed: true, attached: true, stepW: 120, shadow: true },
@@ -2180,6 +2193,19 @@ const Painters = (() => {
     lw(P, 2); box(P, -w / 2, -d / 2, w, d, 0, false); thin(P);
     for (let x = -w / 2; x < w / 2; x += 25) line(P, [x, -d / 2, x + 25, d / 2]);
     lw(P, 1.2); line(P, [-w / 2 + 30, d / 2 + 20, w / 2 - 30, d / 2 + 20]); line(P, [-w / 2 + 50, d / 2 + 10, -w / 2 + 30, d / 2 + 20, -w / 2 + 50, d / 2 + 30]);
+  };
+  /** Значки заборов для библиотеки: полотно цвета материала и столбы */
+  S.fenceIcon = (P, w) => {
+    const m = FENCE_MATERIALS[P.def.mat] || {}, c = P.ctx;
+    c.save(); c.strokeStyle = m.color || P.C.ink; lw(P, 5); c.setLineDash((m.dash || []).map(v => v * 3 * P.px));
+    line(P, [-w / 2, 0, w / 2, 0]); c.restore();
+    c.fillStyle = m.color || P.C.ink; for (let x = -w / 2; x <= w / 2 + 1; x += w / 3) box(P, x - 9, -9, 18, 18, 0);
+  };
+  S.fenceAroundIcon = (P, w, d) => {
+    const c = P.ctx;
+    c.save(); c.setLineDash([12 * P.px, 6 * P.px]); lw(P, 1); box(P, -w / 2 + 20, -d / 2 + 20, w - 40, d - 40, 0, false); c.restore();
+    c.save(); c.strokeStyle = FENCE_MATERIALS.profile.color; lw(P, 5); box(P, -w / 2 + 20, -d / 2 + 20, w - 40, d - 40, 0, false); c.restore();
+    c.fillStyle = P.C.ink; for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) box(P, x * (w / 2 - 20) - 10, y * (d / 2 - 20) - 10, 20, 20, 0);
   };
   S.wicket = (P, w, d) => {
     lw(P, 2); line(P, [-w / 2, 0, w / 2, 0]);
@@ -5647,6 +5673,7 @@ const TOOL_INFO = {
   roof:    { name: 'Крыша', key: 'J', hint: 'Протяните прямоугольник крыши (со свесами) или нажмите «По контуру дома» вверху. Конёк — вдоль длинной стороны; тип, уклон и высота — в свойствах.' },
   door:    { name: 'Дверь', key: 'D', hint: 'Наведите на стену и кликните. Сторона курсора = сторона открывания. Потом поменяйте петли/сторону в свойствах.' },
   window:  { name: 'Окно', key: 'O', hint: 'Наведите на стену и кликните. Размеры и подоконник — в панели вверху или в свойствах.' },
+  fence:   { name: 'Забор', key: 'F', hint: 'Клики — точки забора, как у стен; длину можно ввести с клавиатуры. Материал и высота — в панели сверху. Ворота и калитка — в библиотеке «Заборы и ворота» или инструментом «Дверь» (тип «Ворота»). Esc / двойной клик — готово.' },
   road:    { name: 'Дорога', key: 'P', hint: 'Клики — осевая линия улицы, дороги или тропинки. Ширина и вид — в панели сверху. Enter / двойной клик — готово. Название — в свойствах.' },
   line:    { name: 'Трасса', key: 'U', hint: 'Клики — точки трассы (трубы/кабеля). Привязка к приборам и стенам. Enter / двойной клик — готово, Backspace — убрать точку.' },
   area:    { name: 'Участок / зона', key: 'B', hint: 'Клики — вершины, клик в первую — замкнуть. Enter — замкнуть. В режиме «Прямоугольник» — тяните или введите «2000x3000».' },
@@ -5673,7 +5700,15 @@ const Tools = {
   mouse: { x: 0, y: 0 }, mouseW: { x: 0, y: 0 },
   snapInfo: null, guides: [],
 
+  /** Инструмент для интерфейса: «Забор» — это «Стена» с типом «забор» */
+  vcur() { return Tools.cur === 'wall' && Tools.opts.wallKind === 'fence' ? 'fence' : Tools.cur; },
   set(name, opt = {}) {
+    if (name === 'fence') {
+      Tools.opts.wallKind = 'fence';
+      const d = App.doc.defaults.wall.fence;
+      if (opt.mat && FENCE_MATERIALS[opt.mat]) { d.mat = opt.mat; if (opt.h) d.h = opt.h; App.saveSoon(); }
+      name = 'wall'; opt = { ...opt, force: true };
+    } else if (name === 'wall' && Tools.opts.wallKind === 'fence') { Tools.opts.wallKind = 'ext'; opt = { ...opt, force: true }; }
     if (Tools.cur === name && !opt.force && name !== 'place') return;
     UI.hideTip();
     Tools.cancel(true);
@@ -7163,7 +7198,9 @@ const UI = {
     const list = $('libList');
     list.textContent = '';
     for (const cat of CATALOG) {
-      const items = cat.items.filter(it => !q || it.name.toLowerCase().includes(q) || cat.name.toLowerCase().includes(q));
+      // ищем по названию, группе и синонимам (kw), каждое слово запроса отдельно: «забор проф», «ограда»
+      const words = q.split(/\s+/).filter(Boolean);
+      const items = cat.items.filter(it => { const hay = (it.name + ' ' + cat.name + ' ' + (it.kw || '')).toLowerCase(); return words.every(wd => hay.includes(wd)); });
       if (!items.length) continue;
       const open = !!q || UI._openCats.has(cat.id);
       const det = U.el('details', { class: 'lib-cat', open });
@@ -7171,11 +7208,17 @@ const UI = {
       det.append(U.el('summary', {}, cat.name, U.el('span', { class: 'count' }, String(items.length))));
       const grid = U.el('div', { class: 'lib-grid' });
       for (const it of items) {
-        const b = U.el('button', { class: 'lib-item' + (Tools.cur === 'place' && Tools.opts.placeKey === it.key ? ' active' : ''), title: `${it.name}\n${it.w}×${it.d} см, высота ${it.h} см`, 'data-key': it.key, type: 'button' },
+        const tip = it.tool ? `${it.name}\nРисуется по точкам, как стена; высота ${it.h} см` : it.action ? `${it.name}\nЗабор по всем сторонам границы участка` : `${it.name}\n${it.w}×${it.d} см, высота ${it.h} см`;
+        const b = U.el('button', { class: 'lib-item' + (Tools.cur === 'place' && Tools.opts.placeKey === it.key ? ' active' : ''), title: tip, 'data-key': it.key, type: 'button' },
           U.el('img', { src: UI.thumb(it), alt: '' }),
           U.el('span', { class: 'lib-name' }, it.name),
-          U.el('span', { class: 'lib-size' }, `${it.w}×${it.d}`));
-        b.addEventListener('click', () => { Tools.set('place', { key: it.key }); UI.closeDrawers(); });
+          U.el('span', { class: 'lib-size' }, it.tool ? `выс. ${it.h}` : it.action ? 'по участку' : `${it.w}×${it.d}`));
+        b.addEventListener('click', () => {
+          if (it.tool) { Tools.set(it.tool, { mat: it.mat, h: it.h }); UI.toast(`${it.name}: кликайте точки забора, Esc — готово`); }
+          else if (it.action === 'fenceAround') App.fenceAroundPlot();
+          else Tools.set('place', { key: it.key });
+          UI.closeDrawers();
+        });
         grid.append(b);
       }
       det.append(grid);
@@ -7189,20 +7232,20 @@ const UI = {
     if (View3D.active && Tools.cur !== 'select') View3D.toggle(false);
     if (Tools.cur !== 'select') { UI._welcomeOff = true; $('welcome').hidden = true; }
     for (const b of document.querySelectorAll('.rail .tool')) {
-      const on = b.dataset.tool === Tools.cur;
+      const on = b.dataset.tool === Tools.vcur();
       b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on));
     }
     for (const b of document.querySelectorAll('.lib-item')) b.classList.toggle('active', Tools.cur === 'place' && b.dataset.key === Tools.opts.placeKey);
     UI.renderToolOpts();
-    $('stHint').textContent = TOOL_INFO[Tools.cur]?.hint || '';
+    $('stHint').textContent = TOOL_INFO[Tools.vcur()]?.hint || '';
     App.canvas.style.cursor = Tools.cur === 'pan' ? 'grab' : Tools.cur === 'select' ? 'default' : 'crosshair';
   },
   renderToolOpts() {
     const box = $('toolOpts');
     box.textContent = '';
     box.classList.toggle('is-hint', Tools.cur === 'select');
-    const t = Tools.cur, o = Tools.opts;
-    const title = U.el('b', { class: 'to-title' }, TOOL_INFO[t]?.name || '');
+    const t = Tools.cur, o = Tools.opts, vt = Tools.vcur();
+    const title = U.el('b', { class: 'to-title' }, TOOL_INFO[vt]?.name || '');
     box.append(title);
     const sel = (value, opts, fn, label) => { const s = F.select(null, value, opts, (v) => { fn(v); UI.renderToolOpts(); App.redraw(); }); return label ? U.el('label', { class: 'to-f' }, label, s) : s; };
     const num = (label, value, fn, unit = 'см', step = 1) => {
@@ -7210,9 +7253,14 @@ const UI = {
       i.addEventListener('change', () => { const v = U.num(i.value, NaN); if (v > 0) { fn(v); App.redraw(); App.saveSoon(); } });
       return U.el('label', { class: 'to-f' }, label, i, U.el('span', { class: 'funit' }, unit));
     };
-    if (t === 'wall' || t === 'room') {
+    if (vt === 'fence') {
+      const d = App.doc.defaults.wall.fence;
+      box.append(sel(d.mat, Object.entries(FENCE_MATERIALS).map(([k, v]) => [k, v.name]), (v) => { d.mat = v; App.saveSoon(); }, 'Материал'),
+        num('Высота', d.h, (v) => { d.h = U.clamp(v, 30, 600); }),
+        U.el('button', { class: 'to-btn', type: 'button', title: 'Забор по всем сторонам границы участка', onclick: () => App.fenceAroundPlot() }, 'По границе участка'));
+    } else if (t === 'wall' || t === 'room') {
       const d = App.doc.defaults.wall[o.wallKind];
-      box.append(sel(o.wallKind, Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name]), (v) => { o.wallKind = v; }, 'Тип'),
+      box.append(sel(o.wallKind, Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name]), (v) => { o.wallKind = v; UI.syncTool(); }, 'Тип'),
         sel(d.mat, Object.entries(materialsFor(o.wallKind)).map(([k, v]) => [k, v.name]), (v) => { d.mat = v; App.saveSoon(); }, 'Материал'),
         num('Толщина', d.th, (v) => { d.th = U.clamp(v, 2, 150); }),
         num('Высота', d.h, (v) => { d.h = U.clamp(v, 10, 2000); }));
@@ -7257,7 +7305,7 @@ const UI = {
     } else {
       box.append(U.el('span', { class: 'to-hint' }, TOOL_INFO[t]?.hint || ''));
     }
-    const k = TOOL_INFO[t]?.key;
+    const k = TOOL_INFO[vt]?.key;
     if (k) title.append(U.el('kbd', {}, k));
   },
 
@@ -9885,11 +9933,19 @@ const App = {
     View.fit(Model.contentBBox());
     UI.toast(`Участок ${(w / 100).toFixed(1)}×${(d / 100).toFixed(1)} м = ${(w * d / 1e6).toFixed(2)} сот.`);
   },
+  /** Забор по границе участка: выделенного или единственного */
+  fenceAroundPlot() {
+    const plots = App.V.areas.filter(a => a.kind === 'plot');
+    const sel = plots.find(a => App.sel.has(a.id));
+    const a = sel || (plots.length === 1 ? plots[0] : null);
+    if (!a) { UI.toast(plots.length ? 'Выделите границу участка, вдоль которой ставить забор' : 'Сначала нарисуйте границу участка: инструмент «Зона» → «Граница участка»', 'err'); return; }
+    App.fenceAround(a);
+  },
   fenceAround(a) {
     const d = App.doc.defaults.wall.fence;
     for (let i = 0; i < a.pts.length; i++) {
       const p = a.pts[i], q = a.pts[(i + 1) % a.pts.length];
-      Model.add('walls', { kind: 'fence', th: d.th, h: d.h, a: { ...p }, b: { ...q } });
+      Model.add('walls', { kind: 'fence', th: d.th, h: d.h, mat: d.mat, a: { ...p }, b: { ...q } });
     }
     Model.commit();
     UI.toast('Забор построен. Ворота и калитку добавьте инструментом «Дверь» (тип «Ворота»).');
@@ -9942,7 +9998,7 @@ const App = {
     if (e.key === '+' || e.key === '=') { View.zoomAt({ x: App.cw / 2, y: App.ch / 2 }, 1.25); return; }
     if (e.key === '-' || e.key === '_') { View.zoomAt({ x: App.cw / 2, y: App.ch / 2 }, 0.8); return; }
     // по физическим клавишам — работает и в русской раскладке
-    const toolKeys = { KeyJ: 'roof', KeyP: 'road', KeyV: 'select', KeyH: 'pan', KeyW: 'wall', KeyQ: 'room', KeyD: 'door', KeyO: 'window', KeyB: 'area', KeyU: 'line', KeyN: 'dim', KeyM: 'measure', KeyT: 'text', KeyK: 'note' };
+    const toolKeys = { KeyJ: 'roof', KeyP: 'road', KeyV: 'select', KeyH: 'pan', KeyW: 'wall', KeyQ: 'room', KeyD: 'door', KeyO: 'window', KeyB: 'area', KeyU: 'line', KeyN: 'dim', KeyM: 'measure', KeyT: 'text', KeyK: 'note', KeyF: 'fence' };
     if (toolKeys[code]) { Tools.set(toolKeys[code]); return; }
     if (code === 'KeyR' || code === 'BracketLeft' || code === 'BracketRight') {
       // без выделения клавиши не поворачивают весь план (это легко сделать случайно)

@@ -353,11 +353,19 @@ const App = {
     View.fit(Model.contentBBox());
     UI.toast(`Участок ${(w / 100).toFixed(1)}×${(d / 100).toFixed(1)} м = ${(w * d / 1e6).toFixed(2)} сот.`);
   },
+  /** Забор по границе участка: выделенного или единственного */
+  fenceAroundPlot() {
+    const plots = App.V.areas.filter(a => a.kind === 'plot');
+    const sel = plots.find(a => App.sel.has(a.id));
+    const a = sel || (plots.length === 1 ? plots[0] : null);
+    if (!a) { UI.toast(plots.length ? 'Выделите границу участка, вдоль которой ставить забор' : 'Сначала нарисуйте границу участка: инструмент «Зона» → «Граница участка»', 'err'); return; }
+    App.fenceAround(a);
+  },
   fenceAround(a) {
     const d = App.doc.defaults.wall.fence;
     for (let i = 0; i < a.pts.length; i++) {
       const p = a.pts[i], q = a.pts[(i + 1) % a.pts.length];
-      Model.add('walls', { kind: 'fence', th: d.th, h: d.h, a: { ...p }, b: { ...q } });
+      Model.add('walls', { kind: 'fence', th: d.th, h: d.h, mat: d.mat, a: { ...p }, b: { ...q } });
     }
     Model.commit();
     UI.toast('Забор построен. Ворота и калитку добавьте инструментом «Дверь» (тип «Ворота»).');
@@ -410,7 +418,7 @@ const App = {
     if (e.key === '+' || e.key === '=') { View.zoomAt({ x: App.cw / 2, y: App.ch / 2 }, 1.25); return; }
     if (e.key === '-' || e.key === '_') { View.zoomAt({ x: App.cw / 2, y: App.ch / 2 }, 0.8); return; }
     // по физическим клавишам — работает и в русской раскладке
-    const toolKeys = { KeyJ: 'roof', KeyP: 'road', KeyV: 'select', KeyH: 'pan', KeyW: 'wall', KeyQ: 'room', KeyD: 'door', KeyO: 'window', KeyB: 'area', KeyU: 'line', KeyN: 'dim', KeyM: 'measure', KeyT: 'text', KeyK: 'note' };
+    const toolKeys = { KeyJ: 'roof', KeyP: 'road', KeyV: 'select', KeyH: 'pan', KeyW: 'wall', KeyQ: 'room', KeyD: 'door', KeyO: 'window', KeyB: 'area', KeyU: 'line', KeyN: 'dim', KeyM: 'measure', KeyT: 'text', KeyK: 'note', KeyF: 'fence' };
     if (toolKeys[code]) { Tools.set(toolKeys[code]); return; }
     if (code === 'KeyR' || code === 'BracketLeft' || code === 'BracketRight') {
       // без выделения клавиши не поворачивают весь план (это легко сделать случайно)

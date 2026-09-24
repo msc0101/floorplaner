@@ -194,6 +194,16 @@ const pv3 = await page.evaluate(() => {
 });
 console.log('porch/kitchen', JSON.stringify(pv3));
 if (pv3.encl !== 'open' || pv3.steps !== 4 || pv3.segs !== 4 || pv3.flights2 !== 'left,right' || pv3.segs2 !== 'front') errors.push('Веранда/крыльцо: ' + JSON.stringify(pv3));
+// забор: инструмент из библиотеки с материалом, поиск по синонимам
+const fz = await page.evaluate(() => {
+  const m0 = App.doc.defaults.wall.fence.mat;
+  Tools.set('fence', { mat: 'mesh', h: 150 }); const r = { v: Tools.vcur(), mat: App.doc.defaults.wall.fence.mat, rail: document.querySelector('.rail .tool.active')?.dataset.tool };
+  Tools.set('wall'); r.back = Tools.opts.wallKind; Tools.set('select'); App.doc.defaults.wall.fence.mat = m0;
+  $('libSearch').value = 'ограда'; UI.buildLibrary(); r.found = document.querySelectorAll('.lib-item').length; $('libSearch').value = ''; UI.buildLibrary();
+  return r;
+});
+console.log('fence', JSON.stringify(fz));
+if (fz.v !== 'fence' || fz.mat !== 'mesh' || fz.rail !== 'fence' || fz.back !== 'ext' || !(fz.found >= 9)) errors.push('Забор: ' + JSON.stringify(fz));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

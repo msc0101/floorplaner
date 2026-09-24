@@ -320,8 +320,6 @@ const CATALOG = [
     { key: 'compost', name: 'Компостер', shape: 'labelbox', w: 100, d: 100, h: 90, label: 'Компост' },
     { key: 'parking', name: 'Парковочное место', shape: 'parking', w: 250, d: 530, h: 0 },
     { key: 'car', name: 'Автомобиль', shape: 'car', w: 185, d: 460, h: 150, shadow: true },
-    { key: 'gate', name: 'Ворота откатные', shape: 'gateSlide', w: 400, d: 20, h: 200, shadow: true },
-    { key: 'wicket', name: 'Калитка', shape: 'wicket', w: 100, d: 10, h: 200, shadow: true },
   ]},
   { id: 'green', name: 'Озеленение', layer: 'siteobj', items: [
     { key: 'tree', name: 'Дерево лиственное', shape: 'tree', w: 600, d: 600, h: 1200, shadow: true },
@@ -329,9 +327,23 @@ const CATALOG = [
     { key: 'conifer', name: 'Дерево хвойное', shape: 'conifer', w: 400, d: 400, h: 1500, shadow: true },
     { key: 'thuja', name: 'Туя / можжевельник', shape: 'conifer', w: 120, d: 120, h: 300, shadow: true },
     { key: 'bush', name: 'Кустарник', shape: 'bush', w: 150, d: 150, h: 150, shadow: true },
-    { key: 'hedge', name: 'Живая изгородь', shape: 'hedge', w: 500, d: 80, h: 180, shadow: true },
+    { key: 'hedge', name: 'Живая изгородь', kw: 'забор ограда кусты', shape: 'hedge', w: 500, d: 80, h: 180, shadow: true },
     { key: 'bed', name: 'Грядка', shape: 'gardenbed', w: 120, d: 400, h: 20 },
     { key: 'flowerbed', name: 'Клумба', shape: 'flowerbed', w: 200, d: 200, h: 20 },
+  ]},
+  // заборы рисуются инструментом «Забор» (как стены): элемент библиотеки включает его с нужным материалом
+  { id: 'fences', name: 'Заборы и ворота', layer: 'siteobj', items: [
+    { key: 'fenceProfile', name: 'Забор из профлиста', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'profile', w: 300, d: 10, h: 200 },
+    { key: 'fenceEuro', name: 'Забор из евроштакетника', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'euro', w: 300, d: 10, h: 180 },
+    { key: 'fencePicket', name: 'Штакетник деревянный', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'picket', w: 300, d: 10, h: 150 },
+    { key: 'fenceWood', name: 'Забор деревянный сплошной', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'wood', w: 300, d: 10, h: 180 },
+    { key: 'fenceMesh', name: 'Сетка-рабица', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'mesh', w: 300, d: 10, h: 150 },
+    { key: 'fenceForged', name: 'Забор кованый / сварной', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'forged', w: 300, d: 10, h: 170 },
+    { key: 'fenceBrick', name: 'Забор кирпичный', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'brickF', w: 300, d: 10, h: 200 },
+    { key: 'fenceConcrete', name: 'Еврозабор (бетонный)', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'concreteF', w: 300, d: 10, h: 200 },
+    { key: 'fenceAround', name: 'Забор по границе участка', shape: 'fenceAroundIcon', kw: 'забор ограда ограждение периметр', action: 'fenceAround', w: 300, d: 300, h: 180 },
+    { key: 'gate', name: 'Ворота откатные', kw: 'въезд забор ограда', shape: 'gateSlide', w: 400, d: 20, h: 200, shadow: true },
+    { key: 'wicket', name: 'Калитка', kw: 'вход дверь забор ограда', shape: 'wicket', w: 100, d: 10, h: 200, shadow: true },
   ]},
   { id: 'porch', name: 'Крыльцо, веранда, терраса', layer: 'siteobj', items: [
     { key: 'porch', name: 'Крыльцо с козырьком', shape: 'veranda', w: 200, d: 150, h: 300, ph: 60, encl: 'rail', roofed: true, attached: true, stepW: 120, shadow: true },
@@ -1097,6 +1109,19 @@ const Painters = (() => {
     lw(P, 2); box(P, -w / 2, -d / 2, w, d, 0, false); thin(P);
     for (let x = -w / 2; x < w / 2; x += 25) line(P, [x, -d / 2, x + 25, d / 2]);
     lw(P, 1.2); line(P, [-w / 2 + 30, d / 2 + 20, w / 2 - 30, d / 2 + 20]); line(P, [-w / 2 + 50, d / 2 + 10, -w / 2 + 30, d / 2 + 20, -w / 2 + 50, d / 2 + 30]);
+  };
+  /** Значки заборов для библиотеки: полотно цвета материала и столбы */
+  S.fenceIcon = (P, w) => {
+    const m = FENCE_MATERIALS[P.def.mat] || {}, c = P.ctx;
+    c.save(); c.strokeStyle = m.color || P.C.ink; lw(P, 5); c.setLineDash((m.dash || []).map(v => v * 3 * P.px));
+    line(P, [-w / 2, 0, w / 2, 0]); c.restore();
+    c.fillStyle = m.color || P.C.ink; for (let x = -w / 2; x <= w / 2 + 1; x += w / 3) box(P, x - 9, -9, 18, 18, 0);
+  };
+  S.fenceAroundIcon = (P, w, d) => {
+    const c = P.ctx;
+    c.save(); c.setLineDash([12 * P.px, 6 * P.px]); lw(P, 1); box(P, -w / 2 + 20, -d / 2 + 20, w - 40, d - 40, 0, false); c.restore();
+    c.save(); c.strokeStyle = FENCE_MATERIALS.profile.color; lw(P, 5); box(P, -w / 2 + 20, -d / 2 + 20, w - 40, d - 40, 0, false); c.restore();
+    c.fillStyle = P.C.ink; for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) box(P, x * (w / 2 - 20) - 10, y * (d / 2 - 20) - 10, 20, 20, 0);
   };
   S.wicket = (P, w, d) => {
     lw(P, 2); line(P, [-w / 2, 0, w / 2, 0]);

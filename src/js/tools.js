@@ -11,6 +11,7 @@ const TOOL_INFO = {
   roof:    { name: 'Крыша', key: 'J', hint: 'Протяните прямоугольник крыши (со свесами) или нажмите «По контуру дома» вверху. Конёк — вдоль длинной стороны; тип, уклон и высота — в свойствах.' },
   door:    { name: 'Дверь', key: 'D', hint: 'Наведите на стену и кликните. Сторона курсора = сторона открывания. Потом поменяйте петли/сторону в свойствах.' },
   window:  { name: 'Окно', key: 'O', hint: 'Наведите на стену и кликните. Размеры и подоконник — в панели вверху или в свойствах.' },
+  fence:   { name: 'Забор', key: 'F', hint: 'Клики — точки забора, как у стен; длину можно ввести с клавиатуры. Материал и высота — в панели сверху. Ворота и калитка — в библиотеке «Заборы и ворота» или инструментом «Дверь» (тип «Ворота»). Esc / двойной клик — готово.' },
   road:    { name: 'Дорога', key: 'P', hint: 'Клики — осевая линия улицы, дороги или тропинки. Ширина и вид — в панели сверху. Enter / двойной клик — готово. Название — в свойствах.' },
   line:    { name: 'Трасса', key: 'U', hint: 'Клики — точки трассы (трубы/кабеля). Привязка к приборам и стенам. Enter / двойной клик — готово, Backspace — убрать точку.' },
   area:    { name: 'Участок / зона', key: 'B', hint: 'Клики — вершины, клик в первую — замкнуть. Enter — замкнуть. В режиме «Прямоугольник» — тяните или введите «2000x3000».' },
@@ -37,7 +38,15 @@ const Tools = {
   mouse: { x: 0, y: 0 }, mouseW: { x: 0, y: 0 },
   snapInfo: null, guides: [],
 
+  /** Инструмент для интерфейса: «Забор» — это «Стена» с типом «забор» */
+  vcur() { return Tools.cur === 'wall' && Tools.opts.wallKind === 'fence' ? 'fence' : Tools.cur; },
   set(name, opt = {}) {
+    if (name === 'fence') {
+      Tools.opts.wallKind = 'fence';
+      const d = App.doc.defaults.wall.fence;
+      if (opt.mat && FENCE_MATERIALS[opt.mat]) { d.mat = opt.mat; if (opt.h) d.h = opt.h; App.saveSoon(); }
+      name = 'wall'; opt = { ...opt, force: true };
+    } else if (name === 'wall' && Tools.opts.wallKind === 'fence') { Tools.opts.wallKind = 'ext'; opt = { ...opt, force: true }; }
     if (Tools.cur === name && !opt.force && name !== 'place') return;
     UI.hideTip();
     Tools.cancel(true);

@@ -148,6 +148,7 @@
       <div class="rail-title">Участок</div>
       <div class="rail-group">
         <button class="tool" data-tool="area" title="Участок / зона (B)"><svg viewBox="0 0 24 24"><path d="M4 7l6-3 10 4-2 12-12-2z" stroke-dasharray="3 2"/></svg><span>Зона</span></button>
+        <button class="tool" data-tool="fence" title="Забор (F)"><svg viewBox="0 0 24 24"><path d="M5 20V7l2-3 2 3v13M15 20V7l2-3 2 3v13M3 10h18M3 16h18"/></svg><span>Забор</span></button>
         <button class="tool" data-tool="road" title="Улица, дорога, тропинка (P)"><svg viewBox="0 0 24 24"><path d="M7 21L10 3M17 21L14 3M12 5v3M12 11v3M12 17v3"/></svg><span>Дорога</span></button>
       </div>
       <div class="rail-title">Сети</div>
@@ -167,7 +168,7 @@
     <aside class="library" id="library" aria-label="Библиотека объектов">
       <div class="lib-head">
         <div class="panel-title">Библиотека</div>
-        <input type="search" id="libSearch" placeholder="Поиск: кровать, септик, розетка…" aria-label="Поиск по библиотеке">
+        <input type="search" id="libSearch" placeholder="Поиск: кровать, забор, септик, розетка…" aria-label="Поиск по библиотеке">
       </div>
       <div class="lib-list" id="libList"></div>
       <div class="lib-foot">Клик — выбрать, затем клик на плане. Размеры — реальные, в см (Ш×Г).</div>
@@ -293,7 +294,7 @@
           <tr><td>Стена / Комната</td><td><kbd>W</kbd> / <kbd>Q</kbd></td></tr>
           <tr><td>Дверь / Окно / Крыша</td><td><kbd>D</kbd> / <kbd>O</kbd> / <kbd>J</kbd></td></tr>
           <tr><td>3D-вид (и обратно)</td><td><kbd>3</kbd>, <kbd>Esc</kbd></td></tr>
-          <tr><td>Зона / Дорога / Сети</td><td><kbd>B</kbd> / <kbd>P</kbd> / <kbd>U</kbd></td></tr>
+          <tr><td>Зона / Забор / Дорога / Сети</td><td><kbd>B</kbd> / <kbd>F</kbd> / <kbd>P</kbd> / <kbd>U</kbd></td></tr>
           <tr><td>Размер / Рулетка / Текст</td><td><kbd>N</kbd> / <kbd>M</kbd> / <kbd>T</kbd></td></tr>
           <tr><td>Примечание к объекту</td><td><kbd>K</kbd></td></tr>
           <tr><td>Ввод длины при рисовании</td><td>цифры + <kbd>Enter</kbd></td></tr>
