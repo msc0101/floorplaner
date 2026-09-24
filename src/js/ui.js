@@ -75,6 +75,12 @@ const UI = {
     $('btnGrid').onclick = () => { App.doc.settings.layers.grid = !App.doc.settings.layers.grid; UI.syncToggles(); App.redraw(); App.saveSoon(); };
     $('btnSnap').onclick = () => { App.doc.settings.snap = !App.doc.settings.snap; UI.syncToggles(); App.saveSoon(); };
     $('btnHelp').onclick = () => $('dlgHelp').showModal();
+    $('btn3d').onclick = () => View3D.toggle();
+    $('estAdd').onclick = () => Estimate.addCustom();
+    $('estReset').onclick = () => Estimate.resetPrices();
+    $('estCsv').onclick = () => Estimate.csv();
+    $('estPrint').onclick = () => Estimate.print();
+    $('estClose').onclick = () => $('dlgEstimate').close();
     $('btnHelpClose').onclick = () => $('dlgHelp').close();
     for (const b of document.querySelectorAll('#themeSeg [data-theme]')) b.addEventListener('click', () => Theme.set(b.dataset.theme));
     $('projectName').addEventListener('change', () => { App.doc.name = $('projectName').value.trim() || 'Проект'; Model.commit(); });
@@ -98,6 +104,7 @@ const UI = {
       const v = $('dlgPrint').returnValue;
       if (v === 'ok') IO.print(UI.printOpts());
       else if (v === 'png') IO.exportPNG(UI.printOpts());
+      else if (v === 'svg' || v === 'dxf') Vector.exportFile(v, UI.printOpts());
     });
     // отложенное обновление панели, если оно пришлось на момент ввода в поле
     $('panel').addEventListener('focusout', () => { if (UI._pending) setTimeout(() => { if (UI._pending) { UI._pending = false; UI.refresh(); } }, 0); });
@@ -105,7 +112,7 @@ const UI = {
     UI.syncTheme();
   },
   printOpts() {
-    return { paper: $('prPaper').value, orient: $('prOrient').value, scale: $('prScale').value, area: $('prArea').value, expl: $('prExpl').checked, spec: $('prSpec').checked, legend: $('prLegend').checked, grid: $('prGrid').checked };
+    return { paper: $('prPaper').value, orient: $('prOrient').value, scale: $('prScale').value, area: $('prArea').value, expl: $('prExpl').checked, spec: $('prSpec').checked, legend: $('prLegend').checked, grid: $('prGrid').checked, drawing: $('prDrawing').checked };
   },
 
   action(act) {
@@ -115,7 +122,13 @@ const UI = {
       case 'open': $('fileJson').click(); break;
       case 'save': IO.saveJSON(); break;
       case 'png': IO.exportPNG({ area: 'all', grid: false }); break;
-      case 'print': $('dlgPrint').showModal(); break;
+      case 'print': $('prDrawing').checked = false; $('dlgPrint').showModal(); break;
+      case 'svg': Vector.exportFile('svg', { area: 'all', scale: 100 }); break;
+      case 'ifc': IFC.export(); break;
+      case 'estimate': Estimate.open(); break;
+      case 'drawings': $('prDrawing').checked = true; $('dlgPrint').showModal(); break;
+      case 'obj': View3D.exportOBJ(); break;
+      case 'dxf': Vector.exportFile('dxf', { area: 'all', scale: 100 }); break;
       case 'underlay': $('fileImage').click(); break;
       case 'demo': IO.loadDemo(); break;
       case 'plot': Tools.opts.areaKind = 'plot'; Tools.opts.areaRect = true; Tools.set('area', { force: true }); UI.showTab('sun'); UI.toast('Протяните прямоугольник участка или введите размеры, например 2000x3000'); break;
@@ -130,6 +143,56 @@ const UI = {
     if (open) { el.classList.add('open'); $('scrim').hidden = false; }
   },
   closeDrawers() { $('library').classList.remove('open'); $('panel').classList.remove('open'); $('scrim').hidden = true; },
+
+  /* ---------------------------------- 3D ---------------------------------- */
+  render3dPanel() {
+    const p = $('panel3d');
+    p.textContent = '';
+    const o = View3D.opts;
+    const chk = (label, key) => F.check(label, o[key], (v) => { o[key] = v; View3D.dirty = true; View3D.redraw(); });
+    p.append(U.el('b', {}, '3D-вид'),
+      chk('Этажи выше текущего', 'upper'), chk('Крыша', 'roof'), chk('Мебель и предметы', 'items'), chk('Участок', 'site'),
+      F.check('Свет от солнца (дата/время — «Участок»)', o.sun, (v) => { o.sun = v; View3D.redraw(); }),
+      U.el('div', { class: 'fbtns' },
+        U.el('button', { type: 'button', onclick: () => { View3D.fit(); View3D.redraw(); } }, 'Показать всё'),
+        U.el('button', { type: 'button', onclick: () => { View3D.cam.pitch = 1.5; View3D.redraw(); } }, 'Сверху'),
+        U.el('button', { type: 'button', onclick: () => View3D.snapshot() }, 'PNG'),
+        U.el('button', { type: 'button', onclick: () => View3D.exportOBJ(), title: '3D-модель для Blender, SketchUp, Twinmotion' }, 'OBJ'),
+        U.el('button', { type: 'button', onclick: () => IFC.export(), title: 'BIM-модель для Revit, ArchiCAD, Renga' }, 'IFC')),
+      U.el('p', { class: 'fnote' }, 'ЛКМ — вращать, ПКМ / Shift — сдвиг, колесо — масштаб. Esc — к плану.'),
+      U.el('button', { type: 'button', class: 'primary', onclick: () => View3D.toggle(false) }, '← К плану'));
+  },
+
+  /* -------------------------------- этажи --------------------------------- */
+  renderFloorbar() {
+    const bar = $('floorbar');
+    bar.textContent = '';
+    const fl = App.doc.floors;
+    for (let i = fl.length - 1; i >= 0; i--) {
+      const f = fl[i];
+      const b = U.el('button', { type: 'button', class: 'fl-btn' + (f.id === App.floor ? ' on' : ''), title: `${f.name}: отметка ${(f.elev / 100).toFixed(2)} м, высота ${(f.h / 100).toFixed(2)} м` }, f.name);
+      b.onclick = () => Model.setFloor(f.id);
+      bar.append(b);
+    }
+    bar.append(U.el('button', { type: 'button', class: 'fl-btn add', title: 'Добавить этаж сверху', onclick: () => App.addFloor(true) }, '+ этаж'));
+  },
+  floorsSection() {
+    const d = App.doc;
+    const tbl = U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, 'Этаж'), U.el('th', {}, 'Отметка, м'), U.el('th', {}, 'Высота, см'), U.el('th', {}, '')));
+    d.floors.forEach((f, i) => {
+      const name = U.el('input', { type: 'text', value: f.name });
+      name.onchange = () => { f.name = name.value.trim() || f.name; Model.commit(); };
+      const elev = U.el('input', { type: 'number', value: (f.elev / 100).toFixed(2), step: 0.05, disabled: i > 0 });
+      elev.onchange = () => { f.elev = U.num(elev.value, 0) * 100; App.relevel(); Model.commit(); };
+      const h = U.el('input', { type: 'number', value: f.h, step: 5, min: 100 });
+      h.onchange = () => { f.h = U.clamp(U.num(h.value, f.h), 100, 2000); App.relevel(); Model.commit(); };
+      const del = U.el('button', { type: 'button', class: 'mini danger', title: 'Удалить этаж', disabled: d.floors.length < 2, onclick: () => App.deleteFloor(f.id) }, '✕');
+      tbl.append(U.el('tr', { class: f.id === App.floor ? 'sel' : '' }, U.el('td', {}, name), U.el('td', {}, elev), U.el('td', {}, h), U.el('td', {}, del)));
+    });
+    return F.section('Этажи', tbl,
+      F.btns([['+ Этаж (копия наружных стен)', () => App.addFloor(true), 'primary'], ['+ Пустой этаж', () => App.addFloor(false)]]),
+      F.note('Высота этажа — от пола до пола следующего (с перекрытием). Отметки верхних этажей пересчитываются автоматически. Нижний этаж показывается бледной подсказкой; лестница с нижнего этажа видна как проём.'));
+  },
 
   /* ------------------------------ библиотека ------------------------------ */
   _thumbCache: new Map(),
@@ -181,6 +244,7 @@ const UI = {
 
   /* ------------------------------ инструменты ----------------------------- */
   syncTool() {
+    if (View3D.active && Tools.cur !== 'select') View3D.toggle(false);
     if (Tools.cur !== 'select') { UI._welcomeOff = true; $('welcome').hidden = true; }
     for (const b of document.querySelectorAll('.rail .tool')) {
       const on = b.dataset.tool === Tools.cur;
@@ -224,6 +288,12 @@ const UI = {
       const k = LINE_KINDS[o.lineKind];
       box.append(U.el('span', { class: 'swatch', style: { background: k.color } }),
         sel(o.lineKind, Object.entries(LINE_KINDS).map(([kk, v]) => [kk, `${v.code} — ${v.name}`]), (v) => { o.lineKind = v; }, 'Вид'));
+    } else if (t === 'roof') {
+      const ov = U.el('input', { type: 'number', value: Tools.opts.roofOv ?? 50, step: 5, min: 0 });
+      ov.onchange = () => { Tools.opts.roofOv = U.clamp(U.num(ov.value, 50), 0, 300); };
+      box.append(U.el('button', { class: 'to-btn primary', type: 'button', onclick: () => App.roofFromOutline(Tools.opts.roofOv ?? 50) }, 'По контуру дома'),
+        U.el('label', { class: 'to-f' }, 'свес', ov, U.el('span', { class: 'funit' }, 'см')),
+        U.el('span', { class: 'to-hint' }, 'или протяните прямоугольник'));
     } else if (t === 'road') {
       box.append(sel(o.roadKind, Object.entries(ROAD_KINDS).map(([kk, v]) => [kk, v.name]), (v) => { o.roadKind = v; o.roadW = ROAD_KINDS[v].width; }, 'Вид'),
         num('Ширина', o.roadW, (v) => { o.roadW = U.clamp(v, 20, 5000); }));
@@ -232,6 +302,9 @@ const UI = {
         U.el('div', { class: 'seg small' },
           U.el('button', { class: o.areaRect ? '' : 'on', onclick: () => { o.areaRect = false; Tools.st = {}; UI.renderToolOpts(); }, type: 'button' }, 'Многоугольник'),
           U.el('button', { class: o.areaRect ? 'on' : '', onclick: () => { o.areaRect = true; Tools.st = {}; UI.renderToolOpts(); }, type: 'button' }, 'Прямоугольник')));
+    } else if (t === 'dim') {
+      box.append(U.el('span', { class: 'to-hint' }, 'Клик — клик — отвести линию.'),
+        U.el('button', { class: 'to-btn primary', type: 'button', onclick: () => Drawing.addToPlan(), title: 'Размерные цепочки по фасадам: проёмы, простенки и габариты' }, 'Авторазмеры по фасадам'));
     } else if (t === 'place') {
       const def = catItem(o.placeKey);
       box.append(U.el('img', { src: UI.thumb(def), class: 'to-thumb', alt: '' }), U.el('span', {}, `${def.name} · ${def.w}×${def.d} см`),
@@ -268,6 +341,8 @@ const UI = {
     body.scrollTop = st;
     UI.syncUndo();
     UI.syncToggles();
+    UI.renderFloorbar();
+    if (View3D.active) { View3D.dirty = true; View3D.redraw(); }
     $('projectName').value = App.doc.name;
     $('welcome').hidden = !App.isEmpty() || UI._welcomeOff;
   },
@@ -333,7 +408,7 @@ const UI = {
         return;
       }
       const c = Model.coll(id), o = Model.get(id);
-      const fn = { roads: UI.propsRoad, walls: UI.propsWall, openings: UI.propsOpening, items: UI.propsItem, lines: UI.propsLine, areas: UI.propsArea, dims: UI.propsDim, texts: UI.propsText, notes: UI.propsNote, roomTags: UI.propsTag }[c];
+      const fn = { roofs: UI.propsRoof, roads: UI.propsRoad, walls: UI.propsWall, openings: UI.propsOpening, items: UI.propsItem, lines: UI.propsLine, areas: UI.propsArea, dims: UI.propsDim, texts: UI.propsText, notes: UI.propsNote, roomTags: UI.propsTag }[c];
       if (fn) fn(body, o);
       if (c !== 'notes') body.append(UI.notesOf(id));
     } else UI.propsMulti(body, ids);
@@ -544,6 +619,13 @@ const UI = {
     a.pts.forEach((p, i) => {
       const q = a.pts[(i + 1) % a.pts.length];
       const b = Sun.bearingOf(G.perp(G.unit(G.sub(q, p))));
+      if (a.kind === 'plot') {
+        const cur = (a.edges || [])[i] || 'auto';
+        const auto = cur === 'auto' ? ` (${BOUND_TYPES[Checks.edgeType(a, i)]})` : '';
+        sides.append(F.select(`Граница ${i + 1}`, cur, Object.entries(BOUND_TYPES).map(([k, v]) => [k, k === 'auto' ? 'авто' + auto : v]), (v) => {
+          a.edges = a.edges || []; while (a.edges.length < a.pts.length) a.edges.push('auto'); a.edges[i] = v; Model.commit();
+        }));
+      }
       sides.append(F.num(`Сторона ${i + 1} (${U.compass8(b)})`, G.dist(p, q), (v) => {
         if (!(v > 1)) return;
         const u = G.unit(G.sub(q, p));
@@ -555,6 +637,35 @@ const UI = {
     });
     body.append(F.section('Стороны', sides, F.note('Изменение длины стороны сдвигает следующие вершины. Двойной клик по контуру — добавить/удалить вершину.')));
     if (a.kind === 'plot') body.append(F.section('Участок', F.btns([['Забор по границе', () => App.fenceAround(a)], ['Ориентация и солнце →', () => UI.showTab('sun')]])));
+  },
+  propsRoof(body, r) {
+    const P = Roof.params(r);
+    UI.head(body, 'Крыша', ROOF_TYPES[r.type].name);
+    body.append(F.section('Форма',
+      F.select('Тип', r.type, Object.entries(ROOF_TYPES).map(([k, v]) => [k, v.name]), (v) => { r.type = v; Model.commit(); }),
+      r.type !== 'flat' ? F.num('Уклон', r.pitch, (v) => UI.set(r, 'pitch', U.clamp(v, 3, 70)), { unit: '°', min: 3, max: 70 }) : null,
+      r.type !== 'flat' ? U.el('div', { class: 'chips' }, [15, 20, 25, 30, 35, 40, 45].map(a => U.el('button', { type: 'button', class: Math.round(r.pitch) === a ? 'on' : '', onclick: () => UI.set(r, 'pitch', a) }, a + '°'))) : null,
+      F.select('Кровля', r.mat, Object.entries(ROOF_MATERIALS).map(([k, v]) => [k, v.name]), (v) => { r.mat = v; Model.commit(); }),
+      F.num('Длина (вдоль конька)', r.w, (v) => UI.set(r, 'w', Math.max(50, v)), { min: 50 }),
+      F.num('Ширина', r.d, (v) => UI.set(r, 'd', Math.max(50, v)), { min: 50 }),
+      F.num('Низ крыши (карниз) от земли', r.base, (v) => UI.set(r, 'base', Math.max(0, v)), { min: 0 }),
+      F.btns([['Высота по стенам', () => UI.set(r, 'base', Roof.autoBase(r.floor))], ['Повернуть конёк на 90°', () => { [r.w, r.d] = [r.d, r.w]; r.rot = U.normDeg((r.rot || 0) + 90); Model.commit(); }]]),
+    ));
+    body.append(F.section('Расчёт кровли',
+      F.info('Площадь кровли', U.fmtArea(P.area)),
+      F.info('Площадь в плане', U.fmtArea(r.w * r.d)),
+      r.type !== 'flat' ? F.info('Подъём ската', U.fmtLen(P.rise)) : null,
+      F.info('Высота конька от земли', U.fmtLen(P.top)),
+      P.ridge ? F.info('Длина конька', U.fmtLen(P.ridge)) : null,
+      P.rafter ? F.info('Длина ската (стропила)', U.fmtLen(P.rafter)) : null,
+      F.info('Карнизные свесы', U.fmtLen(P.eaves)),
+      P.rakes ? F.info('Фронтонные свесы', U.fmtLen(P.rakes)) : null,
+      P.hipLen ? F.info('Рёбра вальм', U.fmtLen(P.hipLen)) : null,
+      F.note('Площадь ската = площадь в плане / cos(уклона); свесы входят в размеры. Для закупки добавьте 10–15% на подрезку и нахлёсты.')));
+    body.append(F.section('Положение',
+      F.num('X', r.x / 100, (v) => UI.set(r, 'x', v * 100), { unit: 'м', step: 0.01 }),
+      F.num('Y', r.y / 100, (v) => UI.set(r, 'y', v * 100), { unit: 'м', step: 0.01 }),
+      F.num('Поворот', Math.round((r.rot || 0) * 10) / 10, (v) => UI.set(r, 'rot', U.normDeg(v)), { unit: '°' })));
   },
   propsRoad(body, r) {
     const k = ROAD_KINDS[r.kind];
@@ -608,6 +719,7 @@ const UI = {
     if (c === 'lines') return LINE_KINDS[o.kind].name;
     if (c === 'areas') return o.name || AREA_KINDS[o.kind].name;
     if (c === 'roads') return o.name || ROAD_KINDS[o.kind].name;
+    if (c === 'roofs') return 'Крыша (' + ROOF_TYPES[o.type].name.toLowerCase() + ')';
     if (c === 'roomTags') return 'Помещение «' + o.name + '»';
     if (c === 'dims') return 'Размер';
     if (c === 'texts') return 'Надпись';
@@ -670,7 +782,7 @@ const UI = {
   propsMulti(body, ids) {
     const byType = {};
     for (const id of ids) { const c = Tools.isRoom(id) ? 'rooms' : id === 'underlay' ? 'underlay' : Model.coll(id); byType[c] = (byType[c] || 0) + 1; }
-    const names = { roads: 'дорог', walls: 'стен', openings: 'проёмов', items: 'объектов', lines: 'трасс', areas: 'зон', dims: 'размеров', texts: 'надписей', roomTags: 'меток', rooms: 'помещений', underlay: 'подложка' };
+    const names = { roofs: 'крыш', roads: 'дорог', walls: 'стен', openings: 'проёмов', items: 'объектов', lines: 'трасс', areas: 'зон', dims: 'размеров', texts: 'надписей', roomTags: 'меток', rooms: 'помещений', underlay: 'подложка' };
     UI.head(body, `Выделено: ${ids.length}`, Object.entries(byType).map(([k, v]) => `${names[k] || k}: ${v}`).join(', '));
     const walls = ids.filter(id => Model.coll(id) === 'walls').map(Model.get);
     if (walls.length) {
@@ -844,12 +956,49 @@ const UI = {
       roomsSec.append(F.info('Дата', dd.split('-').reverse().join('.')), tbl);
     }
     body.append(roomsSec);
+    body.append(UI.checksSection());
     // участок
     const wIn = U.el('input', { type: 'number', value: 20, step: 0.5, min: 1 }), dIn = U.el('input', { type: 'number', value: 30, step: 0.5, min: 1 });
     body.append(F.section('Быстрый участок',
       U.el('div', { class: 'frow' }, U.el('span', { class: 'flabel' }, 'Ширина × длина'), wIn, U.el('span', { class: 'funit' }, '×'), dIn, U.el('span', { class: 'funit' }, 'м')),
       F.btns([['Создать участок', () => App.createPlot(U.num(wIn.value, 20) * 100, U.num(dIn.value, 30) * 100), 'primary']]),
       F.note('6 соток ≈ 20×30 м, 10 соток ≈ 25×40 м, 15 соток ≈ 30×50 м.')));
+  },
+  checksSection() {
+    const s = App.doc.settings;
+    const ch = App.checks || Checks.run();
+    const sec = F.section('Проверка отступов (нормы)');
+    const hasPlot = App.doc.areas.some(a => a.kind === 'plot');
+    sec.append(F.check('Показывать на плане', s.showChecks, (v) => { s.showChecks = v; App.redraw(); App.saveSoon(); }),
+      F.check('Показывать и соблюдённые', s.showChecksOk, (v) => { s.showChecksOk = v; App.redraw(); App.saveSoon(); }));
+    if (!ch.results.length) {
+      sec.append(F.note(hasPlot ? 'Нет объектов для проверки: дом (стены 1 этажа), постройки, септик, колодец, деревья.' : 'Нарисуйте границу участка — будут проверены отступы от соседей, улицы и проезда.'));
+    } else {
+      const fails = ch.results.filter(r => !r.ok), ok = ch.results.filter(r => r.ok);
+      sec.append(U.el('div', { class: 'check-sum ' + (fails.length ? 'bad' : 'ok') }, fails.length ? `✗ Нарушений: ${fails.length}` : '✓ Все отступы соблюдены', U.el('span', {}, ` · проверено ${ch.results.length}`)));
+      const row = (r) => {
+        const b = U.el('button', { type: 'button', class: 'check-item ' + (r.ok ? 'ok' : 'bad') },
+          U.el('b', {}, `${(r.d / 100).toFixed(1)} м`), U.el('span', {}, `${r.a.name} — ${r.bName}`), U.el('em', {}, `норма ≥ ${(r.rule.min / 100).toFixed(1)} м · ${r.rule.src}`));
+        b.onclick = () => { if (Model.get(r.a.id)) { App.sel.clear(); App.sel.add(r.a.id); App.selChanged(); } const p = r.pa || r.pb; if (p) { View.ox = p.x - App.cw / 2 / View.scale; View.oy = p.y - App.ch / 2 / View.scale; App.redraw(); } };
+        return b;
+      };
+      fails.forEach(r => sec.append(row(r)));
+      if (ok.length) { const det = U.el('details', {}, U.el('summary', {}, `Соблюдено: ${ok.length}`)); ok.forEach(r => det.append(row(r))); sec.append(det); }
+    }
+    // нормы
+    const over = s.checkRules || (s.checkRules = {});
+    const tbl = U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, ''), U.el('th', {}, 'Правило'), U.el('th', {}, 'м')));
+    for (const r of Checks.rules()) {
+      const on = U.el('input', { type: 'checkbox', checked: !r.off });
+      on.onchange = () => { (over[r.id] = over[r.id] || {}).off = !on.checked; Model.commit(); };
+      const v = U.el('input', { type: 'number', value: r.min / 100, step: 0.5, min: 0 });
+      v.onchange = () => { (over[r.id] = over[r.id] || {}).min = U.num(v.value, r.min / 100) * 100; Model.commit(); };
+      tbl.append(U.el('tr', { title: r.src }, U.el('td', {}, on), U.el('td', {}, r.name), U.el('td', { class: 'td-num' }, v)));
+    }
+    sec.append(U.el('details', {}, U.el('summary', {}, 'Нормы (можно изменить под местные ПЗЗ)'), tbl,
+      F.btns([['Сбросить к умолчаниям', () => { s.checkRules = {}; Model.commit(); }]]),
+      F.note('Тип каждой стороны участка (сосед / улица / проезд) определяется по ближайшей дороге; поменять вручную — в свойствах границы участка. Расстояния — от стен/контура построек, для деревьев — от ствола. Значения справочные, проверьте ПЗЗ вашего поселения.')));
+    return sec;
   },
   updateSunInfo(pos) {
     const el = document.getElementById('sunInfo');
@@ -904,6 +1053,8 @@ const UI = {
       F.info('Жилая площадь', s.living ? U.fmtArea(s.living) : '— отметьте жилые комнаты'),
       F.info('Площадь по осям стен', U.fmtArea(s.axis)),
       F.info('Площадь застройки (по наружным граням)', U.fmtArea(s.footprint)),
+      s.perFloor.length > 1 ? s.perFloor.map(x => F.info(`  ${x.floor.name}`, U.fmtArea(x.total))) : null,
+      App.doc.roofs.length ? F.info('Площадь кровли', U.fmtArea(App.doc.roofs.reduce((a, r) => a + Roof.params(r).area, 0))) : null,
       F.info('Помещений', String(App.rooms.length)),
       U.el('div', { class: 'seg' },
         U.el('button', { type: 'button', class: mode === 'floor' ? 'on' : '', onclick: () => { App.doc.settings.areaMode = 'floor'; Model.commit(); } }, 'Подписи: по полу'),
@@ -921,12 +1072,20 @@ const UI = {
     }
     // экспликация
     const tbl = U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, '№'), U.el('th', {}, 'Помещение'), U.el('th', {}, 'Площадь, м²'), U.el('th', {}, 'Периметр, м')));
-    App.rooms.forEach((r, i) => {
-      const tr = U.el('tr', { class: 'clickable' + (App.sel.has(r.id) ? ' sel' : '') }, U.el('td', {}, String(i + 1)), U.el('td', {}, r.name + (r.tag?.living ? ' ●' : '')), U.el('td', {}, (r.areaFloor / 1e4).toFixed(2)), U.el('td', {}, (r.perimFloor / 100).toFixed(2)));
-      tr.onclick = () => { App.sel.clear(); App.sel.add(r.id); App.selChanged(); UI.showTab('props'); };
-      tbl.append(tr);
-    });
-    body.append(F.section('Экспликация помещений', App.rooms.length ? tbl : F.note('Помещения определяются автоматически по замкнутым контурам стен.'), App.rooms.length ? F.note('● — жилое помещение. Клик по строке — выделить.') : null));
+    const fd = App.floorData || [];
+    let nRooms = 0;
+    for (const x of fd) {
+      if (!x.rooms.length) continue;
+      if (fd.length > 1) tbl.append(U.el('tr', { class: 'floor-row' }, U.el('td', { colspan: 4 }, `${x.floor.name} — ${U.fmtArea(x.rooms.reduce((a, r) => a + r.areaFloor, 0))}`)));
+      x.rooms.forEach((r, i) => {
+        nRooms++;
+        const num = fd.length > 1 ? `${Model.floorIdx(x.floor.id) + 1}.${i + 1}` : String(i + 1);
+        const tr = U.el('tr', { class: 'clickable' + (App.sel.has(r.id) && x.floor.id === App.floor ? ' sel' : '') }, U.el('td', {}, num), U.el('td', {}, r.name + (r.tag?.living ? ' ●' : '')), U.el('td', {}, (r.areaFloor / 1e4).toFixed(2)), U.el('td', {}, (r.perimFloor / 100).toFixed(2)));
+        tr.onclick = () => { if (x.floor.id !== App.floor) Model.setFloor(x.floor.id); const rr = App.rooms.find(q => q.id === r.id); App.sel.clear(); if (rr) App.sel.add(rr.id); App.selChanged(); UI.showTab('props'); };
+        tbl.append(tr);
+      });
+    }
+    body.append(F.section('Экспликация помещений', nRooms ? tbl : F.note('Помещения определяются автоматически по замкнутым контурам стен.'), nRooms ? F.note('● — жилое помещение. Клик по строке — выделить.') : null));
     // участок
     if (s.plotArea || Object.keys(s.zones).length || s.outb.length) {
       const sec = F.section('Участок');
@@ -954,7 +1113,7 @@ const UI = {
       for (const v of Object.values(spec).sort((a, b) => a.cat.localeCompare(b.cat))) sec.append(F.info(v.name, v.n + ' шт.'));
       body.append(sec);
     }
-    body.append(F.btns([['Печать с экспликацией…', () => $('dlgPrint').showModal(), 'primary'], ['Копировать как текст', () => IO.copySummary()]]));
+    body.append(F.btns([['Смета…', () => Estimate.open(), 'primary'], ['Печать с экспликацией…', () => $('dlgPrint').showModal()], ['Копировать как текст', () => IO.copySummary()]]));
   },
 
   /* ------------------------------- проект --------------------------------- */
@@ -977,6 +1136,7 @@ const UI = {
       const ms = F.select(null, dd.mat, Object.entries(materialsFor(k)).map(([mk, mv]) => [mk, mv.name]), (val) => { dd.mat = val; Model.commit(); });
       tbl.append(U.el('tr', {}, U.el('td', {}, v.name), U.el('td', { class: 'td-sel' }, ms), U.el('td', {}, th), U.el('td', {}, hh)));
     }
+    body.append(UI.floorsSection());
     body.append(F.section('Стены по умолчанию', tbl,
       F.btns([['Применить ко всем существующим стенам', () => { for (const w of d.walls) { const dd = d.defaults.wall[w.kind]; w.th = dd.th; w.h = dd.h; w.mat = dd.mat; delete w.ins; } Model.commit(); UI.toast('Материал, толщина и высота стен обновлены'); }]]),
       F.note('Типичные толщины: газобетон 30–40, кирпич 38–51, каркас 20–25, перегородки 8–12 см.')));

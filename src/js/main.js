@@ -4,7 +4,7 @@
    ========================================================================== */
 
 const App = {
-  doc: null, index: new Map(), sel: new Set(), hover: null, rooms: [], heat: null,
+  doc: null, index: new Map(), sel: new Set(), hover: null, rooms: [], heat: null, floor: 'f1', V: null, floorData: null,
   canvas: null, ctx: null, cw: 800, ch: 600, dpr: 1,
   clipboard: null, lastEvent: null, autosaveNote: '', _rotKeepNorth: false,
   _raf: 0,
@@ -17,7 +17,7 @@ const App = {
     App.doc = saved || Model.newDoc();
     Model.reindex();
     Underlay.sync();
-    App.rooms = Rooms.detect(App.doc.walls);
+    Rooms.detectAll();
     Model.resetHistory();
     UI.init();
     Input.init(App.canvas);
@@ -41,6 +41,7 @@ const App = {
     App.redraw();
   },
   redraw() {
+    if (View3D.active) View3D.redraw();
     if (App._raf) return;
     App._raf = requestAnimationFrame(() => {
       App._raf = 0;
@@ -50,11 +51,12 @@ const App = {
     });
   },
   /** После фиксации изменения (история уже записана) */
-  changed() {
+  changed(viewOnly) {
     Model.reindex();
     Underlay.sync();
-    App.rooms = Rooms.detect(App.doc.walls);
-    if (App.heat) App.heat.stale = true;
+    Rooms.detectAll();
+    try { Checks.run(); } catch (e) { console.error(e); }
+    if (App.heat && !viewOnly) App.heat.stale = true;
     for (const id of [...App.sel]) if (id !== 'underlay' && !Model.get(id) && !App.rooms.some(r => r.id === id)) App.sel.delete(id);
     UI.refresh();
     App.redraw();
@@ -62,7 +64,8 @@ const App = {
   },
   /** Во время перетаскивания: без истории */
   changedLive() {
-    App.rooms = Rooms.detect(App.doc.walls);
+    App.V = Model.viewOf(App.floor);
+    App.rooms = Rooms.detect(App.V.walls, App.V.roomTags);
     App.redraw();
   },
   /** Выбран объект — показываем его свойства; сняли выделение — остаёмся на текущей вкладке */
@@ -103,6 +106,7 @@ const App = {
       const o = U.clone(src);
       o.id = map.get(src.id);
       if (c === 'openings') { if (!map.has(src.wall)) continue; o.wall = map.get(src.wall); }
+      else o.floor = App.floor;   // вставка — на текущий этаж
       if (c === 'notes' && o.target) { if (map.has(o.target)) o.target = map.get(o.target); else { const p = Model.notePos(src); delete o.target; o.x = p.x; o.y = p.y; } }
       Model.add(c, o);
       if (c !== 'openings' && !(c === 'notes' && o.target)) newIds.push(o.id);
@@ -150,7 +154,7 @@ const App = {
   /** Повернуть весь план. keepNorth=true — вместе со стрелкой севера (ориентация сохраняется) */
   rotateAll(deg, keepNorth) {
     keepNorth = keepNorth || App._rotKeepNorth;
-    const ids = Model.allIds();
+    const ids = Model.allIds(true);
     const b = Model.contentBBox();
     if (!b) return;
     const c = { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 };
@@ -162,7 +166,7 @@ const App = {
     UI.toast(keepNorth ? `План повёрнут на ${deg}° вместе с компасом` : `План повёрнут на ${deg}° относительно сторон света`);
   },
   mirrorAll(axis) {
-    const ids = Model.allIds();
+    const ids = Model.allIds(true);
     const b = Model.contentBBox();
     if (!b) return;
     Model.mirror(ids, { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 }, axis);
@@ -218,6 +222,57 @@ const App = {
     Model.commit();
     return obj;
   },
+  /* ------------------------------- этажи --------------------------------- */
+  /** Отметки этажей: каждый следующий — над предыдущим */
+  relevel() {
+    const fl = App.doc.floors;
+    for (let i = 1; i < fl.length; i++) fl[i].elev = fl[i - 1].elev + fl[i - 1].h;
+  },
+  addFloor(copyWalls) {
+    const fl = App.doc.floors, top = fl[fl.length - 1];
+    const f = { id: U.uid('f'), name: `${fl.length + 1} этаж`, elev: top.elev + top.h, h: top.h };
+    fl.push(f);
+    if (copyWalls) {
+      for (const w of App.doc.walls) if (w.floor === top.id && w.kind === 'ext') {
+        const c = U.clone(w); delete c.id; c.floor = f.id;
+        Model.add('walls', c);
+      }
+    }
+    App.floor = f.id;
+    App.sel.clear();
+    Model.commit();
+    UI.toast(`${f.name} добавлен` + (copyWalls ? ' с наружными стенами нижнего этажа' : ''));
+  },
+  deleteFloor(fid) {
+    const fl = App.doc.floors;
+    if (fl.length < 2) return;
+    const f = fl.find(x => x.id === fid);
+    const V = Model.viewOf(fid);
+    const n = COLLECTIONS.filter(c => c !== 'roofs').reduce((s, c) => s + V[c].length, 0);
+    if (n && !confirm(`Удалить «${f.name}» и все его объекты (${n})? Можно отменить через Ctrl+Z.`)) return;
+    Model.remove(COLLECTIONS.filter(c => c !== 'openings' && c !== 'roofs').flatMap(c => V[c].map(o => o.id)));
+    App.doc.floors = fl.filter(x => x.id !== fid);
+    for (const r of App.doc.roofs) if (r.floor === fid) r.floor = App.doc.floors[App.doc.floors.length - 1].id;
+    App.relevel();
+    if (App.floor === fid) App.floor = App.doc.floors[0].id;
+    Model.commit();
+  },
+  /** Новая крыша (по умолчанию двускатная 30°, над верхом стен текущего этажа) */
+  addRoof(rect) {
+    const r = Model.add('roofs', { type: 'gable', pitch: 30, mat: 'metaltile', base: Roof.autoBase(App.floor), ...rect });
+    App.sel.clear(); App.sel.add(r.id);
+    Model.commit(); App.selChanged();
+    UI.toast(`Крыша: ${U.fmtArea(Roof.params(r).area)} кровли`);
+    return r;
+  },
+  /** Крыша по наружному контуру стен текущего этажа */
+  roofFromOutline(overhang = 50) {
+    const outl = Rooms.outlines;
+    if (!outl.length) { UI.toast('Нет замкнутого контура наружных стен на этом этаже', 'err'); return; }
+    const pts = outl.flatMap(o => o.outer);
+    const rect = Roof.fromOutline(pts, overhang);
+    if (rect) { Tools.set('select'); App.addRoof(rect); }
+  },
   createPlot(w, d) {
     if (!(w > 0 && d > 0)) return;
     const c = View.toWorld({ x: App.cw / 2, y: App.ch / 2 });
@@ -244,6 +299,11 @@ const App = {
     const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
     const dlgOpen = document.querySelector('dialog[open]');
     if (e.key === 'F1') { e.preventDefault(); if (!dlgOpen) $('dlgHelp').showModal(); return; }
+    if (View3D.active && !dlgOpen && !typing) {
+      if (e.key === 'Escape' || e.code === 'Digit3') { View3D.toggle(false); e.preventDefault(); }
+      else if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyZ' || e.code === 'KeyY')) { e.preventDefault(); e.code === 'KeyZ' && !e.shiftKey ? App.undo() : App.redo(); }
+      return;
+    }
     if (dlgOpen || typing) {
       if (typing && e.key === 'Escape') e.target.blur();
       return;
@@ -276,10 +336,11 @@ const App = {
       App.nudge(d[0], d[1]); return;
     }
     if (e.key === '!' || (code === 'Digit1' && e.shiftKey)) { View.fit(Model.contentBBox()); return; }
+    if (code === 'Digit3' && !e.shiftKey) { View3D.toggle(true); return; }
     if (e.key === '+' || e.key === '=') { View.zoomAt({ x: App.cw / 2, y: App.ch / 2 }, 1.25); return; }
     if (e.key === '-' || e.key === '_') { View.zoomAt({ x: App.cw / 2, y: App.ch / 2 }, 0.8); return; }
     // по физическим клавишам — работает и в русской раскладке
-    const toolKeys = { KeyP: 'road', KeyV: 'select', KeyH: 'pan', KeyW: 'wall', KeyQ: 'room', KeyD: 'door', KeyO: 'window', KeyB: 'area', KeyU: 'line', KeyN: 'dim', KeyM: 'measure', KeyT: 'text', KeyK: 'note' };
+    const toolKeys = { KeyJ: 'roof', KeyP: 'road', KeyV: 'select', KeyH: 'pan', KeyW: 'wall', KeyQ: 'room', KeyD: 'door', KeyO: 'window', KeyB: 'area', KeyU: 'line', KeyN: 'dim', KeyM: 'measure', KeyT: 'text', KeyK: 'note' };
     if (toolKeys[code]) { Tools.set(toolKeys[code]); return; }
     if (code === 'KeyR' || code === 'BracketLeft' || code === 'BracketRight') {
       // без выделения клавиши не поворачивают весь план (это легко сделать случайно)

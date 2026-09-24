@@ -89,11 +89,14 @@ const Sun = {
   /** Объекты, отбрасывающие тень */
   casters() {
     const res = [];
-    for (const w of App.doc.walls) if (w.h > 0 && G.dist(w.a, w.b) > 0.5) res.push({ id: w.id, pts: Model.wallRect(w), h: w.h });
+    // стены всех этажей: призма от отметки пола этажа до верха стены
+    for (const w of App.doc.walls) if (w.h > 0 && G.dist(w.a, w.b) > 0.5) { const e = Model.elevOf(w); res.push({ id: w.id, pts: Model.wallRect(w), h: e + w.h, h0: e }); }
+    for (const r of App.doc.roofs || []) { const c = Roof.caster(r); if (c) res.push(c); }
     for (const it of App.doc.items) {
       const def = catItem(it.key);
       const casts = it.shadow ?? def.shadow;
       if (!casts || !(it.h > 0)) continue;
+      if (Model.elevOf(it) > 0) continue;   // тени считаем от объектов участка
       if (def.shape === 'tree' || def.shape === 'conifer' || def.shape === 'bush') {
         const h0 = def.shape === 'tree' ? it.h * 0.3 : def.shape === 'conifer' ? it.h * 0.05 : 0;
         res.push({ id: it.id, circle: { x: it.x, y: it.y }, r: Math.min(it.w, it.d) / 2 * (def.shape === 'conifer' ? 0.85 : 0.95), h0, h: it.h, trunk: def.shape === 'tree' ? Math.max(8, it.w * 0.04) : 0 });
@@ -116,9 +119,15 @@ const Sun = {
     const v = (h) => ({ x: -dir.x * h * k, y: -dir.y * h * k });
     for (const c of casters) {
       if (exclude && exclude === c.id) continue;
-      const hEff = c.h - z;
+      const hEff = (c.verts ? Math.max(...c.verts.map(p => p.z)) : c.h) - z;
       if (hEff <= 0) continue;
       ctx.beginPath();
+      if (c.verts) {
+        // выпуклый многогранник (крыша): оболочка проекций вершин
+        const hull = G.hull(c.verts.map(p => G.add(p, v(Math.max(0, p.z - z)))));
+        if (hull.length >= 3) { ctx.moveTo(hull[0].x, hull[0].y); for (let i = 1; i < hull.length; i++) ctx.lineTo(hull[i].x, hull[i].y); ctx.closePath(); ctx.fill(); }
+        continue;
+      }
       if (c.circle) {
         const a = G.add(c.circle, v(Math.max(0, c.h0 - z))), b = G.add(c.circle, v(hEff));
         // отдельные заливки, чтобы встречное направление обхода не давало «дыр»
@@ -149,6 +158,12 @@ const Sun = {
     const dir = Sun.planDir(sun.az);
     for (const c of casters) {
       if (exclude && exclude === c.id) continue;
+      if (c.verts) {
+        if (Math.max(...c.verts.map(q => q.z)) <= z) continue;
+        const hull = G.hull(c.verts.map(q => G.add(q, G.mul(dir, -Math.max(0, q.z - z) * k))));
+        if (G.pointInPoly(p, hull)) return true;
+        continue;
+      }
       const hEff = c.h - z;
       if (hEff <= 0) continue;
       if (c.circle) {
@@ -232,7 +247,7 @@ const Sun = {
     const inside = cx.getImageData(0, 0, nx, ny).data;
     cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, nx, ny); setT();
     cx.beginPath();
-    for (const r of App.rooms) { cx.moveTo(r.axis[0].x, r.axis[0].y); for (const p of r.axis) cx.lineTo(p.x, p.y); cx.closePath(); }
+    for (const r of (App.floorData ? App.floorData[0].rooms : App.rooms)) { cx.moveTo(r.axis[0].x, r.axis[0].y); for (const p of r.axis) cx.lineTo(p.x, p.y); cx.closePath(); }
     for (const c of casters) if (c.pts && !c.h0) { cx.moveTo(c.pts[0].x, c.pts[0].y); for (const p of c.pts) cx.lineTo(p.x, p.y); cx.closePath(); }
     cx.fill();
     const blocked = cx.getImageData(0, 0, nx, ny).data;
@@ -295,7 +310,7 @@ const Sun = {
     const info = Sun.windowInfo(op);
     if (!info || info.interior) return null;
     const g = App.doc.geo;
-    const z = (op.sill || 0) + (op.h || 140) / 2;
+    const z = Model.elevOf(op) + (op.sill || 0) + (op.h || 140) / 2;
     let total = 0, run = 0, best = 0;
     for (let m = step / 2; m < 1440; m += step) {
       const pos = Sun.position(date, m, g.lat, g.lon, g.tz);
@@ -312,7 +327,7 @@ const Sun = {
   roomsInsolation(date) {
     const casters = Sun.casters();
     const res = new Map();
-    for (const op of App.doc.openings) {
+    for (const op of App.V.openings) {
       if (OPENING_TYPES[op.type]?.cat !== 'window') continue;
       const r = Sun.windowSun(op, date, casters);
       if (!r || !r.info.room) continue;

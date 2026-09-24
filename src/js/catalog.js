@@ -12,6 +12,8 @@ const LAYERS = [
   { id: 'site', name: 'Участок и зоны' },
   { id: 'siteobj', name: 'Постройки и озеленение' },
   { id: 'walls', name: 'Стены, окна, двери' },
+  { id: 'roof', name: 'Крыша' },
+  { id: 'lower', name: 'Нижний этаж (подсказка)' },
   { id: 'rooms', name: 'Помещения (заливка, подписи)' },
   { id: 'furniture', name: 'Мебель и техника' },
   { id: 'plumbing', name: 'Водопровод и канализация' },
@@ -20,6 +22,7 @@ const LAYERS = [
   { id: 'electric', name: 'Электрика' },
   { id: 'dims', name: 'Размеры и надписи' },
   { id: 'notes', name: 'Примечания' },
+  { id: 'checks', name: 'Проверка отступов' },
   { id: 'shadows', name: 'Тени (солнце)' },
   { id: 'heat', name: 'Карта инсоляции' },
 ];

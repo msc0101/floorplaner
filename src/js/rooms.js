@@ -9,7 +9,18 @@ const Rooms = {
   EPS_PERP: 1.5,
 
   outlines: [],
-  detect(allWalls) {
+  /** Помещения и контуры для всех этажей; активный этаж — в App.rooms / Rooms.outlines */
+  detectAll() {
+    const res = App.doc.floors.map(f => {
+      const V = f.id === App.floor ? App.V : Model.viewOf(f.id);
+      const rooms = Rooms.detect(V.walls, V.roomTags);
+      return { floor: f, rooms, outlines: Rooms.outlines };
+    });
+    App.floorData = res;
+    const cur = res.find(x => x.floor.id === App.floor) || res[0];
+    App.rooms = cur.rooms; Rooms.outlines = cur.outlines;
+  },
+  detect(allWalls, tags) {
     const walls = allWalls.filter(w => w.kind !== 'fence' && G.dist(w.a, w.b) > 1);
     Rooms.outlines = [];
     if (!walls.length) return [];
@@ -134,7 +145,7 @@ const Rooms = {
     // Вложенные грани (двор внутри контура) — удаляем внешние дубликаты не нужно: обход правым поворотом даёт только минимальные грани.
     rooms.sort((a, b) => b.areaAxis - a.areaAxis);
     // Назначаем имена по «якорям» (roomTags)
-    const tags = App.doc.roomTags;
+    tags = tags || App.V.roomTags;
     const usedTags = new Set();
     // Сначала от меньших помещений к большим — чтобы якорь попал в самое вложенное
     const bySize = [...rooms].sort((a, b) => a.areaAxis - b.areaAxis);
@@ -154,7 +165,7 @@ const Rooms = {
     const row = (key, name, extra) => map.get(key) || map.set(key, { name, len: 0, area: 0, vol: 0, ...extra }).get(key);
     for (const w of App.doc.walls) {
       const L = Model.wallLen(w);
-      if (w.kind === 'fence') { const M = FENCE_MATERIALS[w.mat]; row('f:' + w.mat, 'Забор: ' + (M ? M.name : w.mat), { fence: true }).len += L; continue; }
+      if (w.kind === 'fence') { const M = FENCE_MATERIALS[w.mat]; row('f:' + w.mat, 'Забор: ' + (M ? M.name : w.mat), { fence: true, mat: w.mat }).len += L; continue; }
       const M = WALL_MATERIALS[w.mat];
       const holes = App.doc.openings.filter(o => o.wall === w.id).reduce((s, o) => s + Math.min(o.w, L) * Math.min(o.h || 0, w.h), 0);
       const area = Math.max(0, L * w.h - holes);
@@ -165,6 +176,7 @@ const Rooms = {
     }
     const rows = [...map.values()];
     for (const r of rows) {
+      if (r.fence) continue;
       const M = WALL_MATERIALS[r.mat];
       if (!M) continue;
       if (M.brick) { r.count = Math.ceil(r.vol / 1e6 * M.brick); r.unit = 'шт. кирпича'; }
@@ -174,11 +186,14 @@ const Rooms = {
   },
   /** Сводка площадей: помещения, здание, участок, зоны */
   summary() {
-    const rooms = App.rooms;
+    const fd = App.floorData || [{ floor: App.doc.floors[0], rooms: App.rooms, outlines: Rooms.outlines }];
+    const rooms = fd.flatMap(x => x.rooms);
     const total = rooms.reduce((s, r) => s + r.areaFloor, 0);
     const living = rooms.filter(r => r.tag && r.tag.living).reduce((s, r) => s + r.areaFloor, 0);
     const axis = rooms.reduce((s, r) => s + r.areaAxis, 0);
-    const footprint = Rooms.outlines.reduce((s, o) => s + o.area, 0);
+    // площадь застройки — по первому (нижнему) этажу
+    const footprint = fd[0].outlines.reduce((s, o) => s + o.area, 0);
+    const perFloor = fd.map(x => ({ floor: x.floor, total: x.rooms.reduce((s, r) => s + r.areaFloor, 0), rooms: x.rooms.length }));
     // постройки на участке (предметы-постройки)
     const outb = App.doc.items.filter(it => ['building', 'garage', 'canopy', 'canopyLean', 'gazebo', 'greenhouse', 'pool', 'deck'].includes(catItem(it.key).shape));
     const outbArea = outb.reduce((s, it) => s + it.w * it.d, 0);
@@ -194,7 +209,7 @@ const Rooms = {
       z.area += G.polyPerimeter(r.pts, false) * r.width; z.count++;
     }
     const built = footprint + outb.filter(it => catItem(it.key).shape !== 'deck' && catItem(it.key).shape !== 'pool').reduce((s, it) => s + it.w * it.d, 0);
-    return { total, living, axis, footprint, outb, outbArea, plotArea, zones, built, free: plotArea ? plotArea - built : 0 };
+    return { total, living, axis, footprint, outb, outbArea, plotArea, zones, built, free: plotArea ? plotArea - built : 0, perFloor };
   },
   at(p) {
     let best = null;
@@ -204,7 +219,7 @@ const Rooms = {
   /** Окна помещения со сторонами света */
   windowsOf(room) {
     const res = [];
-    for (const op of App.doc.openings) {
+    for (const op of App.V.openings) {
       const t = OPENING_TYPES[op.type];
       if (!t || t.cat !== 'window') continue;
       const info = Sun.windowInfo(op);

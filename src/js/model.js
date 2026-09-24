@@ -4,7 +4,10 @@
    ========================================================================== */
 
 const DOC_VERSION = 1;
-const COLLECTIONS = ['areas', 'roads', 'walls', 'openings', 'items', 'lines', 'dims', 'texts', 'roomTags', 'notes'];
+const COLLECTIONS = ['areas', 'roads', 'walls', 'openings', 'items', 'roofs', 'lines', 'dims', 'texts', 'roomTags', 'notes'];
+
+/** Настройки вида — не часть «правки», undo/redo их не трогает */
+const VIEW_SETTINGS = ['layers', 'sun', 'showWallDims', 'showItemDims', 'showGuides', 'showSwing', 'wallHatch', 'showChecks', 'showChecksOk', 'roofFill'];
 
 const Model = {
   newDoc() {
@@ -15,14 +18,15 @@ const Model = {
       north: 0,                       // куда смотрит «север» — угол по часовой от верха экрана, °
       geo: { lat: 55.75, lon: 37.62, tz: 3, city: 'Москва' },
       settings: {
-        units: 'm', grid: 10, snap: true, showWallDims: true, showItemDims: false,
+        units: 'm', grid: 10, snap: true, showWallDims: true, showItemDims: false, showChecks: true,
         areaMode: 'floor',
         layers: Object.fromEntries(LAYERS.map(l => [l.id, !['heat', 'shadows'].includes(l.id)])),
       },
       defaults: {
         wall: U.clone(Object.fromEntries(Object.entries(WALL_KINDS).map(([k, v]) => [k, { th: v.th, h: v.h, mat: v.mat }]))),
       },
-      areas: [], roads: [], walls: [], openings: [], items: [], lines: [], dims: [], texts: [], roomTags: [], notes: [],
+      floors: [{ id: 'f1', name: '1 этаж', elev: 0, h: 300 }],
+      areas: [], roads: [], walls: [], openings: [], items: [], roofs: [], lines: [], dims: [], texts: [], roomTags: [], notes: [],
       underlay: null,
     };
   },
@@ -40,6 +44,10 @@ const Model = {
       d.settings.layers = L;
     }
     if (raw.defaults && raw.defaults.wall) for (const k of Object.keys(d.defaults.wall)) Object.assign(d.defaults.wall[k], raw.defaults.wall[k] || {});
+    if (Array.isArray(raw.floors) && raw.floors.length) {
+      d.floors = raw.floors.filter(f => f && f.id).map((f, i) => ({ id: String(f.id), name: f.name || `${i + 1} этаж`, elev: U.isNum(f.elev) ? f.elev : i * 300, h: U.isNum(f.h) && f.h > 0 ? f.h : 300 }));
+      if (!d.floors.length) d.floors = Model.newDoc().floors;
+    }
     for (const c of COLLECTIONS) d[c] = Array.isArray(raw[c]) ? raw[c].filter(o => o && typeof o === 'object').map(o => ({ ...o, id: o.id || U.uid() })) : [];
     // валидация
     d.walls = d.walls.filter(w => w.a && w.b && U.isNum(w.a.x) && U.isNum(w.b.x));
@@ -62,6 +70,8 @@ const Model = {
     d.lines = d.lines.filter(l => l.pts.every(isPt));
     d.areas = d.areas.filter(a => a.pts.every(isPt));
     d.dims = d.dims.filter(o => isPt(o.a) && isPt(o.b));
+    d.roofs = d.roofs.filter(r => isPt(r) && r.w > 0 && r.d > 0);
+    for (const r of d.roofs) { if (!ROOF_TYPES[r.type]) r.type = 'gable'; r.pitch = U.isNum(r.pitch) ? r.pitch : 30; r.base = U.isNum(r.base) ? r.base : 300; r.rot = r.rot || 0; if (!ROOF_MATERIALS[r.mat]) r.mat = 'metaltile'; }
     d.roads = d.roads.filter(r => Array.isArray(r.pts) && r.pts.length >= 2 && r.pts.every(isPt));
     for (const r of d.roads) { if (!ROAD_KINDS[r.kind]) r.kind = 'road'; r.width = U.isNum(r.width) && r.width > 0 ? r.width : ROAD_KINDS[r.kind].width; }
     d.texts = d.texts.filter(isPt);
@@ -69,6 +79,9 @@ const Model = {
     d.items = d.items.filter(isPt);
     d.notes = d.notes.filter(n => n.target || isPt(n));
     for (const a of d.areas) if (!AREA_KINDS[a.kind]) a.kind = 'zone';
+    // объекты без этажа или с несуществующим этажом — на первый
+    const fids = new Set(d.floors.map(f => f.id));
+    for (const c of COLLECTIONS) if (c !== 'openings') for (const o of d[c]) if (!fids.has(o.floor)) o.floor = d.floors[0].id;
     if (raw.underlay && raw.underlay.src) d.underlay = Object.assign({ x: 0, y: 0, scale: 1, rot: 0, opacity: 0.5, visible: true, locked: true, front: false }, raw.underlay);
     return d;
   },
@@ -78,12 +91,38 @@ const Model = {
     const m = new Map();
     for (const c of COLLECTIONS) for (const o of App.doc[c]) m.set(o.id, { o, c });
     App.index = m;
+    if (!App.doc.floors.some(f => f.id === App.floor)) App.floor = App.doc.floors[0].id;
+    App.V = Model.viewOf(App.floor);
+  },
+  /* ------------------------------- этажи --------------------------------- */
+  floorIdx(id) { return Math.max(0, App.doc.floors.findIndex(f => f.id === id)); },
+  floorOf(o) { return App.doc.floors.find(f => f.id === o.floor) || App.doc.floors[0]; },
+  /** Отметка низа объекта (уровень пола его этажа), см */
+  elevOf(o) { const c = o.wall ? Model.get(o.wall) : o; return c ? Model.floorOf(c).elev : 0; },
+  /** Объекты одного этажа (проёмы — по стенам, примечания — по объекту) */
+  viewOf(fid) {
+    const d = App.doc, V = {};
+    const on = (o) => o.floor === fid;
+    for (const c of COLLECTIONS) if (c !== 'openings' && c !== 'notes') V[c] = c === 'roofs' ? d.roofs.slice() : d[c].filter(on);   // крыши видны со всех этажей
+    const wallIds = new Set(V.walls.map(w => w.id));
+    V.openings = d.openings.filter(o => wallIds.has(o.wall));
+    V.notes = d.notes.filter(n => { const t = n.target && Model.get(n.target); return t ? (t.wall ? wallIds.has(t.wall) : t.floor === fid) : on(n); });
+    return V;
+  },
+  /** Переключиться на этаж (без записи в историю) */
+  setFloor(fid) {
+    if (!App.doc.floors.some(f => f.id === fid)) return;
+    App.floor = fid;
+    App.sel.clear();
+    Tools.cancel(true);
+    App.changed(true);
   },
   get(id) { const r = App.index.get(id); return r ? r.o : null; },
   coll(id) { const r = App.index.get(id); return r ? r.c : null; },
 
   add(coll, obj) {
     obj.id = obj.id || U.uid(coll[0]);
+    if (coll !== 'openings' && !obj.floor) obj.floor = App.floor;
     App.doc[coll].push(obj);
     App.index.set(obj.id, { o: obj, c: coll });
     return obj;
@@ -110,6 +149,8 @@ const Model = {
   },
   restore(snap) {
     const d = JSON.parse(snap);
+    // настройки вида (слои, время солнца, подписи) не откатываются вместе с правками
+    if (App.doc && App.doc.settings) for (const k of VIEW_SETTINGS) if (k in App.doc.settings) d.settings[k] = App.doc.settings[k];
     if (d.underlay) d.underlay.src = Model._srcCache.get(d.underlay.id || 'u') || null;
     if (d.underlay && !d.underlay.src) d.underlay = null;
     App.doc = d;
@@ -152,7 +193,7 @@ const Model = {
     if (!o) return null;
     switch (c) {
       case 'walls': return G.mid(o.a, o.b);
-      case 'items': case 'texts': case 'roomTags': return { x: o.x, y: o.y };
+      case 'items': case 'roofs': case 'texts': case 'roomTags': return { x: o.x, y: o.y };
       case 'openings': { const g = Model.opGeom(o); return g ? g.c : null; }
       case 'roads':
       case 'lines': { const i = Math.floor((o.pts.length - 1) / 2); return G.mid(o.pts[i], o.pts[Math.min(i + 1, o.pts.length - 1)]); }
@@ -201,6 +242,7 @@ const Model = {
     switch (c) {
       case 'walls': return Model.wallRect(o);
       case 'items': return Model.itemPts(o);
+      case 'roofs': return G.rectPts(o.x, o.y, o.w, o.d, o.rot || 0);
       case 'lines': case 'areas': return o.pts;
       case 'roads': return Model.roadOutline(o);
       case 'dims': return [o.a, o.b];
@@ -222,12 +264,13 @@ const Model = {
     if (d.underlay && d.underlay.src && d.underlay.visible && Underlay.img) b = G.bboxUnion(b, G.bbox(Underlay.corners()));
     return b;
   },
-  allIds() { const r = []; for (const c of COLLECTIONS) for (const o of App.doc[c]) if (c !== 'openings') r.push(o.id); return r; },
+  /** Все объекты: текущего этажа (по умолчанию) или всего проекта */
+  allIds(all = false) { const r = []; const src = all ? App.doc : App.V; for (const c of COLLECTIONS) for (const o of src[c]) if (c !== 'openings') r.push(o.id); return r; },
 
   /** Концы стен (кроме своих), совпадающие с точкой */
   wallEndsAt(p, excludeIds, tol = 1) {
     const out = [];
-    for (const w of App.doc.walls) {
+    for (const w of App.V.walls) {
       if (excludeIds && excludeIds.has(w.id)) continue;
       if (G.dist(w.a, p) <= tol) out.push({ w, end: 'a' });
       if (G.dist(w.b, p) <= tol) out.push({ w, end: 'b' });
@@ -253,7 +296,7 @@ const Model = {
           }
           mv(o[end]); movedPts.add(o[end]);
         }
-      } else if (c === 'items' || c === 'texts' || c === 'roomTags') { o.x += dx; o.y += dy; }
+      } else if (c === 'items' || c === 'roofs' || c === 'texts' || c === 'roomTags') { o.x += dx; o.y += dy; }
       else if (c === 'notes') {
         if (o.target && Model.get(o.target)) { if (!set.has(o.target)) { o.dx = (o.dx || 0) + dx; o.dy = (o.dy || 0) + dy; } }
         else { o.x = (o.x || 0) + dx; o.y = (o.y || 0) + dy; }
@@ -271,7 +314,7 @@ const Model = {
       const o = Model.get(id), c = Model.coll(id);
       if (!o) continue;
       if (c === 'walls') { for (const e of ['a', 'b']) if (!done.has(o[e])) { rp(o[e]); done.add(o[e]); } }
-      else if (c === 'items') { rp(o); o.rot = U.normDeg((o.rot || 0) + deg); }
+      else if (c === 'items' || c === 'roofs') { rp(o); o.rot = U.normDeg((o.rot || 0) + deg); }
       else if (c === 'texts') { rp(o); o.rot = U.normDeg((o.rot || 0) + deg); }
       else if (c === 'roomTags') rp(o);
       else if (c === 'notes') { if (!o.target) rp(o); }
@@ -289,6 +332,7 @@ const Model = {
       if (!o) continue;
       if (c === 'walls') { walls.add(o.id); for (const e of ['a', 'b']) if (!done.has(o[e])) { mp(o[e]); done.add(o[e]); } }
       else if (c === 'items') { mp(o); o.rot = U.normDeg(axis === 'x' ? -o.rot : 180 - o.rot); o.flip = !o.flip; }
+      else if (c === 'roofs') { mp(o); o.rot = U.normDeg(axis === 'x' ? -o.rot : 180 - o.rot); if (o.type === 'shed') o.rot = U.normDeg(o.rot + (axis === 'x' ? 0 : 180)); }
       else if (c === 'texts' || c === 'roomTags') mp(o);
       else if (c === 'notes') { if (!o.target) mp(o); }
       else if (c === 'lines' || c === 'areas' || c === 'roads') o.pts.forEach(mp);
@@ -313,7 +357,7 @@ const Model = {
   /** Ближайшая стена к точке */
   nearestWall(p, maxDist, filter) {
     let best = null, bd = maxDist;
-    for (const w of App.doc.walls) {
+    for (const w of App.V.walls) {
       if (filter && !filter(w)) continue;
       const pr = G.proj(p, w.a, w.b);
       const d = pr.d - w.th / 2;

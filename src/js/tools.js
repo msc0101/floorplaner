@@ -8,6 +8,7 @@ const TOOL_INFO = {
   pan:     { name: 'Рука', key: 'H', hint: 'Перетаскивайте план. Колесо — масштаб.' },
   wall:    { name: 'Стена', key: 'W', hint: 'Клик — начало, клики — следующие углы. Введите длину с клавиатуры (например 350 или 3.5м) и Enter. Shift — шаг 15°. Esc / ПКМ / двойной клик — завершить.' },
   room:    { name: 'Комната', key: 'Q', hint: 'Тяните прямоугольник по осям стен. Или клик и введите размеры «400x300» + Enter.' },
+  roof:    { name: 'Крыша', key: 'J', hint: 'Протяните прямоугольник крыши (со свесами) или нажмите «По контуру дома» вверху. Конёк — вдоль длинной стороны; тип, уклон и высота — в свойствах.' },
   door:    { name: 'Дверь', key: 'D', hint: 'Наведите на стену и кликните. Сторона курсора = сторона открывания. Потом поменяйте петли/сторону в свойствах.' },
   window:  { name: 'Окно', key: 'O', hint: 'Наведите на стену и кликните. Размеры и подоконник — в панели вверху или в свойствах.' },
   road:    { name: 'Дорога', key: 'P', hint: 'Клики — осевая линия улицы, дороги или тропинки. Ширина и вид — в панели сверху. Enter / двойной клик — готово. Название — в свойствах.' },
@@ -69,21 +70,21 @@ const Tools = {
     let best = null, bd = tol;
     const cand = (q, kind) => { const d = G.dist(p, q); if (d < bd) { bd = d; best = { p: { x: q.x, y: q.y }, kind }; } };
     const ex = o.exclude || new Set();
-    for (const w of App.doc.walls) {
+    for (const w of App.V.walls) {
       if (ex.has(w.id)) continue;
       cand(w.a, 'угол стены'); cand(w.b, 'угол стены');
       if (o.faces) for (const q of Model.wallRect(w)) cand(q, 'угол грани');
     }
-    for (const l of App.doc.lines) if (!ex.has(l.id)) for (const q of l.pts) cand(q, 'точка трассы');
-    for (const a of App.doc.areas) if (!ex.has(a.id)) for (const q of a.pts) cand(q, 'вершина');
-    for (const r of App.doc.roads) if (!ex.has(r.id)) for (const q of r.pts) cand(q, 'точка дороги');
-    for (const d of App.doc.dims) if (!ex.has(d.id)) { cand(d.a, 'точка'); cand(d.b, 'точка'); }
-    if (o.items) for (const it of App.doc.items) if (!ex.has(it.id)) cand(it, catItem(it.key).name);
+    for (const l of App.V.lines) if (!ex.has(l.id)) for (const q of l.pts) cand(q, 'точка трассы');
+    for (const a of App.V.areas) if (!ex.has(a.id)) for (const q of a.pts) cand(q, 'вершина');
+    for (const r of App.V.roads) if (!ex.has(r.id)) for (const q of r.pts) cand(q, 'точка дороги');
+    for (const d of App.V.dims) if (!ex.has(d.id)) { cand(d.a, 'точка'); cand(d.b, 'точка'); }
+    if (o.items) for (const it of App.V.items) if (!ex.has(it.id)) cand(it, catItem(it.key).name);
     if (o.extra) for (const q of o.extra) cand(q, 'точка');
     if (best) { Tools.snapInfo = best; return best.p; }
     // на стене (ось или грань)
     if (o.onWall !== false) {
-      for (const w of App.doc.walls) {
+      for (const w of App.V.walls) {
         if (ex.has(w.id)) continue;
         const pr = G.proj(p, w.a, w.b);
         if (pr.d < tol && pr.t > 0 && pr.t < 1) { Tools.snapInfo = { p: pr.q, kind: 'на оси стены' }; return pr.q; }
@@ -95,7 +96,7 @@ const Tools = {
           }
         }
       }
-      if (o.lines) for (const l of App.doc.lines) {
+      if (o.lines) for (const l of App.V.lines) {
         if (ex.has(l.id)) continue;
         for (let i = 0; i < l.pts.length - 1; i++) {
           const pr = G.proj(p, l.pts[i], l.pts[i + 1]);
@@ -118,7 +119,7 @@ const Tools = {
     }
     // выравнивание по X/Y с существующими углами
     const al = [];
-    for (const w of App.doc.walls) if (!ex.has(w.id)) al.push(w.a, w.b);
+    for (const w of App.V.walls) if (!ex.has(w.id)) al.push(w.a, w.b);
     if (o.from) al.push(o.from);
     let ax = null, ay = null;
     for (const v of al) {
@@ -146,16 +147,16 @@ const Tools = {
       }
     }
     // проёмы
-    if (L.walls) for (const op of App.doc.openings) {
+    if (L.walls) for (const op of App.V.openings) {
       const g = Model.opGeom(op); if (!g) continue;
       const pr = G.proj(p, g.a, g.b);
       if (pr.t >= -0.02 && pr.t <= 1.02 && pr.perp <= g.th / 2 + tol) return op.id;
     }
     // точка внутри тела стены — стена приоритетнее прилегающей мебели
-    const inWall = L.walls && App.doc.walls.some(w => G.proj(p, w.a, w.b).d <= w.th / 2 && G.proj(p, w.a, w.b).t >= 0 && G.proj(p, w.a, w.b).t <= 1);
+    const inWall = L.walls && App.V.walls.some(w => G.proj(p, w.a, w.b).d <= w.th / 2 && G.proj(p, w.a, w.b).t >= 0 && G.proj(p, w.a, w.b).t <= 1);
     // предметы: наименьший содержащий
     let bestIt = null, bestA = Infinity;
-    for (const it of App.doc.items) {
+    for (const it of App.V.items) {
       if (L[catItem(it.key).layer] === false) continue;
       const { w, d } = Tools.itemDrawSize(it);
       const lp = G.toLocal(p, it.x, it.y, it.rot);
@@ -168,34 +169,40 @@ const Tools = {
     const bigItem = bestIt && bestA > 150 * 150 * 4;   // крупные постройки — ниже стен
     if (bestIt && !bigItem) return bestIt.id;
     if (L.dims) {
-      for (const d of App.doc.dims) {
+      for (const d of App.V.dims) {
         const n = G.perp(G.unit(G.sub(d.b, d.a)));
         const A = G.add(d.a, G.mul(n, d.off || 0)), B = G.add(d.b, G.mul(n, d.off || 0));
         if (G.distSeg(p, A, B) < tol) return d.id;
       }
-      for (const t of App.doc.texts) {
+      for (const t of App.V.texts) {
         const s = t.size || 30, len = String(t.text || '').length * s * 0.3 + s / 2;
         const lp = G.toLocal(p, t.x, t.y, t.rot || 0);
         if (Math.abs(lp.x) < len + tol && Math.abs(lp.y) < s * 0.7 + tol) return t.id;
       }
     }
-    for (const l of App.doc.lines) {
+    for (const l of App.V.lines) {
       if (L[LINE_KINDS[l.kind].layer] === false) continue;
       for (let i = 0; i < l.pts.length - 1; i++) if (G.distSeg(p, l.pts[i], l.pts[i + 1]) < tol) return l.id;
     }
-    if (L.walls) for (const w of App.doc.walls) {
+    if (L.walls) for (const w of App.V.walls) {
       const pr = G.proj(p, w.a, w.b);
       if (pr.d <= w.th / 2 + tol * 0.5) return w.id;
     }
     if (bestIt) return bestIt.id;
-    if (L.site) for (let k = App.doc.roads.length - 1; k >= 0; k--) {
-      const r = App.doc.roads[k];
+    if (L.roof !== false) for (const r of App.V.roofs) {
+      if (r.floor !== App.floor) continue;
+      const pts = G.rectPts(r.x, r.y, r.w, r.d, r.rot || 0);
+      for (let i = 0; i < 4; i++) if (G.distSeg(p, pts[i], pts[(i + 1) % 4]) < tol) return r.id;
+      for (const [a, b] of Roof.planLines(r)) if (G.distSeg(p, a, b) < tol) return r.id;
+    }
+    if (L.site) for (let k = App.V.roads.length - 1; k >= 0; k--) {
+      const r = App.V.roads[k];
       for (let i = 0; i < r.pts.length - 1; i++) if (G.distSeg(p, r.pts[i], r.pts[i + 1]) <= r.width / 2 + tol * 0.3) return r.id;
     }
     if (L.site) {
       // зоны (кроме границы участка) — по попаданию внутрь; участок — по контуру
       let bestA2 = Infinity, bestArea = null;
-      for (const a of App.doc.areas) {
+      for (const a of App.V.areas) {
         const n = a.pts.length;
         for (let i = 0; i < n; i++) if (G.distSeg(p, a.pts[i], a.pts[(i + 1) % n]) < tol) return a.id;
         if (a.kind !== 'plot' && G.pointInPoly(p, a.pts)) { const ar = Math.abs(G.polyArea(a.pts)); if (ar < bestA2) { bestA2 = ar; bestArea = a; } }
@@ -227,9 +234,9 @@ const Tools = {
       }
       else if (c === 'openings') { const g = Model.opGeom(o); if (g) hs.push({ kind: 'owidth', p: g.a, key: 'a', id }, { kind: 'owidth', p: g.b, key: 'b', id }); }
       else if (c === 'dims') { const n = G.perp(G.unit(G.sub(o.b, o.a))); hs.push({ kind: 'end', p: o.a, key: 'a', id }, { kind: 'end', p: o.b, key: 'b', id }, { kind: 'doff', p: G.add(G.mid(o.a, o.b), G.mul(n, o.off || 0)), id }); }
-      else if (c === 'items') {
-        const def = catItem(o.key);
-        const { w, d } = Tools.itemDrawSize(o);
+      else if (c === 'items' || c === 'roofs') {
+        const def = c === 'items' ? catItem(o.key) : {};
+        const { w, d } = c === 'items' ? Tools.itemDrawSize(o) : o;
         if (!def.sym) {
           const map = { nw: [-1, -1], n: [0, -1], ne: [1, -1], e: [1, 0], se: [1, 1], s: [0, 1], sw: [-1, 1], w: [-1, 0] };
           for (const [k, [sx, sy]] of Object.entries(map)) hs.push({ kind: 'resize', key: k, sx, sy, p: G.toWorld({ x: sx * o.w / 2, y: sy * o.d / 2 }, o.x, o.y, o.rot), id });
@@ -277,7 +284,7 @@ const Tools = {
     if (e.button === 2) { Tools.rightClick(e, sp, p); return; }
     if (t === 'select') return Tools.selDown(e, sp, p);
     if (t === 'wall') return Tools.wallClick(e, p);
-    if (t === 'room') return Tools.roomDown(e, p);
+    if (t === 'room' || t === 'roof') return Tools.roomDown(e, p);
     if (t === 'door' || t === 'window') return Tools.openingClick(e, p);
     if (t === 'line' || t === 'road') return Tools.lineClick(e, p);
     if (t === 'area') return Tools.areaDown(e, p);
@@ -292,7 +299,7 @@ const Tools = {
     Tools.mouse = sp; Tools.mouseW = p;
     const t = Tools.cur;
     if (t === 'select') Tools.selMove(e, sp, p);
-    else if (t === 'room' && Tools.st.a) Tools.st.b = Tools.snap(p, e, {});
+    else if ((t === 'room' || t === 'roof') && Tools.st.a) Tools.st.b = Tools.snap(p, e, {});
     else if (t === 'area' && Tools.st.rect && Tools.st.a) Tools.st.b = Tools.snap(p, e, {});
     else Tools.st.cursor = p;
     App.redraw();
@@ -301,7 +308,7 @@ const Tools = {
   up(e, sp, p) {
     const t = Tools.cur;
     if (t === 'select') Tools.selUp(e, sp, p);
-    else if (t === 'room' && Tools.st.a && Tools.st.dragged) Tools.roomFinish(Tools.st.a, Tools.snap(p, e, {}));
+    else if ((t === 'room' || t === 'roof') && Tools.st.a && Tools.st.dragged) Tools.roomFinish(Tools.st.a, Tools.snap(p, e, {}));
     else if (t === 'area' && Tools.st.rect && Tools.st.a && Tools.st.dragged) Tools.areaRectFinish(Tools.st.a, Tools.snap(p, e, {}));
     App.redraw();
   },
@@ -324,7 +331,7 @@ const Tools = {
     if (t === 'wall' && Tools.st.last) { Tools.st = {}; App.redraw(); return; }
     if ((t === 'line' || t === 'road') && Tools.st.pts) { Tools.finishLine(); return; }
     if (t === 'area' && Tools.st.pts) { Tools.finishArea(); return; }
-    if (t === 'measure' || t === 'dim' || t === 'room') { Tools.st = {}; App.redraw(); return; }
+    if (t === 'measure' || t === 'dim' || t === 'room' || t === 'roof') { Tools.st = {}; App.redraw(); return; }
     if (t === 'place') { Tools.set('select'); return; }
     if (t !== 'select') { Tools.set('select'); }
     const id = Tools.hitTest(p);
@@ -530,7 +537,7 @@ const Tools = {
     } else if (h.kind === 'resize') {
       const lp = G.toLocal(p, o.x, o.y, o.rot);
       const orig = JSON.parse(st.origAll);
-      const oo = orig.items.find(x => x.id === o.id);
+      const oo = orig[c].find(x => x.id === o.id);
       const hw = oo.w / 2, hd = oo.d / 2;
       // зафиксированная противоположная сторона
       const fx = -h.sx * hw, fy = -h.sy * hd;
@@ -599,13 +606,13 @@ const Tools = {
       else { st.pts.push(q); Tools.input = ''; UI.setInput(''); App.redraw(); }
       return;
     }
-    if ((t === 'room' || (t === 'area' && Tools.opts.areaRect)) && st.a) {
+    if ((t === 'room' || t === 'roof' || (t === 'area' && Tools.opts.areaRect)) && st.a) {
       const m = s.toLowerCase().replace(/\s+/g, ' ').split(/[x×х*; ]+/).filter(Boolean);
       if (m.length !== 2) { UI.toast('Введите размеры как 400x300', 'err'); return; }
       const W = U.parseLen(m[0]), H = U.parseLen(m[1]);
       if (!(W > 0 && H > 0)) { UI.toast('Не понял размеры', 'err'); return; }
       const b = { x: st.a.x + W, y: st.a.y + H };
-      if (t === 'room') Tools.roomFinish(st.a, b); else Tools.areaRectFinish(st.a, b);
+      if (t === 'room' || t === 'roof') Tools.roomFinish(st.a, b); else Tools.areaRectFinish(st.a, b);
       return;
     }
     UI.toast('Сначала укажите начальную точку на плане');
@@ -620,6 +627,13 @@ const Tools = {
   roomFinish(a, b) {
     if (Math.abs(a.x - b.x) < 20 || Math.abs(a.y - b.y) < 20) { Tools.st = {}; App.redraw(); return; }
     const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+    if (Tools.cur === 'roof') {
+      let w = x1 - x0, d = y1 - y0, rot = 0;
+      if (d > w) { [w, d] = [d, w]; rot = 90; }
+      Tools.st = {};
+      App.addRoof({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, w, d, rot });
+      return;
+    }
     const c = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
     const d = Tools.wallDefaults();
     for (let i = 0; i < 4; i++) Model.add('walls', { ...d, a: { ...c[i] }, b: { ...c[(i + 1) % 4] } });
@@ -658,7 +672,7 @@ const Tools = {
     const op = { ...pv.op }; delete op.id;
     // пересечение с существующими проёмами
     const g0 = [op.pos - op.w / 2, op.pos + op.w / 2];
-    for (const o2 of App.doc.openings) if (o2.wall === op.wall) {
+    for (const o2 of App.V.openings) if (o2.wall === op.wall) {
       if (o2.pos + o2.w / 2 > g0[0] && o2.pos - o2.w / 2 < g0[1]) { UI.toast('Здесь уже есть проём', 'err'); return; }
     }
     const obj = Model.add('openings', op);
@@ -781,7 +795,7 @@ const Tools = {
   wallSnapItem(p, it, rotate = true) {
     let best = null, bd = Infinity;
     const lim = Math.max(it.d / 2, 10) + 30 / View.scale;
-    for (const w of App.doc.walls) {
+    for (const w of App.V.walls) {
       if (w.kind === 'fence') continue;
       const pr = G.proj(p, w.a, w.b);
       if (pr.t < 0 || pr.t > 1) continue;
@@ -850,7 +864,7 @@ const Tools = {
   /* ------------------------------ клавиатура ----------------------------- */
   key(e) {
     const t = Tools.cur, st = Tools.st;
-    const drawing = ((t === 'wall' && st.last) || ((t === 'line' || t === 'road') && st.pts) || (t === 'area' && (st.pts || st.a)) || (t === 'room' && st.a) || (t === 'measure' && st.pts));
+    const drawing = ((t === 'wall' && st.last) || ((t === 'line' || t === 'road') && st.pts) || (t === 'area' && (st.pts || st.a)) || ((t === 'room' || t === 'roof') && st.a) || (t === 'measure' && st.pts));
     if (drawing && /^[0-9.,xх×*мmсcм ]$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !(e.key === ' ' && !Tools.input)) {
       Tools.input += e.key; UI.setInput(Tools.input); e.preventDefault(); return true;
     }
@@ -903,6 +917,14 @@ const Tools = {
         }
       }
       Tools.drawSnapMark(env, q);
+    } else if (t === 'roof') {
+      const q = st.a ? st.b : Tools.snap(cur, e, {});
+      if (st.a && st.b) {
+        const r = [{ x: st.a.x, y: st.a.y }, { x: st.b.x, y: st.a.y }, { x: st.b.x, y: st.b.y }, { x: st.a.x, y: st.b.y }];
+        Render.polyPath(ctx, r); ctx.fillStyle = C.accentSoft; ctx.fill(); ctx.setLineDash([8 * px, 4 * px]); ctx.stroke(); ctx.setLineDash([]);
+        lenLabel(r[0], r[1]); lenLabel(r[1], r[2]);
+      }
+      Tools.drawSnapMark(env, q);
     } else if (t === 'room') {
       const q = st.a ? st.b : Tools.snap(cur, e, {});
       if (st.a && st.b) {
@@ -920,11 +942,11 @@ const Tools = {
       const pv = Tools.openingPreview(cur);
       if (pv && pv.op) {
         const tmp = pv.op;
-        App.doc.openings.push(tmp);
+        App.V.openings.push(tmp);
         ctx.globalAlpha = 0.8;
         Render.opening(env, tmp);
         ctx.globalAlpha = 1;
-        App.doc.openings.pop();
+        App.V.openings.pop();
         const g = Model.opGeom(tmp);
         if (g) {
           Render.polyPath(ctx, [G.add(g.a, G.mul(g.n, g.th / 2)), G.add(g.b, G.mul(g.n, g.th / 2)), G.sub(g.b, G.mul(g.n, g.th / 2)), G.sub(g.a, G.mul(g.n, g.th / 2))]);
@@ -1122,7 +1144,7 @@ const Input = {
       return;
     }
     // протяжка прямоугольника (комната/зона) завершается отпусканием кнопки
-    if ((Tools.cur === 'room' || (Tools.cur === 'area' && Tools.st.rect)) && Tools.st.a) Tools.st.dragged = G.dist(View.toScreen(Tools.st.a), sp) > 8;
+    if ((Tools.cur === 'room' || Tools.cur === 'roof' || (Tools.cur === 'area' && Tools.st.rect)) && Tools.st.a) Tools.st.dragged = G.dist(View.toScreen(Tools.st.a), sp) > 8;
     Tools.up(e, sp, View.toWorld(sp));
   },
   wheel(e) {

@@ -94,28 +94,52 @@ const Render = {
     Render._blk = null;
     env.view = { x0: env.ox, y0: env.oy, x1: env.ox + env.w / env.scale, y1: env.oy + env.h / env.scale };
 
+    // имена слоёв — для векторного экспорта (SVG/DXF)
+    const lay = (n) => { if (ctx.setLayer) ctx.setLayer(n); };
+    lay('GRID');
     if (L.grid && (!env.exporting || env.printGrid)) Render.grid(env);
     const u = App.doc.underlay;
+    lay('UNDERLAY');
     if (L.underlay && u && u.visible && !u.front) Render.underlay(env);
-    if (L.site) { Render.areas(env); Render.roads(env); }
-    if (L.heat && App.heat) Render.heat(env);
+    // нижний этаж — бледной подсказкой, чтобы стены совпадали
+    const fi = Model.floorIdx(App.floor);
+    if (fi > 0 && L.lower !== false) Render.ghostFloor(env, App.doc.floors[fi - 1].id);
+    lay('SITE');
+    if (L.site) { Render.areas(env); lay('ROADS'); Render.roads(env); }
+    if (L.heat && App.heat && !ctx.isVector) Render.heat(env);
+    lay('ROOMS');
     if (L.rooms) Render.roomFills(env);
-    if (L.shadows) Render.shadows(env);
-    const items = App.doc.items.filter(it => L[catItem(it.key).layer] !== false);
+    if (L.shadows && !ctx.isVector) Render.shadows(env);
+    lay('ITEMS');
+    const items = App.V.items.filter(it => L[catItem(it.key).layer] !== false);
     const isGround = (it) => { const d = catItem(it.key); return !d.sym && (it.h <= 20 || d.shape === 'rug') && !['tree', 'conifer', 'bush'].includes(d.shape); };
     const isCanopy = (it) => ['tree', 'conifer', 'bush', 'hedge'].includes(catItem(it.key).shape);
     for (const it of items) if (isGround(it)) Render.item(env, it);
+    lay('WALLS');
     if (L.walls) Render.walls(env);
+    lay('ITEMS');
     for (const it of items) if (!isGround(it) && !isCanopy(it) && !catItem(it.key).sym) Render.item(env, it);
     for (const it of items) if (isCanopy(it)) Render.item(env, it);
+    // лестницы с нижнего этажа приходят на этот — показываем проём
+    if (fi > 0) for (const it of App.doc.items) if (it.floor === App.doc.floors[fi - 1].id && ['stairs', 'stairsL'].includes(catItem(it.key).shape)) Render.stairsFromBelow(env, it);
+    lay('NETWORKS');
     Render.lines(env);
+    lay('ITEMS');
     for (const it of items) if (catItem(it.key).sym) Render.item(env, it);
+    lay('ROOF');
+    if (L.roof !== false) for (const r of App.V.roofs) { env.ghost = r.floor !== App.floor; Roof.draw(env, r); env.ghost = false; }
+    lay('CHECKS');
+    if (L.checks !== false && typeof Checks !== 'undefined') Checks.draw(env);
+    lay('DIMS');
     if (L.walls && App.doc.settings.showWallDims) Render.wallDims(env);
-    if (L.dims) { Render.dims(env); Render.texts(env); }
+    if (L.dims) { Render.dims(env); lay('TEXT'); Render.texts(env); }
     if (L.rooms) Render.roomLabels(env);
+    lay('UNDERLAY');
     if (L.underlay && u && u.visible && u.front) Render.underlay(env);
     env.reserved = [];
+    lay('NOTES');
     if (L.notes !== false) Render.notes(env);
+    lay('LABELS');
     Render.flushLabels(env);
     env.immediate = true;
     if (!env.exporting) {
@@ -128,6 +152,34 @@ const Render = {
     }
   },
 
+  ghostFloor(env, fid) {
+    const { ctx } = env;
+    const saveV = App.V, saveRooms = App.rooms;
+    App.V = Model.viewOf(fid);
+    App.rooms = (App.floorData || []).find(x => x.floor.id === fid)?.rooms || [];
+    env.noLabels = true; env.ghost = true;
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    try {
+      if (env.layers.site) { Render.areas(env); Render.roads(env); }
+      for (const it of App.V.items) if (!catItem(it.key).sym && env.layers[catItem(it.key).layer] !== false) Render.item(env, it);
+      Render.walls(env);
+    } finally {
+      ctx.restore();
+      env.noLabels = false; env.ghost = false;
+      App.V = saveV; App.rooms = saveRooms;
+    }
+  },
+  stairsFromBelow(env, it) {
+    const { ctx, px, C } = env;
+    ctx.save();
+    ctx.globalAlpha = 0.6;
+    Render.item(env, it);
+    ctx.restore();
+    Render.polyPath(ctx, Model.itemPts(it));
+    ctx.save(); ctx.setLineDash([6 * px, 4 * px]); ctx.strokeStyle = C.accent; ctx.lineWidth = 1.4 * px; ctx.stroke(); ctx.restore();
+    Render.label(env, 'Лестница ↓ (проём)', { x: it.x, y: it.y }, 0, { size: 11, bold: true, color: C.accent, bg: true, prio: 7 });
+  },
   grid(env) {
     const { ctx, C, px } = env;
     const steps = [1, 5, 10, 50, 100, 500, 1000, 5000];
@@ -169,7 +221,7 @@ const Render = {
   areas(env) {
     const { ctx, px, C } = env;
     const order = (a) => (a.kind === 'plot' ? 0 : 1);
-    const list = [...App.doc.areas].sort((a, b) => order(a) - order(b));
+    const list = [...App.V.areas].sort((a, b) => order(a) - order(b));
     for (const a of list) {
       const k = AREA_KINDS[a.kind];
       Render.polyPath(ctx, a.pts);
@@ -208,9 +260,9 @@ const Render = {
         const title = a.name || k.name;
         const areaTxt = a.kind === 'plot' ? `${(ar / 1e6).toFixed(2)} сот. · ${(ar / 1e4).toFixed(1)} м²` : U.fmtArea(ar);
         const blk = Render._blk || (Render._blk = Render._itemBlockers());
-        const smaller = App.doc.areas.filter(o => o !== a && Math.abs(G.polyArea(o.pts)) < ar);
+        const smaller = App.V.areas.filter(o => o !== a && Math.abs(G.polyArea(o.pts)) < ar);
         const blocked = (p) => App.rooms.some(r => G.pointInPoly(p, r.axis)) || Render._inBlk(p, blk) || smaller.some(o => G.pointInPoly(p, o.pts))
-          || App.doc.walls.some(w => w.kind !== 'fence' && G.distSeg(p, w.a, w.b) < w.th / 2 + 30);
+          || App.V.walls.some(w => w.kind !== 'fence' && G.distSeg(p, w.a, w.b) < w.th / 2 + 30);
         const spots = Render.freeSpots(a.pts, lp, blocked);
         const main = spots.length ? spots[0] : lp;
         Render.label(env, [title, areaTxt], main, 0, { color: k.stroke, size: 12, bold: true, prio: a.kind === 'plot' ? 8 : 4, alts: spots.slice(1), must: a.kind === 'plot' });
@@ -225,8 +277,8 @@ const Render = {
     ctx.save();
     ctx.lineJoin = 'round'; ctx.lineCap = 'butt';
     // 1) бордюры (чуть шире), 2) покрытие — так соседние дороги сливаются без швов
-    for (const r of App.doc.roads) { const k = ROAD_KINDS[r.kind]; path(r); ctx.strokeStyle = k.edge; ctx.lineWidth = r.width + 3 * px; ctx.stroke(); }
-    for (const r of App.doc.roads) {
+    for (const r of App.V.roads) { const k = ROAD_KINDS[r.kind]; path(r); ctx.strokeStyle = k.edge; ctx.lineWidth = r.width + 3 * px; ctx.stroke(); }
+    for (const r of App.V.roads) {
       const k = ROAD_KINDS[r.kind];
       path(r); ctx.strokeStyle = dark ? k.fillDark : k.fill; ctx.lineWidth = r.width; ctx.stroke();
       if (k.center && r.width * env.scale > 14) {
@@ -241,7 +293,7 @@ const Render = {
     }
     ctx.restore();
     // подписи вдоль самого длинного участка
-    for (const r of App.doc.roads) {
+    for (const r of App.V.roads) {
       const k = ROAD_KINDS[r.kind];
       let best = 0, bi = 0;
       for (let i = 0; i < r.pts.length - 1; i++) { const L = G.dist(r.pts[i], r.pts[i + 1]); if (L > best) { best = L; bi = i; } }
@@ -296,7 +348,7 @@ const Render = {
     return res.slice(0, n);
   },
   _itemBlockers() {
-    return App.doc.items.filter(it => { const d = catItem(it.key); return d.shape !== 'rug' && (it.h > 0 || d.sym); })
+    return App.V.items.filter(it => { const d = catItem(it.key); return d.shape !== 'rug' && (it.h > 0 || d.sym); })
       .map(it => { const s = Tools.itemDrawSize(it); const pts = G.rectPts(it.x, it.y, s.w + 10, s.d + 10, it.rot); return { pts, bb: G.bbox(pts) }; });
   },
   _inBlk(p, list) { return list.some(o => p.x >= o.bb.x0 && p.x <= o.bb.x1 && p.y >= o.bb.y0 && p.y <= o.bb.y1 && G.pointInPoly(p, o.pts)); },
@@ -378,7 +430,7 @@ const Render = {
     return end === 'a' ? { p: plus, m: minus } : { p: minus, m: plus };
   },
   endCache() {
-    const walls = App.doc.walls.filter(w => w.kind !== 'fence');
+    const walls = App.V.walls.filter(w => w.kind !== 'fence');
     const map = new Map();
     const key = (p) => Math.round(p.x) + ',' + Math.round(p.y);
     for (const w of walls) for (const e of ['a', 'b']) {
@@ -403,7 +455,7 @@ const Render = {
     if (L < 0.5) return [];
     const u = Model.wallDir(w), n = G.perp(u), t = w.th / 2;
     const ea = Render.wallEnd(w, 'a', cache), eb = Render.wallEnd(w, 'b', cache);
-    const ops = App.doc.openings.filter(o => o.wall === w.id).map(o => Model.opGeom(o)).filter(Boolean)
+    const ops = App.V.openings.filter(o => o.wall === w.id).map(o => Model.opGeom(o)).filter(Boolean)
       .map(g => [g.pos - g.width / 2, g.pos + g.width / 2]).sort((a, b) => a[0] - b[0]);
     const cuts = [];
     let s = 0;
@@ -450,6 +502,7 @@ const Render = {
       case 'hlines': L([0, 4, 12, 4]); L([0, 10, 12, 10]); break;
       case 'stone': L([0, 4, 5, 2, 12, 5]); L([0, 10, 4, 12]); L([5, 12, 7, 7, 12, 9]); L([7, 7, 5, 2]); break;
     }
+    cv.__color = dark ? M.dark : M.color;   // запасной цвет для векторного экспорта
     Render._tiles.set(ck, cv);
     return cv;
   },
@@ -467,7 +520,7 @@ const Render = {
   walls(env) {
     const { ctx, px, C } = env;
     const cache = Render.endCache();
-    const solid = App.doc.walls.filter(w => w.kind !== 'fence');
+    const solid = App.V.walls.filter(w => w.kind !== 'fence');
     const pieces = solid.map(w => ({ w, polys: Render.wallPieces(w, cache) }));
     // 1) контур
     ctx.strokeStyle = C.wallStroke; ctx.lineWidth = 2.4 * px; ctx.lineJoin = 'miter';
@@ -500,9 +553,9 @@ const Render = {
     }
     ctx.lineJoin = 'round';
     // заборы
-    for (const w of App.doc.walls) if (w.kind === 'fence') Render.fence(env, w);
+    if (env.layers.fence !== false) for (const w of App.V.walls) if (w.kind === 'fence') Render.fence(env, w);
     // проёмы
-    for (const op of App.doc.openings) Render.opening(env, op);
+    for (const op of App.V.openings) Render.opening(env, op);
   },
   fence(env, w) {
     const { ctx, px } = env;
@@ -522,7 +575,7 @@ const Render = {
       ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
     }
     // проёмы (калитки/ворота) в заборе
-    for (const op of App.doc.openings) if (op.wall === w.id) {
+    for (const op of App.V.openings) if (op.wall === w.id) {
       const g = Model.opGeom(op);
       ctx.strokeStyle = env.exporting ? '#fff' : env.C.bg; ctx.lineWidth = w.th + 4 * px;
       ctx.beginPath(); ctx.moveTo(g.a.x, g.a.y); ctx.lineTo(g.b.x, g.b.y); ctx.stroke();
@@ -622,7 +675,7 @@ const Render = {
   },
   wallDims(env) {
     const { px, C } = env;
-    for (const w of App.doc.walls) {
+    for (const w of App.V.walls) {
       const L = Model.wallLen(w);
       if (L * env.scale < 60 || w.kind === 'fence') continue;
       const u = Model.wallDir(w), n = G.perp(u), m = G.mid(w.a, w.b);
@@ -663,7 +716,7 @@ const Render = {
   lines(env) {
     const { ctx, px } = env;
     const L = env.layers;
-    for (const l of App.doc.lines) {
+    for (const l of App.V.lines) {
       const k = LINE_KINDS[l.kind];
       if (L[k.layer] === false) continue;
       const color = l.color || k.color;
@@ -718,11 +771,11 @@ const Render = {
     Render.label(env, text ?? U.fmtLen(G.dist(a, b)), m, ang, { size: 11, color, bg: true, pad: 2, prio: 7, alts: [G.add(m, du), G.sub(m, du), G.add(m, G.mul(n, (off >= 0 ? 12 : -12) * px))] });
   },
   dims(env) {
-    for (const d of App.doc.dims) Render.dimLine(env, d.a, d.b, d.off || 0, d.text || null, Theme.C.dim);
+    for (const d of App.V.dims) Render.dimLine(env, d.a, d.b, d.off || 0, d.text || null, Theme.C.dim);
   },
   texts(env) {
     const { ctx, px, C } = env;
-    for (const t of App.doc.texts) {
+    for (const t of App.V.texts) {
       const size = t.size || 30;
       ctx.save();
       ctx.translate(t.x, t.y); ctx.rotate(U.rad(t.rot || 0));
@@ -739,7 +792,7 @@ const Render = {
       Обычные подписи попадают в очередь и размещаются без наложений (по приоритету);
       в режиме env.immediate (выделение, инструменты) — рисуются сразу. */
   label(env, text, p, ang = 0, o = {}) {
-    if (!text || (Array.isArray(text) && !text.length)) return;
+    if (!text || (Array.isArray(text) && !text.length) || env.noLabels) return;
     if (env.immediate || o.force || !env.labels) { Render._drawLabel(env, text, p, ang, o, Render._labelBox(env, text, p, ang, o)); return; }
     env.labels.push({ text, p, ang, o, prio: o.prio ?? 1, seq: env.labels.length });
   },
@@ -830,7 +883,7 @@ const Render = {
   notes(env) {
     const { ctx, C } = env;
     const rects = [];
-    const notes = App.doc.notes;
+    const notes = App.V.notes;
     const f = env.fs || 1;
     ctx.save();
     ctx.setTransform(env.dpr * f, 0, 0, env.dpr * f, 0, 0);
@@ -882,6 +935,7 @@ const Render = {
         if (def.sym) { const k = Math.max(1, def.sym / Math.max(w, d)); w *= k; d *= k; }
         Render.polyPath(ctx, G.rectPts(o.x, o.y, w + 4 * px, d + 4 * px, o.rot)); ctx.stroke();
       }
+      else if (c === 'roofs') { Render.polyPath(ctx, G.rectPts(o.x, o.y, o.w + 4 * px, o.d + 4 * px, o.rot || 0)); ctx.stroke(); }
       else if (c === 'lines') { ctx.lineWidth = 6 * px; ctx.strokeStyle = C.accentSoft; ctx.setLineDash([]); Render.polyPath(ctx, o.pts, false); ctx.stroke(); }
       else if (c === 'areas') { Render.polyPath(ctx, o.pts); ctx.lineWidth = 2.5 * px; ctx.stroke(); }
       else if (c === 'openings') { const g = Model.opGeom(o); if (g) { Render.polyPath(ctx, [G.add(g.a, G.mul(g.n, g.th / 2 + 3 * px)), G.add(g.b, G.mul(g.n, g.th / 2 + 3 * px)), G.sub(g.b, G.mul(g.n, g.th / 2 + 3 * px)), G.sub(g.a, G.mul(g.n, g.th / 2 + 3 * px))]); ctx.fillStyle = C.accentSoft; ctx.fill(); ctx.stroke(); } }
@@ -925,7 +979,7 @@ const Render = {
   /** Грани стен как отрезки — для измерения расстояний */
   wallFaces() {
     const segs = [];
-    for (const w of App.doc.walls) {
+    for (const w of App.V.walls) {
       if (w.kind === 'fence') continue;
       const r = Model.wallRect(w);
       for (let i = 0; i < 4; i++) segs.push([r[i], r[(i + 1) % 4], w.id]);

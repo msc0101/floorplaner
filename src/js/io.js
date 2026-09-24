@@ -92,7 +92,7 @@ const IO = {
     const cx = (region.x0 + region.x1) / 2, cy = (region.y0 + region.y1) / 2;
     const prevC = Theme.C;
     Theme.C = Theme.light;
-    const layers = { ...App.doc.settings.layers, grid: !!o.grid };
+    const layers = { ...App.doc.settings.layers, grid: !!o.grid, ...(o.drawing ? { lower: false, checks: false, shadows: false, heat: false } : {}), ...(o.planOnly ? { site: false, siteobj: false, fence: false, roof: false } : {}) };
     try {
       Render.draw({ ctx, w: cv.width, h: cv.height, dpr: 1, fs: o.fs || 1, scale, ox: cx - cv.width / 2 / scale, oy: cy - cv.height / 2 / scale, C: Theme.light, exporting: true, printGrid: !!o.grid, layers });
       // компас и масштабная линейка
@@ -118,7 +118,67 @@ const IO = {
   },
 
   /* -------------------------------- печать ------------------------------- */
+  /** Листы комплекта чертежей: генплан (если есть участок) + план каждого этажа с размерами */
+  drawingSheets(o = {}, N = 100) {
+    const out = [];
+    const d = App.doc, ground = d.floors[0];
+    if (d.areas.length || d.roads.length) out.push({ fid: ground.id, region: IO.regionFor('all'), dims: false, title: 'Генплан участка', note: 'Схема планировочной организации участка' });
+    for (const f of d.floors) {
+      if (!Model.viewOf(f.id).walls.some(w => w.kind !== 'fence')) continue;
+      out.push({ fid: f.id, region: Drawing.regionFor(f.id), dims: true, title: Drawing.sheetTitle(f), note: `Отметка чистого пола ${f.elev >= 0 ? '+' : ''}${(f.elev / 100).toFixed(3)}` });
+    }
+    // ширина листа — не меньше штампа (185 мм)
+    const minW = 200 * N / 10;
+    for (const s of out) { const w = s.region.x1 - s.region.x0; if (w < minW) { s.region.x0 -= (minW - w) / 2; s.region.x1 += (minW - w) / 2; } }
+    return out;
+  },
+  /** Печать комплекта чертежей: каждый лист — отдельная страница со штампом */
+  printDrawings(o) {
+    const sizes = { A4: [297, 210], A3: [420, 297], A2: [594, 420] };
+    let [PW, PH] = sizes[o.paper] || sizes.A4;
+    if (o.orient === 'portrait') [PW, PH] = [PH, PW];
+    const M = 10, headH = 0, tbH = 42;
+    const boxW = PW - M - 20, boxH = PH - 2 * M - tbH - headH;
+    let sheets = IO.drawingSheets(o);
+    if (!sheets.length) { UI.toast('Нечего печатать: нарисуйте стены или участок', 'err'); return; }
+    // масштаб: общий для планов этажей и отдельный для генплана (выбранный — если помещается)
+    const std = [20, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 2000];
+    const need = (list) => Math.max(1, ...list.map(s => Math.max((s.region.x1 - s.region.x0) * 10 / boxW, (s.region.y1 - s.region.y0) * 10 / boxH)));
+    const pick = (list) => { const n = need(list); if (o.scale !== 'fit' && +o.scale >= n) return +o.scale; return std.find(x => x >= n) || Math.ceil(n); };
+    const plans = sheets.filter(s => s.dims), site = sheets.filter(s => !s.dims);
+    const Nplan = plans.length ? pick(plans) : 100, Nsite = site.length ? pick(site) : 100;
+    const minW = 200 * Math.max(Nplan, Nsite) / 10;
+    void minW;
+    sheets = IO.drawingSheets(o, Nplan).map(s => ({ ...s, N: s.dims ? Nplan : Nsite }));
+    const area = $('printArea');
+    area.textContent = '';
+    area.append(U.el('style', {}, `@page { size: ${PW}mm ${PH}mm; margin: 0; }`));
+    const dpmm = o.paper === 'A2' ? 5 : 7;
+    const date = new Date().toLocaleDateString('ru-RU');
+    sheets.forEach((sh, i) => {
+      const N = sh.N;
+      const cx = (sh.region.x0 + sh.region.x1) / 2, cy = (sh.region.y0 + sh.region.y1) / 2;
+      const reg = { x0: cx - boxW * N / 20, x1: cx + boxW * N / 20, y0: cy - boxH * N / 20, y1: cy + boxH * N / 20 };
+      const draw = () => IO.renderRegion(reg, boxW * dpmm, boxH * dpmm, { ...o, drawing: true, planOnly: sh.dims, fs: dpmm / 4 });
+      const { canvas } = Drawing.onFloor(sh.fid, () => sh.dims ? Drawing.withAutoDims(sh.fid, draw) : draw());
+      const tb = U.el('table', { class: 'tblock' },
+        U.el('tr', {}, U.el('td', { colspan: 3, class: 'tb-proj' }, App.doc.name || 'Проект')),
+        U.el('tr', {}, U.el('td', { rowspan: 2, class: 'tb-sheet' }, sh.title, U.el('div', { class: 'tb-note' }, sh.note || '')), U.el('td', { class: 'tb-h' }, 'Масштаб'), U.el('td', { class: 'tb-h' }, 'Лист')),
+        U.el('tr', {}, U.el('td', {}, '1:' + N), U.el('td', {}, `${i + 1} / ${sheets.length}`)),
+        U.el('tr', {}, U.el('td', { colspan: 3, class: 'tb-date' }, `Floorplaner · ${date}`)));
+      area.append(U.el('div', { class: 'sheet drawing', style: { width: PW + 'mm', height: PH + 'mm' } },
+        U.el('div', { class: 'dframe', style: { left: '20mm', top: M + 'mm', width: (PW - 20 - M) + 'mm', height: (PH - 2 * M) + 'mm' } },
+          U.el('img', { src: canvas.toDataURL('image/png'), style: { width: (boxW - 2) + 'mm', height: (boxH - 2) + 'mm', margin: '1mm' }, alt: sh.title }),
+          tb)));
+    });
+    if (o.expl || o.spec || o.legend || App.doc.notes.length) area.append(IO.reportSheet(PW, PH, M, o));
+    document.body.classList.add('printing');
+    const done = () => { document.body.classList.remove('printing'); area.textContent = ''; window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    setTimeout(() => window.print(), 150);
+  },
   print(o) {
+    if (o.drawing) return IO.printDrawings(o);
     const sizes = { A4: [297, 210], A3: [420, 297], A2: [594, 420] };
     let [PW, PH] = sizes[o.paper] || sizes.A4;
     if (o.orient === 'portrait') [PW, PH] = [PH, PW];
@@ -276,7 +336,7 @@ const IO = {
     // котельная
     I('gasBoilerWall', 1520, 1230, 0); I('indirect', 1630, 1280); I('panel', 1677.5, 1420, 90); I('riser', 1435, 1215);
     // прихожая
-    I('hallWardrobe', 1560, 1775, 180); I('shoeRack', 1240, 1520, 0);
+    I('hallWardrobe', 1405, 1775, 180); I('shoeRack', 1240, 1520, 0);
     // радиаторы под окнами
     I('radiatorLong', 925, 2080, 180); I('radiator', 1425, 2080, 180); I('radiator', 720, 1875, -90); I('radiator', 720, 1425, -90); I('radiator', 925, 1220, 0);
     // электрика
@@ -297,6 +357,21 @@ const IO = {
     Ln('power', [[1680, 1420], [1800, 1420], [1800, 800], [1900, 800]], { depth: 70 });
     Ln('heating', [[1520, 1240], [1520, 1480], [1140, 1480], [1140, 2070], [930, 2070]]);
     Ln('drain', [[680, 2140], [680, 2250], [250, 2250], [250, 3600]]);
+    // лестница на мансарду (из прихожей) и мансарда
+    I('stairs', 1638, 1650, 0, { w: 90, d: 280, h: 300 });
+    const f2 = { id: 'f2', name: 'Мансарда', elev: 300, h: 280 };
+    d.floors.push(f2);
+    // низкие стенки у карнизов (140 см) и полновысотные фронтоны
+    const W2 = (a, b, kind, extra = {}) => W(a, b, kind, { floor: 'f2', h: 250, ...extra });
+    const knee = { ...ext, h: 140 }, gableW = { ...ext, h: 280 };
+    const t2 = W2([700, 1200], [1700, 1200], 'ext', knee), r2 = W2([1700, 1200], [1700, 2100], 'ext', gableW), b2 = W2([1700, 2100], [700, 2100], 'ext', knee), l2 = W2([700, 2100], [700, 1200], 'ext', gableW);
+    W2([1150, 1200], [1150, 2100], 'part'); W2([1150, 1500], [1700, 1500], 'part');
+    O(l2, 'win2', 450, 100, { h: 120, sill: 80 }); O(r2, 'win2', 450, 100, { h: 120, sill: 80 });
+    void t2; void b2;
+    d.roomTags.push({ id: U.uid('t'), x: 925, y: 1650, name: 'Спальня 2', living: true, floor: 'f2' }, { id: U.uid('t'), x: 1420, y: 1350, name: 'Кабинет', living: true, floor: 'f2' }, { id: U.uid('t'), x: 1420, y: 1850, name: 'Холл', floor: 'f2' });
+    d.items.push({ id: U.uid('i'), key: 'bed160', x: 925, y: 1500, w: 170, d: 215, h: 50, rot: 0, floor: 'f2' }, { id: U.uid('i'), key: 'desk', x: 1300, y: 1250, w: 120, d: 60, h: 75, rot: 0, floor: 'f2' });
+    // крыша: двускатная над домом, конёк вдоль длинной стороны
+    d.roofs.push({ id: U.uid('rf'), floor: 'f2', type: 'gable', pitch: 38, mat: 'metaltile', base: 440, x: 1200, y: 1650, w: 1120, d: 1020, rot: 0 });
     // размеры дома
     d.dims.push({ id: U.uid('d'), a: { x: 685, y: 1185 }, b: { x: 1715, y: 1185 }, off: -70 });
     d.dims.push({ id: U.uid('d'), a: { x: 1715, y: 1185 }, b: { x: 1715, y: 2115 }, off: -180 });
