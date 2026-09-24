@@ -20,7 +20,7 @@ const Model = {
         layers: Object.fromEntries(LAYERS.map(l => [l.id, !['heat', 'shadows'].includes(l.id)])),
       },
       defaults: {
-        wall: U.clone(Object.fromEntries(Object.entries(WALL_KINDS).map(([k, v]) => [k, { th: v.th, h: v.h }]))),
+        wall: U.clone(Object.fromEntries(Object.entries(WALL_KINDS).map(([k, v]) => [k, { th: v.th, h: v.h, mat: v.mat }]))),
       },
       areas: [], roads: [], walls: [], openings: [], items: [], lines: [], dims: [], texts: [], roomTags: [], notes: [],
       underlay: null,
@@ -43,7 +43,14 @@ const Model = {
     for (const c of COLLECTIONS) d[c] = Array.isArray(raw[c]) ? raw[c].filter(o => o && typeof o === 'object').map(o => ({ ...o, id: o.id || U.uid() })) : [];
     // валидация
     d.walls = d.walls.filter(w => w.a && w.b && U.isNum(w.a.x) && U.isNum(w.b.x));
-    for (const w of d.walls) { w.kind = WALL_KINDS[w.kind] ? w.kind : 'ext'; w.th = U.isNum(w.th) ? w.th : WALL_KINDS[w.kind].th; w.h = U.isNum(w.h) ? w.h : WALL_KINDS[w.kind].h; }
+    for (const [k, v] of Object.entries(d.defaults.wall)) if (!materialsFor(k)[v.mat]) v.mat = WALL_KINDS[k].mat;
+    for (const w of d.walls) {
+      w.kind = WALL_KINDS[w.kind] ? w.kind : 'ext';
+      w.th = U.isNum(w.th) && w.th > 0 ? w.th : WALL_KINDS[w.kind].th;
+      w.h = U.isNum(w.h) ? w.h : WALL_KINDS[w.kind].h;
+      if (!materialsFor(w.kind)[w.mat]) w.mat = d.defaults.wall[w.kind].mat || WALL_KINDS[w.kind].mat;
+      if (U.isNum(w.ins) && w.ins > 0 && w.kind !== 'fence') w.ins = Math.min(w.ins, w.th - 1); else delete w.ins;
+    }
     const wallIds = new Set(d.walls.map(w => w.id));
     d.openings = d.openings.filter(o => wallIds.has(o.wall));
     for (const o of d.openings) { const t = OPENING_TYPES[o.type] || OPENING_TYPES.door; o.type = OPENING_TYPES[o.type] ? o.type : 'door'; o.w = o.w || t.w; o.h = o.h || t.h; o.sill = o.sill ?? t.sill; o.side = o.side === -1 ? -1 : 1; o.hinge = o.hinge ? 1 : 0; }

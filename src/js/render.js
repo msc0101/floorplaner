@@ -416,6 +416,54 @@ const Render = {
       return [sp, ep, em, sm];
     });
   },
+  /* ------------------------ штриховки материалов ------------------------ */
+  _tiles: new Map(),
+  /** Плитка штриховки 12×12 «экранных» px; рисуется с плотностью d (px устройства на экранный px) */
+  matTile(key, dark, d) {
+    const ck = key + (dark ? ':d:' : ':l:') + d;
+    if (Render._tiles.has(ck)) return Render._tiles.get(ck);
+    const M = key === 'insulation' ? { color: '#f7e89a', dark: '#6e6534', pat: 'ins' } : WALL_MATERIALS[key];
+    if (!M) return null;
+    const S = 12, cv = document.createElement('canvas');
+    cv.width = cv.height = Math.max(1, Math.round(S * d));
+    const c = cv.getContext('2d');
+    c.scale(cv.width / S, cv.height / S);
+    c.fillStyle = dark ? M.dark : M.color; c.fillRect(0, 0, S, S);
+    const ink = dark ? 'rgba(255,255,255,.5)' : 'rgba(35,38,45,.6)';
+    c.strokeStyle = ink; c.fillStyle = ink; c.lineWidth = 0.8; c.lineCap = 'round';
+    const L = (pts) => { c.beginPath(); c.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) c.lineTo(pts[i], pts[i + 1]); c.stroke(); };
+    const dot = (x, y, r = 0.75) => { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill(); };
+    const diag = (step) => { for (let k = -S; k <= 2 * S; k += step) L([k, 0, k - S, S]); };
+    switch (M.pat) {
+      case 'diag': diag(6); break;
+      case 'diag2': diag(4); break;
+      case 'grid': diag(6); for (let k = -S; k <= 2 * S; k += 6) L([k - S, 0, k, S]); break;
+      case 'dots': dot(3, 3); dot(9, 9); break;
+      case 'dots2': dot(2, 2); dot(8, 5); dot(5, 10); break;
+      case 'dots3': diag(12); dot(3, 8); dot(8, 3); dot(10, 10, 0.6); break;
+      case 'concrete': diag(12); c.beginPath(); c.moveTo(3, 3); c.lineTo(5.5, 3); c.lineTo(4.2, 5.2); c.closePath(); c.fill(); dot(9, 8); dot(7.5, 2.5, 0.6); dot(2.5, 9.5, 0.6); break;
+      case 'circles': c.beginPath(); c.arc(3.5, 3.5, 1.6, 0, Math.PI * 2); c.stroke(); c.beginPath(); c.arc(9, 9, 1.3, 0, Math.PI * 2); c.stroke(); break;
+      case 'dash': L([1, 2, 4, 3]); L([7, 7, 10, 6]); L([2, 9, 3, 11]); L([8, 1, 9, 3.5]); break;
+      case 'wood': c.beginPath(); c.moveTo(0, 3); c.quadraticCurveTo(3, 1, 6, 3); c.quadraticCurveTo(9, 5, 12, 3); c.moveTo(0, 9); c.quadraticCurveTo(3, 7, 6, 9); c.quadraticCurveTo(9, 11, 12, 9); c.stroke(); break;
+      case 'zigzag': case 'ins': L([0, 9, 3, 3, 6, 9, 9, 3, 12, 9]); break;
+      case 'gkl': L([5, 6, 7, 6]); L([6, 5, 6, 7]); break;
+      case 'hlines': L([0, 4, 12, 4]); L([0, 10, 12, 10]); break;
+      case 'stone': L([0, 4, 5, 2, 12, 5]); L([0, 10, 4, 12]); L([5, 12, 7, 7, 12, 9]); L([7, 7, 5, 2]); break;
+    }
+    Render._tiles.set(ck, cv);
+    return cv;
+  },
+  /** Заливка-штриховка материала для текущего env (плитка привязана к экранным пикселям) */
+  matFill(env, key) {
+    const dark = !env.exporting && Theme.isDark();
+    const d = env.dpr * (env.fs || 1);
+    const tile = Render.matTile(key, dark, d);
+    if (!tile) return null;
+    const pat = env.ctx.createPattern(tile, 'repeat');
+    const k = 1 / (env.scale * env.dpr);
+    if (pat.setTransform && typeof DOMMatrix !== 'undefined') pat.setTransform(new DOMMatrix([k, 0, 0, k, 0, 0]));
+    return pat;
+  },
   walls(env) {
     const { ctx, px, C } = env;
     const cache = Render.endCache();
@@ -424,11 +472,31 @@ const Render = {
     // 1) контур
     ctx.strokeStyle = C.wallStroke; ctx.lineWidth = 2.4 * px; ctx.lineJoin = 'miter';
     for (const { polys } of pieces) for (const poly of polys) { Render.polyPath(ctx, poly); ctx.stroke(); }
-    // 2) заливка
+    // 2) заливка: издалека — сплошной цвет по типу стены, вблизи — штриховка материала
+    const fills = new Map();
     for (const { w, polys } of pieces) {
-      const fill = w.kind === 'ext' ? C.wallExt : w.kind === 'int' ? C.wallInt : C.wallPart;
+      const detailed = App.doc.settings.wallHatch !== false && w.th * env.scale / (env.fs || 1) >= 6 && WALL_MATERIALS[w.mat];
+      let fill = w.kind === 'ext' ? C.wallExt : w.kind === 'int' ? C.wallInt : C.wallPart;
+      if (detailed) { if (!fills.has(w.mat)) fills.set(w.mat, Render.matFill(env, w.mat)); fill = fills.get(w.mat) || fill; }
       ctx.fillStyle = fill; ctx.strokeStyle = fill; ctx.lineWidth = 0.6 * px;
-      for (const poly of polys) { Render.polyPath(ctx, poly); ctx.fill(); ctx.stroke(); }
+      for (const poly of polys) { Render.polyPath(ctx, poly); ctx.fill(); if (!detailed) ctx.stroke(); }
+      // утеплитель — полоса с наружной стороны
+      if (w.ins > 0 && w.kind !== 'fence') {
+        const u = Model.wallDir(w), n = G.perp(u), m = G.mid(w.a, w.b);
+        const outSide = Rooms.at(G.add(m, G.mul(n, w.th / 2 + 15))) && !Rooms.at(G.sub(m, G.mul(n, w.th / 2 + 15))) ? -1 : 1;
+        const ins = Math.min(w.ins, w.th);
+        ctx.fillStyle = detailed ? (Render.matFill(env, 'insulation') || '#f7e89a') : (Theme.isDark() && !env.exporting ? '#6e6534' : '#f2dc6a');
+        for (const [sp, ep, em, sm] of polys) {
+          const band = outSide > 0 ? [sp, ep, G.sub(ep, G.mul(n, ins)), G.sub(sp, G.mul(n, ins))] : [sm, em, G.add(em, G.mul(n, ins)), G.add(sm, G.mul(n, ins))];
+          Render.polyPath(ctx, band); ctx.fill();
+        }
+        // граница утеплителя
+        ctx.strokeStyle = C.wallStroke; ctx.lineWidth = 0.7 * px;
+        for (const [sp, ep, em, sm] of polys) {
+          const [a, b] = outSide > 0 ? [G.sub(sp, G.mul(n, ins)), G.sub(ep, G.mul(n, ins))] : [G.add(sm, G.mul(n, ins)), G.add(em, G.mul(n, ins))];
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+      }
     }
     ctx.lineJoin = 'round';
     // заборы
@@ -437,13 +505,16 @@ const Render = {
     for (const op of App.doc.openings) Render.opening(env, op);
   },
   fence(env, w) {
-    const { ctx, px, C } = env;
-    const L = Model.wallLen(w), u = Model.wallDir(w), n = G.perp(u);
-    ctx.strokeStyle = C.fence; ctx.lineWidth = Math.max(1.6 * px, w.th); ctx.lineCap = 'round';
+    const { ctx, px } = env;
+    const L = Model.wallLen(w), u = Model.wallDir(w);
+    const M = FENCE_MATERIALS[w.mat] || FENCE_MATERIALS.profile;
+    ctx.strokeStyle = M.color; ctx.lineWidth = Math.max(1.8 * px, w.th); ctx.lineCap = M.dash.length ? 'butt' : 'round';
+    ctx.setLineDash(M.dash.map(v => v * px * 2));
     ctx.beginPath(); ctx.moveTo(w.a.x, w.a.y); ctx.lineTo(w.b.x, w.b.y); ctx.stroke();
+    ctx.setLineDash([]);
     ctx.lineCap = 'butt';
-    const step = 250;
-    ctx.fillStyle = C.fence;
+    const step = w.mat === 'brickF' ? 300 : 250;
+    ctx.fillStyle = M.color;
     const cnt = Math.max(1, Math.round(L / step));
     const s = Math.max(8, w.th * 2);
     for (let i = 0; i <= cnt; i++) {
@@ -453,10 +524,9 @@ const Render = {
     // проёмы (калитки/ворота) в заборе
     for (const op of App.doc.openings) if (op.wall === w.id) {
       const g = Model.opGeom(op);
-      ctx.strokeStyle = env.exporting ? '#fff' : C.bg; ctx.lineWidth = w.th + 4 * px;
+      ctx.strokeStyle = env.exporting ? '#fff' : env.C.bg; ctx.lineWidth = w.th + 4 * px;
       ctx.beginPath(); ctx.moveTo(g.a.x, g.a.y); ctx.lineTo(g.b.x, g.b.y); ctx.stroke();
     }
-    void n;
   },
   opening(env, op) {
     const g = Model.opGeom(op);

@@ -51,11 +51,55 @@ const ROAD_KINDS = {
 
 /* Виды стен */
 const WALL_KINDS = {
-  ext:   { name: 'Наружная', th: 30, h: 300 },
-  int:   { name: 'Внутренняя несущая', th: 20, h: 270 },
-  part:  { name: 'Перегородка', th: 10, h: 270 },
-  fence: { name: 'Забор', th: 5, h: 180 },
+  ext:   { name: 'Наружная', th: 30, h: 300, mat: 'aerated' },
+  int:   { name: 'Внутренняя несущая', th: 20, h: 270, mat: 'aerated' },
+  part:  { name: 'Перегородка', th: 10, h: 270, mat: 'gkl' },
+  fence: { name: 'Забор', th: 5, h: 180, mat: 'profile' },
 };
+
+/* Материалы стен.
+   lam — теплопроводность в условиях эксплуатации «Б», Вт/(м·°C) (СП 50.13330, справочно);
+   ths — типовые толщины, см; pat — штриховка на плане;
+   block — размер блока [длина, высота] см (оценка количества), brick — кирпичей на 1 м³ кладки. */
+const WALL_MATERIALS = {
+  aerated:  { name: 'Газобетон / газосиликат D500', lam: 0.14, ths: [10, 15, 20, 25, 30, 37.5, 40, 50], color: '#dde2e8', dark: '#566070', pat: 'dots', block: [60, 25] },
+  foam:     { name: 'Пенобетон D600', lam: 0.16, ths: [20, 30, 40], color: '#e0ddd5', dark: '#5f5b53', pat: 'dots2', block: [60, 30] },
+  ceramic:  { name: 'Керамический блок (поризованный)', lam: 0.17, ths: [25, 38, 44, 51], color: '#ebc3ad', dark: '#7a5646', pat: 'grid', block: [25, 21.9] },
+  brick:    { name: 'Кирпич керамический', lam: 0.70, ths: [12, 25, 38, 51, 64], color: '#eaae96', dark: '#84503c', pat: 'diag', brick: 394 },
+  silicate: { name: 'Кирпич силикатный', lam: 0.87, ths: [12, 25, 38, 51], color: '#ebe7de', dark: '#6b665b', pat: 'diag2', brick: 394 },
+  concrete: { name: 'Монолитный железобетон', lam: 2.04, ths: [15, 20, 25, 30], color: '#cbced2', dark: '#555a60', pat: 'concrete' },
+  claybl:   { name: 'Керамзитобетонный блок', lam: 0.41, ths: [19, 29, 39], color: '#d6cfc3', dark: '#5e574d', pat: 'circles', block: [39, 18.8] },
+  cinder:   { name: 'Шлакоблок', lam: 0.60, ths: [20, 39], color: '#c7c4bd', dark: '#56534c', pat: 'dots3', block: [39, 18.8] },
+  arbolit:  { name: 'Арболит', lam: 0.11, ths: [20, 30, 40], color: '#e3dac7', dark: '#5f5745', pat: 'dash', block: [50, 30] },
+  timber:   { name: 'Брус / бревно', lam: 0.18, ths: [15, 18, 20, 22, 24], color: '#e8cfa6', dark: '#7a6240', pat: 'wood' },
+  frame:    { name: 'Каркас с утеплителем', lam: 0.055, ths: [15, 20, 25, 30], color: '#f2e8c4', dark: '#6d6441', pat: 'zigzag' },
+  sip:      { name: 'СИП-панель', lam: 0.045, ths: [12, 17.4, 22.4], color: '#f3ebcf', dark: '#6f6848', pat: 'zigzag' },
+  gkl:      { name: 'Перегородка ГКЛ на каркасе', lam: 0.15, ths: [7.5, 10, 12.5, 15], color: '#f0f0f0', dark: '#62666c', pat: 'gkl' },
+  pgp:      { name: 'Пазогребневые плиты (ПГП)', lam: 0.35, ths: [8, 10], color: '#f1eee7', dark: '#666258', pat: 'hlines', block: [66.7, 50] },
+  stone:    { name: 'Камень природный', lam: 1.7, ths: [40, 50, 60], color: '#cfc7b8', dark: '#5b554b', pat: 'stone' },
+};
+/* Материалы заборов: цвет и штрих линии на плане */
+const FENCE_MATERIALS = {
+  profile: { name: 'Профлист', color: '#5f7285', dash: [] },
+  euro:    { name: 'Евроштакетник', color: '#6a84a0', dash: [5, 2] },
+  picket:  { name: 'Штакетник деревянный', color: '#8a6d4a', dash: [3, 2] },
+  wood:    { name: 'Деревянный сплошной', color: '#8b6a44', dash: [] },
+  mesh:    { name: 'Сетка-рабица', color: '#7d8a7a', dash: [7, 4] },
+  forged:  { name: 'Кованый / сварной', color: '#3f444c', dash: [1.5, 3] },
+  brickF:  { name: 'Кирпичный', color: '#b0624a', dash: [] },
+  concreteF: { name: 'Бетонный (еврозабор)', color: '#8c9096', dash: [] },
+};
+/* Утеплитель (минеральная вата), Вт/(м·°C) */
+const INSULATION_LAM = 0.045;
+function wallMaterial(w) { return (w.kind === 'fence' ? FENCE_MATERIALS : WALL_MATERIALS)[w.mat] || null; }
+function materialsFor(kind) { return kind === 'fence' ? FENCE_MATERIALS : WALL_MATERIALS; }
+/** Сопротивление теплопередаче стены, м²·°C/Вт (с учётом сопротивлений поверхностей 0.158) */
+function wallR(w) {
+  const m = WALL_MATERIALS[w.mat];
+  if (!m) return null;
+  const ins = Math.max(0, Math.min(w.ins || 0, w.th));
+  return (w.th - ins) / 100 / m.lam + ins / 100 / INSULATION_LAM + 0.158;
+}
 
 /* Виды площадных объектов */
 const AREA_KINDS = {

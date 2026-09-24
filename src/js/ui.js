@@ -206,6 +206,7 @@ const UI = {
     if (t === 'wall' || t === 'room') {
       const d = App.doc.defaults.wall[o.wallKind];
       box.append(sel(o.wallKind, Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name]), (v) => { o.wallKind = v; }, 'Тип'),
+        sel(d.mat, Object.entries(materialsFor(o.wallKind)).map(([k, v]) => [k, v.name]), (v) => { d.mat = v; App.saveSoon(); }, 'Материал'),
         num('Толщина', d.th, (v) => { d.th = U.clamp(v, 2, 150); }),
         num('Высота', d.h, (v) => { d.h = U.clamp(v, 10, 2000); }));
     } else if (t === 'door') {
@@ -400,10 +401,28 @@ const UI = {
       Model.commit();
     };
     const ang = U.normDeg(-U.deg(G.angle(w.a, w.b)));
+    const mats = materialsFor(w.kind), M = mats[w.mat];
+    const setKind = (v) => {
+      w.kind = v;
+      if (!materialsFor(v)[w.mat]) w.mat = App.doc.defaults.wall[v].mat;
+      if (v === 'fence') delete w.ins;
+      Model.commit();
+    };
     body.append(F.section('Параметры',
-      F.select('Тип', w.kind, Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name]), (v) => { w.kind = v; Model.commit(); }),
+      F.select('Тип', w.kind, Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name]), setKind),
+      F.select('Материал', w.mat, Object.entries(mats).map(([k, v]) => [k, v.name]), (v) => { w.mat = v; Model.commit(); }, { field: 'mat' }),
+      M && M.ths ? U.el('div', { class: 'frow' }, U.el('span', { class: 'flabel' }, 'Типовая толщина'), U.el('div', { class: 'chips' }, M.ths.map(t => {
+        const total = t + (w.ins || 0);
+        return U.el('button', { type: 'button', class: Math.abs(w.th - total) < 0.01 ? 'on' : '', title: `${t} см` + (w.ins ? ` + утеплитель ${w.ins} см` : ''), onclick: () => { w.th = total; Model.commit(); } }, String(t));
+      }))) : null,
       F.num('Длина (по оси)', L, setLen, { min: 1, field: 'len' }),
-      F.num('Толщина', w.th, (v) => UI.set(w, 'th', v), { min: 2, max: 150 }),
+      F.num(w.ins ? 'Толщина (общая)' : 'Толщина', w.th, (v) => UI.set(w, 'th', Math.max(v, (w.ins || 0) + 1)), { min: 2, max: 150 }),
+      w.kind !== 'fence' ? F.num('Утеплитель (минвата)', w.ins || 0, (v) => {
+        const old = w.ins || 0, nv = U.clamp(v, 0, 50);
+        w.th = Math.max(2, w.th + nv - old);          // утеплитель добавляется к толщине стены
+        if (nv > 0) w.ins = nv; else delete w.ins;
+        Model.commit();
+      }, { min: 0, max: 50 }) : null,
       F.num('Высота', w.h, (v) => UI.set(w, 'h', v), { min: 0, max: 3000 }),
       F.num('Угол', Math.round(ang * 10) / 10, (v) => {
         const a = -U.rad(v);
@@ -416,6 +435,14 @@ const UI = {
       F.info('Азимут фасада', (() => { const n = G.perp(Model.wallDir(w)); const b1 = Sun.bearingOf(n), b2 = Sun.bearingOf(G.mul(n, -1)); return `${U.compass8(b1)} ${Math.round(b1)}° / ${U.compass8(b2)} ${Math.round(b2)}°`; })()),
       F.info('Площадь стены (без проёмов)', U.fmtArea(L * w.h - App.doc.openings.filter(o => o.wall === w.id).reduce((s, o) => s + o.w * (o.h || 0), 0))),
     ));
+    if (w.kind === 'ext' && WALL_MATERIALS[w.mat]) {
+      const R = wallR(w), need = 3.0;
+      body.append(F.section('Теплозащита',
+        U.el('div', { class: 'finfo' }, U.el('span', {}, 'Сопротивление теплопередаче R'), U.el('b', { class: R >= need ? 'ok' : 'bad' }, `${R.toFixed(2)} м²·°C/Вт`)),
+        F.note(`Для жилого дома в средней полосе России нужно около ${need.toFixed(1)}–3.5 (СП 50.13330, зависит от региона). ` +
+          (R >= need ? 'Стена проходит.' : `Не хватает: добавьте утеплитель ≈ ${Math.ceil((need - R) * INSULATION_LAM * 100 / 5) * 5} см минваты или возьмите толще/теплее материал.`) +
+          ' Расчёт упрощённый, без учёта мостиков холода.')));
+    }
     body.append(F.section('Стена',
       F.btns([
         ['Разделить пополам', () => { const w2 = Model.splitWall(w, 0.5); App.sel.clear(); App.sel.add(w2.id); Model.commit(); App.selChanged(); }],
@@ -649,7 +676,8 @@ const UI = {
     if (walls.length) {
       const same = (k) => walls.every(w => w[k] === walls[0][k]) ? walls[0][k] : null;
       body.append(F.section('Стены (все выделенные)',
-        F.select('Тип', same('kind') ?? '', [['', '— разные —'], ...Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name])], (v) => { if (v) { walls.forEach(w => (w.kind = v)); Model.commit(); } }),
+        F.select('Тип', same('kind') ?? '', [['', '— разные —'], ...Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name])], (v) => { if (v) { walls.forEach(w => { w.kind = v; if (!materialsFor(v)[w.mat]) w.mat = App.doc.defaults.wall[v].mat; }); Model.commit(); } }),
+        F.select('Материал', same('mat') ?? '', [['', '— разные —'], ...Object.entries(walls.every(w => w.kind === 'fence') ? FENCE_MATERIALS : walls.some(w => w.kind === 'fence') ? {} : WALL_MATERIALS).map(([k, v]) => [k, v.name])], (v) => { if (v) { walls.forEach(w => (w.mat = v)); Model.commit(); } }),
         F.num('Толщина', same('th'), (v) => { walls.forEach(w => (w.th = v)); Model.commit(); }, { min: 2 }),
         F.num('Высота', same('h'), (v) => { walls.forEach(w => (w.h = v)); Model.commit(); }, { min: 0 }),
         F.info('Суммарная длина', U.fmtLen(walls.reduce((s, w) => s + Model.wallLen(w), 0)))));
@@ -681,11 +709,30 @@ const UI = {
       F.check('Длины стен', s.showWallDims, (v) => { s.showWallDims = v; App.redraw(); App.saveSoon(); }),
       F.check('Размеры предметов (Ш×Г)', s.showItemDims, (v) => { s.showItemDims = v; App.redraw(); App.saveSoon(); }),
       F.check('Расстояния до стен у выделенного', s.showGuides !== false, (v) => { s.showGuides = v; App.redraw(); App.saveSoon(); }),
-      F.check('Открывание окон (дуги)', s.showSwing !== false, (v) => { s.showSwing = v; App.redraw(); App.saveSoon(); })));
+      F.check('Открывание окон (дуги)', s.showSwing !== false, (v) => { s.showSwing = v; App.redraw(); App.saveSoon(); }),
+      F.check('Штриховка материалов стен (при приближении)', s.wallHatch !== false, (v) => { s.wallHatch = v; App.redraw(); App.saveSoon(); })));
+    const used = [...new Set(App.doc.walls.filter(w => w.kind !== 'fence').map(w => w.mat))].filter(k => WALL_MATERIALS[k]);
+    const usedF = [...new Set(App.doc.walls.filter(w => w.kind === 'fence').map(w => w.mat))].filter(k => FENCE_MATERIALS[k]);
+    if (used.length || usedF.length) {
+      const leg2 = U.el('div', { class: 'mat-legend' });
+      for (const k of used) leg2.append(U.el('div', {}, U.el('img', { src: UI.matSwatch(k), alt: '' }), U.el('span', {}, WALL_MATERIALS[k].name)));
+      if (App.doc.walls.some(w => w.ins > 0)) leg2.append(U.el('div', {}, U.el('img', { src: UI.matSwatch('insulation'), alt: '' }), U.el('span', {}, 'Утеплитель (минвата)')));
+      for (const k of usedF) leg2.append(U.el('div', {}, U.el('i', { style: { borderTop: `3px ${FENCE_MATERIALS[k].dash.length ? 'dashed' : 'solid'} ${FENCE_MATERIALS[k].color}` } }), U.el('span', {}, 'Забор: ' + FENCE_MATERIALS[k].name)));
+      body.append(F.section('Материалы стен в проекте', leg2));
+    }
     body.append(UI.underlaySection(false));
     const leg = U.el('div', { class: 'legend' });
     for (const [, k] of Object.entries(LINE_KINDS)) leg.append(U.el('div', {}, U.el('i', { style: { borderTop: `3px ${k.dash.length ? 'dashed' : 'solid'} ${k.color}` } }), U.el('b', { style: { color: k.color } }, k.code), U.el('span', {}, k.name)));
     body.append(F.section('Условные обозначения сетей', leg));
+  },
+  matSwatch(key) {
+    const tile = Render.matTile(key, Theme.isDark(), 2);
+    if (!tile) return '';
+    const cv = document.createElement('canvas'); cv.width = 56; cv.height = 28;
+    const c = cv.getContext('2d');
+    c.fillStyle = c.createPattern(tile, 'repeat'); c.fillRect(0, 0, 56, 28);
+    c.strokeStyle = Theme.C.wallStroke; c.lineWidth = 2; c.strokeRect(1, 1, 54, 26);
+    return cv.toDataURL();
   },
   underlaySection(asProps) {
     const u = App.doc.underlay;
@@ -862,21 +909,15 @@ const UI = {
         U.el('button', { type: 'button', class: mode === 'floor' ? 'on' : '', onclick: () => { App.doc.settings.areaMode = 'floor'; Model.commit(); } }, 'Подписи: по полу'),
         U.el('button', { type: 'button', class: mode === 'axis' ? 'on' : '', onclick: () => { App.doc.settings.areaMode = 'axis'; Model.commit(); } }, 'по осям'))));
     // оценка материалов по стенам
-    const mat = {};
-    for (const w of App.doc.walls) {
-      const L = Model.wallLen(w);
-      const holes = App.doc.openings.filter(o => o.wall === w.id).reduce((s2, o) => s2 + Math.min(o.w, L) * (o.h || 0), 0);
-      const m = mat[w.kind] || (mat[w.kind] = { len: 0, area: 0, vol: 0 });
-      m.len += L; m.area += Math.max(0, L * w.h - holes); m.vol += Math.max(0, L * w.h - holes) * w.th;
-    }
-    if (Object.keys(mat).length) {
-      const t2 = U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, 'Стены'), U.el('th', {}, 'Длина, м'), U.el('th', {}, 'Площадь, м²'), U.el('th', {}, 'Объём, м³')));
-      for (const [k, m] of Object.entries(mat)) t2.append(U.el('tr', {}, U.el('td', {}, WALL_KINDS[k].name), U.el('td', {}, (m.len / 100).toFixed(1)), U.el('td', {}, (m.area / 1e4).toFixed(1)), U.el('td', {}, k === 'fence' ? '—' : (m.vol / 1e6).toFixed(2))));
+    const mq = Rooms.materials();
+    if (mq.rows.length) {
+      const t2 = U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, 'Материал'), U.el('th', {}, 'Длина, м'), U.el('th', {}, 'Площадь, м²'), U.el('th', {}, 'Объём, м³ / кол-во')));
+      for (const m of mq.rows) t2.append(U.el('tr', {}, U.el('td', {}, m.name), U.el('td', {}, (m.len / 100).toFixed(1)), U.el('td', {}, m.fence ? '—' : (m.area / 1e4).toFixed(1)), U.el('td', {}, m.fence ? '—' : (m.vol / 1e6).toFixed(2) + (m.count ? ` · ≈${m.count} ${m.unit}` : ''))));
       const perim = Rooms.outlines.reduce((s2, o) => s2 + G.polyPerimeter(o.outer), 0);
       body.append(F.section('Материалы (оценка)', t2,
         perim ? F.info('Периметр фундамента (по наружным граням)', U.fmtLen(perim)) : null,
         F.info('Окон / дверей', `${App.doc.openings.filter(o => OPENING_TYPES[o.type].cat === 'window').length} / ${App.doc.openings.filter(o => OPENING_TYPES[o.type].cat === 'door').length}`),
-        F.note('Площадь и объём — за вычетом проёмов, по осям стен. Для закупки добавьте запас 5–10%.')));
+        F.note('Площадь и объём — за вычетом проёмов, по осям стен; утеплитель — отдельной строкой. Количество кирпича — ≈394 шт/м³ кладки, блоков — по типовому размеру. Для закупки добавьте запас 5–10%.')));
     }
     // экспликация
     const tbl = U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, '№'), U.el('th', {}, 'Помещение'), U.el('th', {}, 'Площадь, м²'), U.el('th', {}, 'Периметр, м')));
@@ -927,16 +968,17 @@ const UI = {
       F.select('Шаг сетки / привязки', s.grid, [[1, '1 см'], [5, '5 см'], [10, '10 см'], [25, '25 см'], [50, '50 см'], [100, '1 м']], (v) => { s.grid = +v; Model.commit(); }),
       F.check('Привязка к сетке и объектам', s.snap, (v) => { s.snap = v; Model.commit(); }),
       F.select('Тема', Theme.mode, [['auto', 'Как в системе'], ['light', 'Светлая'], ['dark', 'Тёмная']], (v) => Theme.set(v))));
-    const tbl = U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, 'Тип стены'), U.el('th', {}, 'Толщина, см'), U.el('th', {}, 'Высота, см')));
+    const tbl = U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, 'Тип стены'), U.el('th', {}, 'Материал'), U.el('th', {}, 'Толщ., см'), U.el('th', {}, 'Выс., см')));
     for (const [k, v] of Object.entries(WALL_KINDS)) {
       const dd = d.defaults.wall[k];
       const th = U.el('input', { type: 'number', value: dd.th, min: 1, step: 1 }), hh = U.el('input', { type: 'number', value: dd.h, min: 0, step: 1 });
       th.onchange = () => { dd.th = U.clamp(U.num(th.value, dd.th), 1, 200); Model.commit(); };
       hh.onchange = () => { dd.h = U.clamp(U.num(hh.value, dd.h), 0, 3000); Model.commit(); };
-      tbl.append(U.el('tr', {}, U.el('td', {}, v.name), U.el('td', {}, th), U.el('td', {}, hh)));
+      const ms = F.select(null, dd.mat, Object.entries(materialsFor(k)).map(([mk, mv]) => [mk, mv.name]), (val) => { dd.mat = val; Model.commit(); });
+      tbl.append(U.el('tr', {}, U.el('td', {}, v.name), U.el('td', { class: 'td-sel' }, ms), U.el('td', {}, th), U.el('td', {}, hh)));
     }
     body.append(F.section('Стены по умолчанию', tbl,
-      F.btns([['Применить ко всем существующим стенам', () => { for (const w of d.walls) { w.th = d.defaults.wall[w.kind].th; w.h = d.defaults.wall[w.kind].h; } Model.commit(); UI.toast('Толщины и высоты стен обновлены'); }]]),
+      F.btns([['Применить ко всем существующим стенам', () => { for (const w of d.walls) { const dd = d.defaults.wall[w.kind]; w.th = dd.th; w.h = dd.h; w.mat = dd.mat; delete w.ins; } Model.commit(); UI.toast('Материал, толщина и высота стен обновлены'); }]]),
       F.note('Типичные толщины: газобетон 30–40, кирпич 38–51, каркас 20–25, перегородки 8–12 см.')));
     body.append(F.section('Файл',
       F.btns([['Сохранить .json', () => IO.saveJSON(), 'primary'], ['Открыть…', () => $('fileJson').click()]]),

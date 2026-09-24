@@ -191,6 +191,9 @@ const IO = {
         n.len += G.polyPerimeter(l.pts, false);
       }
       const nr = Object.values(net).map(n => [LINE_KINDS[n.kind].code, LINE_KINDS[n.kind].name, n.section || (n.dia ? 'Ø' + n.dia + ' мм' : ''), (n.len / 100).toFixed(1), n.depth ? (n.depth / 100).toFixed(2) : '—']);
+      const mq = Rooms.materials().rows;
+      if (mq.length) cols.append(table('Стены и заборы по материалам', ['Материал', 'Длина, м', 'Площадь, м²', 'Объём, м³', 'Кол-во (оценка)'],
+        mq.map(m => [m.name, (m.len / 100).toFixed(1), m.fence ? '—' : (m.area / 1e4).toFixed(1), m.fence ? '—' : (m.vol / 1e6).toFixed(2), m.count ? `≈ ${m.count} ${m.unit}` : '—'])));
       if (nr.length) cols.append(table('Инженерные сети', ['Обозн.', 'Сеть', 'Диаметр / марка', 'Длина, м', 'Глубина, м'], nr));
       const spec = {};
       for (const it of App.doc.items) { const d = catItem(it.key); const k = d.key + '|' + Math.round(it.w) + '|' + Math.round(it.d); spec[k] = spec[k] || { name: d.name, w: it.w, d: it.d, n: 0, cat: d.cat }; spec[k].n++; }
@@ -223,7 +226,7 @@ const IO = {
     d.name = 'Пример: дом 10×9 м на участке 10 соток';
     d.north = -15;
     d.settings.sun = { date: new Date().getFullYear() + '-06-22', min: 15 * 60, period: 'day', step: 15 };
-    const W = (a, b, kind = 'ext') => { const w = { id: U.uid('w'), kind, th: WALL_KINDS[kind].th, h: WALL_KINDS[kind].h, a: { x: a[0], y: a[1] }, b: { x: b[0], y: b[1] } }; d.walls.push(w); return w; };
+    const W = (a, b, kind = 'ext', extra = {}) => { const w = { id: U.uid('w'), kind, th: WALL_KINDS[kind].th, h: WALL_KINDS[kind].h, mat: WALL_KINDS[kind].mat, a: { x: a[0], y: a[1] }, b: { x: b[0], y: b[1] }, ...extra }; d.walls.push(w); return w; };
     const O = (w, type, pos, width, extra = {}) => { const t = OPENING_TYPES[type]; d.openings.push({ id: U.uid('op'), wall: w.id, type, pos, w: width || t.w, h: t.h, sill: t.sill, side: 1, hinge: 0, ...extra }); };
     const I = (key, x, y, rot = 0, extra = {}) => { const c = catItem(key); const it = { id: U.uid('i'), key, x, y, w: c.w, d: c.d, h: c.h, rot, ...extra }; d.items.push(it); return it; };
     const A = (kind, pts, name = '') => d.areas.push({ id: U.uid('a'), kind, pts: pts.map(([x, y]) => ({ x, y })), name });
@@ -237,8 +240,10 @@ const IO = {
     const f1 = W([0, 0], [2500, 0], 'fence'); W([2500, 0], [2500, 4000], 'fence'); W([2500, 4000], [0, 4000], 'fence'); W([0, 4000], [0, 0], 'fence');
     O(f1, 'gate', 2050, 360); O(f1, 'door', 1500, 100);
     // дом (оси наружных стен)
-    const top = W([700, 1200], [1700, 1200]), right = W([1700, 1200], [1700, 2100]), bottom = W([1700, 2100], [700, 2100]), left = W([700, 2100], [700, 1200]);
-    const mid = W([1150, 1200], [1150, 2100], 'int');
+    // наружные: газобетон 30 см + 10 см минваты; внутренняя несущая — кирпич
+    const ext = { th: 40, ins: 10, mat: 'aerated' };
+    const top = W([700, 1200], [1700, 1200], 'ext', ext), right = W([1700, 1200], [1700, 2100], 'ext', ext), bottom = W([1700, 2100], [700, 2100], 'ext', ext), left = W([700, 2100], [700, 1200], 'ext', ext);
+    const mid = W([1150, 1200], [1150, 2100], 'int', { th: 25, mat: 'brick' });
     const pLiv = W([700, 1650], [1150, 1650], 'part');
     const pBath = W([1150, 1500], [1700, 1500], 'part');
     const pKit = W([1150, 1800], [1700, 1800], 'part');

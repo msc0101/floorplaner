@@ -148,6 +148,30 @@ const Rooms = {
   },
 
   area(r) { return App.doc.settings.areaMode === 'axis' ? r.areaAxis : r.areaFloor; },
+  /** Ведомость материалов стен: длина, площадь (без проёмов), объём, оценка кол-ва */
+  materials() {
+    const map = new Map();
+    const row = (key, name, extra) => map.get(key) || map.set(key, { name, len: 0, area: 0, vol: 0, ...extra }).get(key);
+    for (const w of App.doc.walls) {
+      const L = Model.wallLen(w);
+      if (w.kind === 'fence') { const M = FENCE_MATERIALS[w.mat]; row('f:' + w.mat, 'Забор: ' + (M ? M.name : w.mat), { fence: true }).len += L; continue; }
+      const M = WALL_MATERIALS[w.mat];
+      const holes = App.doc.openings.filter(o => o.wall === w.id).reduce((s, o) => s + Math.min(o.w, L) * Math.min(o.h || 0, w.h), 0);
+      const area = Math.max(0, L * w.h - holes);
+      const ins = Math.max(0, Math.min(w.ins || 0, w.th));
+      const r = row('m:' + w.mat + ':' + (w.th - ins), `${M ? M.name : w.mat}, ${+(w.th - ins).toFixed(1)} см`, { mat: w.mat, th: w.th - ins });
+      r.len += L; r.area += area; r.vol += area * (w.th - ins);
+      if (ins > 0) { const ri = row('ins:' + ins, `Утеплитель (минвата), ${ins} см`, { th: ins }); ri.len += L; ri.area += area; ri.vol += area * ins; }
+    }
+    const rows = [...map.values()];
+    for (const r of rows) {
+      const M = WALL_MATERIALS[r.mat];
+      if (!M) continue;
+      if (M.brick) { r.count = Math.ceil(r.vol / 1e6 * M.brick); r.unit = 'шт. кирпича'; }
+      else if (M.block) { r.count = Math.ceil(r.vol / (M.block[0] * M.block[1] * r.th)); r.unit = `бл. ${M.block[0] * 10}×${M.block[1] * 10}×${Math.round(r.th * 10)}`; }
+    }
+    return { rows };
+  },
   /** Сводка площадей: помещения, здание, участок, зоны */
   summary() {
     const rooms = App.rooms;
