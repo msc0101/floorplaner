@@ -1,0 +1,12 @@
+{
+  "name": "floorplaner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Планировщик дома и участка: стены, окна, двери, мебель, инженерные сети, стороны света, тени и инсоляция",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "test": "node tools/build.mjs && node tools/smoke.mjs",
+    "serve": "npx http-server src -p 8080 -c-1"
+  },
+  "license": "MIT"
+}

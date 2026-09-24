@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Floorplaner — планировщик дома и участка: стены, окна, двери, мебель, инженерные сети, ориентация по сторонам света, тени и инсоляция.">
+<title>Floorplaner — планировка дома и участка</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ============================ ВЕРХНЯЯ ПАНЕЛЬ ============================ -->
+  <header class="topbar">
+    <button class="icon-btn only-narrow" id="btnLibToggle" title="Библиотека объектов" aria-label="Библиотека"><svg viewBox="0 0 24 24"><path d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z"/></svg></button>
+    <div class="brand" title="Floorplaner">
+      <svg viewBox="0 0 24 24" class="brand-mark"><path d="M3 20V9l9-6 9 6v11z"/><path d="M9 20v-6h6v6"/></svg>
+      <span class="brand-name">Floorplaner</span>
+    </div>
+    <input class="project-name" id="projectName" value="Новый проект" aria-label="Название проекта" spellcheck="false">
+
+    <div class="tb-group">
+      <div class="menu-wrap">
+        <button class="tb-btn" id="btnFile" aria-haspopup="menu" aria-expanded="false">
+          <svg viewBox="0 0 24 24"><path d="M4 4h10l6 6v10H4z"/><path d="M14 4v6h6"/></svg><span>Файл</span>
+        </button>
+        <div class="dropdown" id="fileMenu" role="menu" hidden>
+          <button data-act="new"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Новый проект<kbd>Ctrl+Alt+N</kbd></button>
+          <button data-act="open"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></svg>Открыть…<kbd>Ctrl+O</kbd></button>
+          <button data-act="save"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg>Сохранить (.json)<kbd>Ctrl+S</kbd></button>
+          <hr>
+          <button data-act="png"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 16l5-5 5 5 3-3 5 5"/></svg>Экспорт в PNG</button>
+          <button data-act="print"><svg viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H3v-7h18v7h-3M6 14h12v7H6z"/></svg>Печать / PDF…<kbd>Ctrl+P</kbd></button>
+          <hr>
+          <button data-act="underlay"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16l-5-5-9 8"/></svg>Загрузить подложку (картинку)…</button>
+          <button data-act="demo"><svg viewBox="0 0 24 24"><path d="M3 20V9l9-6 9 6v11z"/></svg>Открыть пример</button>
+        </div>
+      </div>
+      <button class="icon-btn" id="btnUndo" title="Отменить (Ctrl+Z)" aria-label="Отменить"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12H9"/></svg></button>
+      <button class="icon-btn" id="btnRedo" title="Повторить (Ctrl+Y)" aria-label="Повторить"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h5"/></svg></button>
+    </div>
+
+    <div class="tb-group hide-narrow">
+      <button class="icon-btn" id="btnZoomOut" title="Отдалить (−)" aria-label="Отдалить"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M20 20l-4-4"/></svg></button>
+      <button class="tb-btn zoom-val" id="btnZoomVal" title="Масштаб: клик — 1 м = 100 px">100%</button>
+      <button class="icon-btn" id="btnZoomIn" title="Приблизить (+)" aria-label="Приблизить"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg></button>
+      <button class="icon-btn" id="btnFit" title="Показать всё (Shift+1)" aria-label="Показать всё"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    </div>
+
+    <div class="tb-group hide-narrow">
+      <button class="toggle-btn" id="btnGrid" title="Сетка (G)"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 10h16M4 15h16M10 4v16M15 4v16"/></svg><span>Сетка</span></button>
+      <button class="toggle-btn" id="btnSnap" title="Привязка (S). Alt при перетаскивании — временно без привязки"><svg viewBox="0 0 24 24"><path d="M6 3v8a6 6 0 0 0 12 0V3M6 7h4M14 7h4"/></svg><span>Привязка</span></button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="tb-group">
+      <div class="seg theme-seg" role="radiogroup" aria-label="Тема оформления" id="themeSeg">
+        <button data-theme="light" title="Светлая тема" aria-label="Светлая"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+        <button data-theme="auto" title="Как в системе" aria-label="Авто"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
+        <button data-theme="dark" title="Тёмная тема" aria-label="Тёмная"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+      </div>
+      <button class="icon-btn" id="btnHelp" title="Справка и горячие клавиши (F1)" aria-label="Справка"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 1 1 3.4 2.5c-.7.3-.9.8-.9 1.5v.4"/><circle cx="12" cy="17" r=".6"/></svg></button>
+      <button class="icon-btn only-narrow" id="btnPanelToggle" title="Панель свойств" aria-label="Свойства"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
+    </div>
+  </header>
+
+  <div class="body">
+    <!-- ============================ ИНСТРУМЕНТЫ ============================ -->
+    <nav class="rail" id="rail" aria-label="Инструменты">
+      <div class="rail-group">
+        <button class="tool" data-tool="select" title="Выделение (V)"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L10 19z"/></svg><span>Выбор</span></button>
+        <button class="tool" data-tool="pan" title="Рука — перемещать вид (H, или пробел)"><svg viewBox="0 0 24 24"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11V4.5a1.5 1.5 0 0 1 3 0V12M14 11.5v-6a1.5 1.5 0 0 1 3 0V14M8 12.5V10a1.5 1.5 0 0 0-3 0v4a8 8 0 0 0 8 8h1a5 5 0 0 0 5-5v-6.5a1.5 1.5 0 0 0-3 0"/></svg><span>Рука</span></button>
+      </div>
+      <div class="rail-title">Дом</div>
+      <div class="rail-group">
+        <button class="tool" data-tool="wall" title="Стена (W)"><svg viewBox="0 0 24 24"><path d="M3 18L18 3l3 3L6 21z"/><path d="M6 15l3 3M10 11l3 3M14 7l3 3"/></svg><span>Стена</span></button>
+        <button class="tool" data-tool="room" title="Комната прямоугольником (Q)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/><rect x="7" y="7" width="10" height="10"/></svg><span>Комната</span></button>
+        <button class="tool" data-tool="door" title="Дверь (D)"><svg viewBox="0 0 24 24"><path d="M4 20h16M6 20V6M6 6h10M6 6a14 14 0 0 1 14 14"/></svg><span>Дверь</span></button>
+        <button class="tool" data-tool="window" title="Окно (O)"><svg viewBox="0 0 24 24"><rect x="3" y="9" width="18" height="6"/><path d="M3 12h18M12 9v6"/></svg><span>Окно</span></button>
+      </div>
+      <div class="rail-title">Участок</div>
+      <div class="rail-group">
+        <button class="tool" data-tool="area" title="Участок / зона (B)"><svg viewBox="0 0 24 24"><path d="M4 7l6-3 10 4-2 12-12-2z" stroke-dasharray="3 2"/></svg><span>Зона</span></button>
+        <button class="tool" data-tool="road" title="Улица, дорога, тропинка (P)"><svg viewBox="0 0 24 24"><path d="M7 21L10 3M17 21L14 3M12 5v3M12 11v3M12 17v3"/></svg><span>Дорога</span></button>
+        <button class="tool" data-tool="line" title="Трасса: трубы, кабели, газ (U)"><svg viewBox="0 0 24 24"><path d="M3 18h6V8h8v8h4"/><circle cx="3" cy="18" r="1.5"/><circle cx="21" cy="16" r="1.5"/></svg><span>Сети</span></button>
+      </div>
+      <div class="rail-title">Разметка</div>
+      <div class="rail-group">
+        <button class="tool" data-tool="dim" title="Размерная линия (N)"><svg viewBox="0 0 24 24"><path d="M4 8v8M20 8v8M4 12h16M7 10l-3 2 3 2M17 10l3 2-3 2"/></svg><span>Размер</span></button>
+        <button class="tool" data-tool="measure" title="Рулетка — измерить (M)"><svg viewBox="0 0 24 24"><path d="M3 15L15 3l6 6L9 21z"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2"/></svg><span>Рулетка</span></button>
+        <button class="tool" data-tool="text" title="Надпись (T)"><svg viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg><span>Текст</span></button>
+        <button class="tool" data-tool="note" title="Примечание к объекту (K)"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4z"/><path d="M8 8h8M8 12h5"/></svg><span>Заметка</span></button>
+      </div>
+    </nav>
+
+    <!-- ============================ БИБЛИОТЕКА ============================= -->
+    <aside class="library" id="library" aria-label="Библиотека объектов">
+      <div class="lib-head">
+        <div class="panel-title">Библиотека</div>
+        <input type="search" id="libSearch" placeholder="Поиск: кровать, септик, розетка…" aria-label="Поиск по библиотеке">
+      </div>
+      <div class="lib-list" id="libList"></div>
+      <div class="lib-foot">Клик — выбрать, затем клик на плане. Размеры — реальные, в см (Ш×Г).</div>
+    </aside>
+
+    <!-- =============================== ХОЛСТ ================================ -->
+    <main class="stage" id="stage">
+      <div class="tool-opts" id="toolOpts"></div>
+      <canvas id="canvas" aria-label="План"></canvas>
+      <div class="welcome" id="welcome" hidden>
+        <h2>Спланируйте дом и участок</h2>
+        <p>Рисуйте в реальных размерах: стены, окна и двери, мебель и технику, септик, трубы, кабели. Ориентируйте участок по сторонам света и смотрите тени и инсоляцию.</p>
+        <div class="welcome-actions">
+          <button class="primary" data-act="demo">Открыть пример</button>
+          <button data-act="plot">Начать с участка</button>
+          <button data-act="house">Начать с дома</button>
+          <button data-act="underlay">Обвести по картинке</button>
+        </div>
+      </div>
+      <div class="statusbar" role="status">
+        <span class="st-coords">X <b id="stX">0.00</b> Y <b id="stY">0.00</b> м</span>
+        <span class="st-sun" id="stSun" hidden></span>
+        <span class="st-hint" id="stHint"></span>
+        <span class="st-input" id="stInput" hidden></span>
+      </div>
+      <div class="toast-wrap" id="toasts" aria-live="polite"></div>
+    </main>
+
+    <!-- =========================== ПРАВАЯ ПАНЕЛЬ ========================== -->
+    <aside class="panel" id="panel" aria-label="Панель свойств">
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="props">Свойства</button>
+        <button role="tab" data-tab="layers">Слои</button>
+        <button role="tab" data-tab="sun">Солнце</button>
+        <button role="tab" data-tab="summary">Площади</button>
+        <button role="tab" data-tab="project">Проект</button>
+      </div>
+      <div class="tab-body" id="tab-props" role="tabpanel"></div>
+      <div class="tab-body" id="tab-layers" role="tabpanel" hidden></div>
+      <div class="tab-body" id="tab-sun" role="tabpanel" hidden></div>
+      <div class="tab-body" id="tab-summary" role="tabpanel" hidden></div>
+      <div class="tab-body" id="tab-project" role="tabpanel" hidden></div>
+    </aside>
+  </div>
+</div>
+
+<div class="ctxmenu" id="ctxmenu" role="menu" hidden></div>
+<div class="scrim" id="scrim" hidden></div>
+
+<dialog class="modal" id="dlgPrompt">
+  <form method="dialog" class="modal-card">
+    <h3 id="dlgPromptTitle">Ввод</h3>
+    <label class="modal-label" id="dlgPromptLabel" for="dlgPromptInput"></label>
+    <input id="dlgPromptInput" type="text" inputmode="decimal">
+    <div class="modal-actions"><button value="cancel" formnovalidate>Отмена</button><button value="ok" class="primary">OK</button></div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="dlgPrint">
+  <form method="dialog" class="modal-card wide">
+    <h3>Печать / сохранение в PDF</h3>
+    <div class="form-grid">
+      <label>Формат<select id="prPaper"><option value="A4">A4</option><option value="A3">A3</option><option value="A2">A2</option></select></label>
+      <label>Ориентация<select id="prOrient"><option value="landscape">Альбомная</option><option value="portrait">Книжная</option></select></label>
+      <label>Масштаб<select id="prScale"><option value="fit">Вписать в лист</option><option value="50">1:50</option><option value="100">1:100</option><option value="200">1:200</option><option value="500">1:500</option></select></label>
+      <label>Что печатать<select id="prArea"><option value="all">Весь план</option><option value="view">Видимую область</option><option value="sel">Выделенное</option></select></label>
+    </div>
+    <div class="checks">
+      <label><input type="checkbox" id="prExpl" checked> Экспликация помещений и площади</label>
+      <label><input type="checkbox" id="prSpec" checked> Спецификация: сети, оборудование</label>
+      <label><input type="checkbox" id="prLegend" checked> Условные обозначения сетей</label>
+      <label><input type="checkbox" id="prGrid"> Сетка</label>
+    </div>
+    <p class="note">В диалоге печати браузера выберите принтер или «Сохранить как PDF». Масштаб 1:N соблюдается при печати «100%» без подгонки.</p>
+    <div class="modal-actions"><button value="cancel" formnovalidate>Отмена</button><button value="png" id="prPng">Скачать PNG</button><button value="ok" class="primary">Печать</button></div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="dlgHelp">
+  <div class="modal-card wide help">
+    <h3>Как пользоваться</h3>
+    <div class="help-cols">
+      <div>
+        <h4>Основное</h4>
+        <ul>
+          <li><b>Размеры</b> — реальные, в сантиметрах. Сетка по умолчанию 5 см.</li>
+          <li><b>Стены</b>: кликами по углам. Во время рисования наберите длину (<kbd>350</kbd>, <kbd>3.5м</kbd>) и <kbd>Enter</kbd>.</li>
+          <li><b>Комната</b>: протяните прямоугольник или введите <kbd>400x300</kbd>.</li>
+          <li><b>Двери/окна</b>: кликом по стене; сторона курсора — сторона открывания. Петли и сторону меняйте в свойствах.</li>
+          <li><b>Мебель, техника, септик, столбы</b> — из библиотеки слева. У стены предметы разворачиваются спинкой к стене.</li>
+          <li><b>Сети</b>: инструмент «Сети», выберите вид (вода, канализация, газ, кабель…).</li>
+          <li><b>Участок</b>: инструмент «Зона» → «Граница участка». Площадь — в сотках.</li>
+          <li><b>Улицы, дороги, тропинки</b>: инструмент «Дорога» — ширина задаётся, название подписывается вдоль.</li>
+          <li><b>Стороны света</b>: вкладка «Солнце» или перетаскивание компаса на плане.</li>
+          <li><b>Поворот</b>: ручка ⟳ над выделением, кнопки в свойствах; без выделения — поворот всего плана.</li>
+          <li><b>Примечания</b>: инструмент «Заметка» (<kbd>K</kbd>) — клик по объекту; выноска следует за объектом.</li>
+          <li><b>Солнце</b>: тени на любую дату и время, карта освещённости участка, инсоляция комнат.</li>
+          <li><b>Отмена</b> любого действия — <kbd>Ctrl+Z</kbd>, повтор — <kbd>Ctrl+Y</kbd>.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Клавиши</h4>
+        <table class="keys">
+          <tr><td>Выбор / Рука</td><td><kbd>V</kbd> / <kbd>H</kbd>, <kbd>Пробел</kbd></td></tr>
+          <tr><td>Стена / Комната</td><td><kbd>W</kbd> / <kbd>Q</kbd></td></tr>
+          <tr><td>Дверь / Окно</td><td><kbd>D</kbd> / <kbd>O</kbd></td></tr>
+          <tr><td>Зона / Дорога / Сети</td><td><kbd>B</kbd> / <kbd>P</kbd> / <kbd>U</kbd></td></tr>
+          <tr><td>Размер / Рулетка / Текст</td><td><kbd>N</kbd> / <kbd>M</kbd> / <kbd>T</kbd></td></tr>
+          <tr><td>Примечание к объекту</td><td><kbd>K</kbd></td></tr>
+          <tr><td>Ввод длины при рисовании</td><td>цифры + <kbd>Enter</kbd></td></tr>
+          <tr><td>Завершить / отмена</td><td><kbd>Enter</kbd> / <kbd>Esc</kbd></td></tr>
+          <tr><td>Эта справка</td><td><kbd>?</kbd> / <kbd>F1</kbd></td></tr>
+          <tr><td>Повернуть на 90° / 15°</td><td><kbd>R</kbd> / <kbd>[</kbd> <kbd>]</kbd></td></tr>
+          <tr><td>Шаг угла 15°</td><td><kbd>Shift</kbd></td></tr>
+          <tr><td>Без привязки</td><td><kbd>Alt</kbd></td></tr>
+          <tr><td>Сдвиг 1 / 10 см</td><td><kbd>←↑↓→</kbd> / <kbd>Shift</kbd></td></tr>
+          <tr><td>Копировать / Вставить / Дублировать</td><td><kbd>Ctrl+C</kbd> <kbd>Ctrl+V</kbd> <kbd>Ctrl+D</kbd></td></tr>
+          <tr><td>Выделить всё</td><td><kbd>Ctrl+A</kbd></td></tr>
+          <tr><td>Удалить</td><td><kbd>Del</kbd></td></tr>
+          <tr><td>Отменить / Повторить</td><td><kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd></td></tr>
+          <tr><td>Показать всё</td><td><kbd>Shift+1</kbd></td></tr>
+          <tr><td>Масштаб / панорама</td><td>колесо / ПКМ-перетаскивание</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="primary" id="btnHelpClose">Понятно</button></div>
+  </div>
+</dialog>
+
+<input type="file" id="fileJson" accept=".json,application/json" hidden>
+<input type="file" id="fileImage" accept="image/*" hidden>
+<div id="printArea" aria-hidden="true"></div>
+
+<!-- build:js -->
+<script src="js/util.js"></script>
+<script src="js/catalog.js"></script>
+<script src="js/model.js"></script>
+<script src="js/rooms.js"></script>
+<script src="js/sun.js"></script>
+<script src="js/render.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/io.js"></script>
+<script src="js/main.js"></script>
+<!-- endbuild -->
+</body>
+</html>
