@@ -226,6 +226,7 @@ button.danger:hover { background: var(--danger-soft); border-color: var(--danger
 .fbtns { display: flex; flex-wrap: wrap; gap: 5px; }
 .fbtns button { flex: 1 1 auto; padding: 6px 9px; font-size: 12.5px; }
 .fbtns button.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.fbtns.align button { flex: 1 1 0; padding: 5px 0; font-size: 15px; }
 .fbtns button.ghost { background: none; border-style: dashed; color: var(--muted); }
 .fnote { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
 .rot-row { display: flex; gap: 4px; align-items: center; }
@@ -3861,6 +3862,7 @@ const Tools = {
   },
   handleAt(sp) {
     for (const h of Tools.handles()) {
+      if (h.id && Model.get(h.id) && Model.get(h.id).locked) continue;
       const s = View.toScreen(h.p);
       if (Math.hypot(s.x - sp.x, s.y - sp.y) <= 8) return h;
     }
@@ -3951,8 +3953,9 @@ const Tools = {
       App.sel.add(id);
     } else if (!App.sel.has(id)) { App.sel.clear(); App.sel.add(id); }
     App.selChanged();
-    const ids = [...App.sel].filter(x => Model.get(x) || x === 'underlay');
+    const ids = [...App.sel].filter(x => (Model.get(x) && !Model.get(x).locked) || x === 'underlay');
     const c = Model.coll(id);
+    if (Model.get(id) && Model.get(id).locked) { Tools.st = {}; return; }   // закреплённый объект не двигается
     if (c === 'openings' && ids.length === 1) { Tools.st = { mode: 'opening', id, start: p, moved: false, orig: Tools.saveObjs([id]) }; return; }
     Tools.st = { mode: 'move', ids, start: p, last: p, moved: false, orig: null, grab: id };
   },
@@ -4067,7 +4070,7 @@ const Tools = {
     }
     if (h.kind === 'rotate') {
       st.a0 = Math.atan2(p.y - h.center.y, p.x - h.center.x);
-      st.ids = h.underlay ? [] : Model.expandForTransform([...App.sel].filter(id => Model.get(id)));
+      st.ids = h.underlay ? [] : Model.expandForTransform([...App.sel].filter(id => Model.get(id) && !Model.get(id).locked));
       if (h.underlay) st.u0 = { ...App.doc.underlay };
     }
     if (h.kind === 'uscale') st.u0 = { ...App.doc.underlay };
@@ -4851,7 +4854,7 @@ const UI = {
       case 'new': if (confirm('Начать новый проект? Несохранённые изменения можно будет вернуть через «Отменить».')) IO.newProject(); break;
       case 'open': $('fileJson').click(); break;
       case 'save': IO.saveJSON(); break;
-      case 'png': $('dlgPrint').showModal(); break;
+      case 'png': IO.exportPNG({ area: 'all', grid: false }); break;
       case 'print': $('dlgPrint').showModal(); break;
       case 'underlay': $('fileImage').click(); break;
       case 'demo': IO.loadDemo(); break;
@@ -4990,6 +4993,9 @@ const UI = {
     UI.refresh();
   },
   refresh() {
+    try { UI._refresh(); } catch (e) { console.error(e); }
+  },
+  _refresh() {
     const f = { props: UI.renderProps, layers: UI.renderLayers, sun: UI.renderSun, summary: UI.renderSummary, project: UI.renderProject }[UI.tab];
     const body = $('tab-' + UI.tab);
     const st = body.scrollTop;
@@ -5106,7 +5112,11 @@ const UI = {
   transformSection(ids) {
     const b = Model.bboxOf(ids);
     const c = b ? { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 } : { x: 0, y: 0 };
+    const locked = ids.every(id => Model.get(id).locked);
     return F.section('Поворот и действия',
+      F.check('Закрепить (не сдвигать случайно)', locked, (v) => { for (const id of ids) { if (v) Model.get(id).locked = true; else delete Model.get(id).locked; } Model.commit(); }),
+      ids.length > 1 ? U.el('div', { class: 'fbtns align' }, [['⇤', 'left', 'По левому краю'], ['↔', 'cx', 'По центру по горизонтали'], ['⇥', 'right', 'По правому краю'], ['⤒', 'top', 'По верху'], ['↕', 'cy', 'По центру по вертикали'], ['⤓', 'bottom', 'По низу']]
+        .map(([t, m, title]) => U.el('button', { type: 'button', title, onclick: () => App.align(m) }, t))) : null,
       UI.rotateRow((deg) => { Model.rotate(ids, c, deg); Model.commit(); }),
       F.btns([
         ['Отразить ↔', () => { Model.mirror(ids, c, 'x'); Model.commit(); }],
@@ -5591,6 +5601,23 @@ const UI = {
       U.el('div', { class: 'seg' },
         U.el('button', { type: 'button', class: mode === 'floor' ? 'on' : '', onclick: () => { App.doc.settings.areaMode = 'floor'; Model.commit(); } }, 'Подписи: по полу'),
         U.el('button', { type: 'button', class: mode === 'axis' ? 'on' : '', onclick: () => { App.doc.settings.areaMode = 'axis'; Model.commit(); } }, 'по осям'))));
+    // оценка материалов по стенам
+    const mat = {};
+    for (const w of App.doc.walls) {
+      const L = Model.wallLen(w);
+      const holes = App.doc.openings.filter(o => o.wall === w.id).reduce((s2, o) => s2 + Math.min(o.w, L) * (o.h || 0), 0);
+      const m = mat[w.kind] || (mat[w.kind] = { len: 0, area: 0, vol: 0 });
+      m.len += L; m.area += Math.max(0, L * w.h - holes); m.vol += Math.max(0, L * w.h - holes) * w.th;
+    }
+    if (Object.keys(mat).length) {
+      const t2 = U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, 'Стены'), U.el('th', {}, 'Длина, м'), U.el('th', {}, 'Площадь, м²'), U.el('th', {}, 'Объём, м³')));
+      for (const [k, m] of Object.entries(mat)) t2.append(U.el('tr', {}, U.el('td', {}, WALL_KINDS[k].name), U.el('td', {}, (m.len / 100).toFixed(1)), U.el('td', {}, (m.area / 1e4).toFixed(1)), U.el('td', {}, k === 'fence' ? '—' : (m.vol / 1e6).toFixed(2))));
+      const perim = Rooms.outlines.reduce((s2, o) => s2 + G.polyPerimeter(o.outer), 0);
+      body.append(F.section('Материалы (оценка)', t2,
+        perim ? F.info('Периметр фундамента (по наружным граням)', U.fmtLen(perim)) : null,
+        F.info('Окон / дверей', `${App.doc.openings.filter(o => OPENING_TYPES[o.type].cat === 'window').length} / ${App.doc.openings.filter(o => OPENING_TYPES[o.type].cat === 'door').length}`),
+        F.note('Площадь и объём — за вычетом проёмов, по осям стен. Для закупки добавьте запас 5–10%.')));
+    }
     // экспликация
     const tbl = U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, '№'), U.el('th', {}, 'Помещение'), U.el('th', {}, 'Площадь, м²'), U.el('th', {}, 'Периметр, м')));
     App.rooms.forEach((r, i) => {
@@ -5708,6 +5735,7 @@ const IO = {
     Model.reindex();
     Underlay.sync();
     Model.commit();
+    UI._welcomeOff = false; UI.refresh();
     View.fit({ x0: -500, y0: -400, x1: 1000, y1: 800 });
   },
   fileName(ext) {
@@ -6069,7 +6097,8 @@ const App = {
     App.rooms = Rooms.detect(App.doc.walls);
     App.redraw();
   },
-  selChanged() { App.hover = null; UI.showTab('props'); App.redraw(); },
+  /** Выбран объект — показываем его свойства; сняли выделение — остаёмся на текущей вкладке */
+  selChanged() { App.hover = null; if (App.sel.size) UI.showTab('props'); else UI.refresh(); App.redraw(); },
   saveSoon: U.debounce(() => IO.autosave(), 700),
 
   undo() { if (Tools.st && Object.keys(Tools.st).length) Tools.cancel(true); if (Model.undo()) UI.toast('Отменено'); },
@@ -6183,8 +6212,26 @@ const App = {
     Model.reindex();
     Model.commit();
   },
+  /** Выравнивание выделенных объектов по краю/центру общей рамки */
+  align(mode) {
+    const ids = Model.expandForTransform(App.selIds()).filter(id => !Model.get(id).locked);
+    if (ids.length < 2) return;
+    const all = Model.bboxOf(ids);
+    for (const id of ids) {
+      const b = Model.bboxOf([id]);
+      let dx = 0, dy = 0;
+      if (mode === 'left') dx = all.x0 - b.x0;
+      if (mode === 'right') dx = all.x1 - b.x1;
+      if (mode === 'cx') dx = (all.x0 + all.x1) / 2 - (b.x0 + b.x1) / 2;
+      if (mode === 'top') dy = all.y0 - b.y0;
+      if (mode === 'bottom') dy = all.y1 - b.y1;
+      if (mode === 'cy') dy = (all.y0 + all.y1) / 2 - (b.y0 + b.y1) / 2;
+      Model.translate([id], dx, dy, { stretch: false });
+    }
+    Model.commit();
+  },
   nudge(dx, dy) {
-    const ids = App.selIds().filter(id => Model.coll(id) !== 'openings');
+    const ids = App.selIds().filter(id => Model.coll(id) !== 'openings' && !Model.get(id).locked);
     const ops = App.selIds().filter(id => Model.coll(id) === 'openings');
     if (!ids.length && !ops.length) return;
     Model.translate(ids, dx, dy);

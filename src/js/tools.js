@@ -259,6 +259,7 @@ const Tools = {
   },
   handleAt(sp) {
     for (const h of Tools.handles()) {
+      if (h.id && Model.get(h.id) && Model.get(h.id).locked) continue;
       const s = View.toScreen(h.p);
       if (Math.hypot(s.x - sp.x, s.y - sp.y) <= 8) return h;
     }
@@ -349,8 +350,9 @@ const Tools = {
       App.sel.add(id);
     } else if (!App.sel.has(id)) { App.sel.clear(); App.sel.add(id); }
     App.selChanged();
-    const ids = [...App.sel].filter(x => Model.get(x) || x === 'underlay');
+    const ids = [...App.sel].filter(x => (Model.get(x) && !Model.get(x).locked) || x === 'underlay');
     const c = Model.coll(id);
+    if (Model.get(id) && Model.get(id).locked) { Tools.st = {}; return; }   // закреплённый объект не двигается
     if (c === 'openings' && ids.length === 1) { Tools.st = { mode: 'opening', id, start: p, moved: false, orig: Tools.saveObjs([id]) }; return; }
     Tools.st = { mode: 'move', ids, start: p, last: p, moved: false, orig: null, grab: id };
   },
@@ -465,7 +467,7 @@ const Tools = {
     }
     if (h.kind === 'rotate') {
       st.a0 = Math.atan2(p.y - h.center.y, p.x - h.center.x);
-      st.ids = h.underlay ? [] : Model.expandForTransform([...App.sel].filter(id => Model.get(id)));
+      st.ids = h.underlay ? [] : Model.expandForTransform([...App.sel].filter(id => Model.get(id) && !Model.get(id).locked));
       if (h.underlay) st.u0 = { ...App.doc.underlay };
     }
     if (h.kind === 'uscale') st.u0 = { ...App.doc.underlay };

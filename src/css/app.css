@@ -217,6 +217,7 @@ button.danger:hover { background: var(--danger-soft); border-color: var(--danger
 .fbtns { display: flex; flex-wrap: wrap; gap: 5px; }
 .fbtns button { flex: 1 1 auto; padding: 6px 9px; font-size: 12.5px; }
 .fbtns button.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.fbtns.align button { flex: 1 1 0; padding: 5px 0; font-size: 15px; }
 .fbtns button.ghost { background: none; border-style: dashed; color: var(--muted); }
 .fnote { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
 .rot-row { display: flex; gap: 4px; align-items: center; }

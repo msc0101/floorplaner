@@ -65,7 +65,8 @@ const App = {
     App.rooms = Rooms.detect(App.doc.walls);
     App.redraw();
   },
-  selChanged() { App.hover = null; UI.showTab('props'); App.redraw(); },
+  /** Выбран объект — показываем его свойства; сняли выделение — остаёмся на текущей вкладке */
+  selChanged() { App.hover = null; if (App.sel.size) UI.showTab('props'); else UI.refresh(); App.redraw(); },
   saveSoon: U.debounce(() => IO.autosave(), 700),
 
   undo() { if (Tools.st && Object.keys(Tools.st).length) Tools.cancel(true); if (Model.undo()) UI.toast('Отменено'); },
@@ -179,8 +180,26 @@ const App = {
     Model.reindex();
     Model.commit();
   },
+  /** Выравнивание выделенных объектов по краю/центру общей рамки */
+  align(mode) {
+    const ids = Model.expandForTransform(App.selIds()).filter(id => !Model.get(id).locked);
+    if (ids.length < 2) return;
+    const all = Model.bboxOf(ids);
+    for (const id of ids) {
+      const b = Model.bboxOf([id]);
+      let dx = 0, dy = 0;
+      if (mode === 'left') dx = all.x0 - b.x0;
+      if (mode === 'right') dx = all.x1 - b.x1;
+      if (mode === 'cx') dx = (all.x0 + all.x1) / 2 - (b.x0 + b.x1) / 2;
+      if (mode === 'top') dy = all.y0 - b.y0;
+      if (mode === 'bottom') dy = all.y1 - b.y1;
+      if (mode === 'cy') dy = (all.y0 + all.y1) / 2 - (b.y0 + b.y1) / 2;
+      Model.translate([id], dx, dy, { stretch: false });
+    }
+    Model.commit();
+  },
   nudge(dx, dy) {
-    const ids = App.selIds().filter(id => Model.coll(id) !== 'openings');
+    const ids = App.selIds().filter(id => Model.coll(id) !== 'openings' && !Model.get(id).locked);
     const ops = App.selIds().filter(id => Model.coll(id) === 'openings');
     if (!ids.length && !ops.length) return;
     Model.translate(ids, dx, dy);

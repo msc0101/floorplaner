@@ -15,6 +15,7 @@ const IO = {
     Model.reindex();
     Underlay.sync();
     Model.commit();
+    UI._welcomeOff = false; UI.refresh();
     View.fit({ x0: -500, y0: -400, x1: 1000, y1: 800 });
   },
   fileName(ext) {

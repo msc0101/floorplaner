@@ -114,7 +114,7 @@ const UI = {
       case 'new': if (confirm('Начать новый проект? Несохранённые изменения можно будет вернуть через «Отменить».')) IO.newProject(); break;
       case 'open': $('fileJson').click(); break;
       case 'save': IO.saveJSON(); break;
-      case 'png': $('dlgPrint').showModal(); break;
+      case 'png': IO.exportPNG({ area: 'all', grid: false }); break;
       case 'print': $('dlgPrint').showModal(); break;
       case 'underlay': $('fileImage').click(); break;
       case 'demo': IO.loadDemo(); break;
@@ -253,6 +253,9 @@ const UI = {
     UI.refresh();
   },
   refresh() {
+    try { UI._refresh(); } catch (e) { console.error(e); }
+  },
+  _refresh() {
     const f = { props: UI.renderProps, layers: UI.renderLayers, sun: UI.renderSun, summary: UI.renderSummary, project: UI.renderProject }[UI.tab];
     const body = $('tab-' + UI.tab);
     const st = body.scrollTop;
@@ -369,7 +372,11 @@ const UI = {
   transformSection(ids) {
     const b = Model.bboxOf(ids);
     const c = b ? { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 } : { x: 0, y: 0 };
+    const locked = ids.every(id => Model.get(id).locked);
     return F.section('Поворот и действия',
+      F.check('Закрепить (не сдвигать случайно)', locked, (v) => { for (const id of ids) { if (v) Model.get(id).locked = true; else delete Model.get(id).locked; } Model.commit(); }),
+      ids.length > 1 ? U.el('div', { class: 'fbtns align' }, [['⇤', 'left', 'По левому краю'], ['↔', 'cx', 'По центру по горизонтали'], ['⇥', 'right', 'По правому краю'], ['⤒', 'top', 'По верху'], ['↕', 'cy', 'По центру по вертикали'], ['⤓', 'bottom', 'По низу']]
+        .map(([t, m, title]) => U.el('button', { type: 'button', title, onclick: () => App.align(m) }, t))) : null,
       UI.rotateRow((deg) => { Model.rotate(ids, c, deg); Model.commit(); }),
       F.btns([
         ['Отразить ↔', () => { Model.mirror(ids, c, 'x'); Model.commit(); }],
@@ -854,6 +861,23 @@ const UI = {
       U.el('div', { class: 'seg' },
         U.el('button', { type: 'button', class: mode === 'floor' ? 'on' : '', onclick: () => { App.doc.settings.areaMode = 'floor'; Model.commit(); } }, 'Подписи: по полу'),
         U.el('button', { type: 'button', class: mode === 'axis' ? 'on' : '', onclick: () => { App.doc.settings.areaMode = 'axis'; Model.commit(); } }, 'по осям'))));
+    // оценка материалов по стенам
+    const mat = {};
+    for (const w of App.doc.walls) {
+      const L = Model.wallLen(w);
+      const holes = App.doc.openings.filter(o => o.wall === w.id).reduce((s2, o) => s2 + Math.min(o.w, L) * (o.h || 0), 0);
+      const m = mat[w.kind] || (mat[w.kind] = { len: 0, area: 0, vol: 0 });
+      m.len += L; m.area += Math.max(0, L * w.h - holes); m.vol += Math.max(0, L * w.h - holes) * w.th;
+    }
+    if (Object.keys(mat).length) {
+      const t2 = U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, 'Стены'), U.el('th', {}, 'Длина, м'), U.el('th', {}, 'Площадь, м²'), U.el('th', {}, 'Объём, м³')));
+      for (const [k, m] of Object.entries(mat)) t2.append(U.el('tr', {}, U.el('td', {}, WALL_KINDS[k].name), U.el('td', {}, (m.len / 100).toFixed(1)), U.el('td', {}, (m.area / 1e4).toFixed(1)), U.el('td', {}, k === 'fence' ? '—' : (m.vol / 1e6).toFixed(2))));
+      const perim = Rooms.outlines.reduce((s2, o) => s2 + G.polyPerimeter(o.outer), 0);
+      body.append(F.section('Материалы (оценка)', t2,
+        perim ? F.info('Периметр фундамента (по наружным граням)', U.fmtLen(perim)) : null,
+        F.info('Окон / дверей', `${App.doc.openings.filter(o => OPENING_TYPES[o.type].cat === 'window').length} / ${App.doc.openings.filter(o => OPENING_TYPES[o.type].cat === 'door').length}`),
+        F.note('Площадь и объём — за вычетом проёмов, по осям стен. Для закупки добавьте запас 5–10%.')));
+    }
     // экспликация
     const tbl = U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, '№'), U.el('th', {}, 'Помещение'), U.el('th', {}, 'Площадь, м²'), U.el('th', {}, 'Периметр, м')));
     App.rooms.forEach((r, i) => {
