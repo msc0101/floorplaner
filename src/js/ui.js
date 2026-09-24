@@ -476,16 +476,28 @@ const UI = {
     UI.showTab('props');
     setTimeout(() => { const el = document.querySelector(`#tab-props [data-field="${name}"]`); if (el) { el.focus(); el.select && el.select(); } }, 30);
   },
-  promptNumber(title, label, value, onOk, onCancel) {
+  /** Запрос числа. parse(строка) → число или NaN; по умолчанию — просто число. Enter = OK */
+  promptNumber(title, label, value, onOk, onCancel, parse) {
     const d = $('dlgPrompt');
     $('dlgPromptTitle').textContent = title; $('dlgPromptLabel').textContent = label;
     const inp = $('dlgPromptInput'); inp.value = value;
+    const read = () => (parse ? parse(inp.value) : U.num(inp.value, NaN));
+    // Enter в поле: без этого форма «нажимает» первую кнопку — «Отмена»
+    const onKey = (e) => {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+      if (Number.isFinite(read())) d.close('ok'); else UI.toast('Не понял число: ' + inp.value, 'err');
+    };
     const handler = () => {
-      d.removeEventListener('close', handler);
-      if (d.returnValue === 'ok') { const v = U.num(inp.value, NaN); if (Number.isFinite(v)) onOk(v); else onCancel && onCancel(); }
-      else onCancel && onCancel();
+      d.removeEventListener('close', handler); inp.removeEventListener('keydown', onKey);
+      if (d.returnValue === 'ok') {
+        const v = read();
+        if (Number.isFinite(v)) onOk(v);
+        else { UI.toast('Не понял число: ' + inp.value, 'err'); onCancel && onCancel(); }
+      } else onCancel && onCancel();
     };
     d.addEventListener('close', handler);
+    inp.addEventListener('keydown', onKey);
     d.returnValue = '';
     d.showModal();
     setTimeout(() => inp.select(), 20);
@@ -590,7 +602,7 @@ const UI = {
     };
     body.append(F.section('Параметры',
       F.select('Тип', w.kind, Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name]), setKind),
-      F.select('Материал', w.mat, Object.entries(mats).map(([k, v]) => [k, v.name]), (v) => { w.mat = v; Model.commit(); }, { field: 'mat' }),
+      F.select('Материал', w.mat, Object.entries(mats).map(([k, v]) => [k, v.name]), (v) => App.setWallMat([w], v), { field: 'mat' }),
       M && M.ths ? U.el('div', { class: 'frow' }, U.el('span', { class: 'flabel' }, 'Типовая толщина'), U.el('div', { class: 'chips' }, M.ths.map(t => {
         const total = t + (w.ins || 0);
         return U.el('button', { type: 'button', class: Math.abs(w.th - total) < 0.01 ? 'on' : '', title: `${t} см` + (w.ins ? ` + утеплитель ${w.ins} см` : ''), onclick: () => { w.th = total; Model.commit(); } }, String(t));
@@ -894,7 +906,7 @@ const UI = {
       const same = (k) => walls.every(w => w[k] === walls[0][k]) ? walls[0][k] : null;
       body.append(F.section('Стены (все выделенные)',
         F.select('Тип', same('kind') ?? '', [['', '— разные —'], ...Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name])], (v) => { if (v) { walls.forEach(w => { w.kind = v; if (!materialsFor(v)[w.mat]) w.mat = App.doc.defaults.wall[v].mat; }); Model.commit(); } }),
-        F.select('Материал', same('mat') ?? '', [['', '— разные —'], ...Object.entries(walls.every(w => w.kind === 'fence') ? FENCE_MATERIALS : walls.some(w => w.kind === 'fence') ? {} : WALL_MATERIALS).map(([k, v]) => [k, v.name])], (v) => { if (v) { walls.forEach(w => (w.mat = v)); Model.commit(); } }),
+        F.select('Материал', same('mat') ?? '', [['', '— разные —'], ...Object.entries(walls.every(w => w.kind === 'fence') ? FENCE_MATERIALS : walls.some(w => w.kind === 'fence') ? {} : WALL_MATERIALS).map(([k, v]) => [k, v.name])], (v) => { if (v) App.setWallMat(walls, v); }),
         F.num('Толщина', same('th'), (v) => { walls.forEach(w => (w.th = v)); Model.commit(); }, { min: 2 }),
         F.num('Высота', same('h'), (v) => { walls.forEach(w => (w.h = v)); Model.commit(); }, { min: 0 }),
         F.info('Суммарная длина', U.fmtLen(walls.reduce((s, w) => s + Model.wallLen(w), 0)))));
@@ -1240,15 +1252,17 @@ const UI = {
     for (const [k, v] of Object.entries(WALL_KINDS)) {
       const dd = d.defaults.wall[k];
       const th = U.el('input', { type: 'number', value: dd.th, min: 1, step: 1 }), hh = U.el('input', { type: 'number', value: dd.h, min: 0, step: 1 });
-      th.onchange = () => { dd.th = U.clamp(U.num(th.value, dd.th), 1, 200); Model.commit(); };
-      hh.onchange = () => { dd.h = U.clamp(U.num(hh.value, dd.h), 0, 3000); Model.commit(); };
-      const ms = F.select(null, dd.mat, Object.entries(materialsFor(k)).map(([mk, mv]) => [mk, mv.name]), (val) => { dd.mat = val; Model.commit(); });
+      const live = () => s.wallDefaultsLive !== false;
+      th.onchange = () => App.setWallDefault(k, 'th', U.clamp(U.num(th.value, dd.th), 1, 200), live());
+      hh.onchange = () => App.setWallDefault(k, 'h', U.clamp(U.num(hh.value, dd.h), 0, 3000), live());
+      const ms = F.select(null, dd.mat, Object.entries(materialsFor(k)).map(([mk, mv]) => [mk, mv.name]), (val) => App.setWallDefault(k, 'mat', val, live()));
       tbl.append(U.el('tr', {}, U.el('td', {}, v.name), U.el('td', { class: 'td-sel' }, ms), U.el('td', {}, th), U.el('td', {}, hh)));
     }
     body.append(UI.floorsSection());
-    body.append(F.section('Стены по умолчанию', tbl,
-      F.btns([['Применить ко всем существующим стенам', () => { for (const w of d.walls) { const dd = d.defaults.wall[w.kind]; w.th = dd.th; w.h = dd.h; w.mat = dd.mat; delete w.ins; } Model.commit(); UI.toast('Материал, толщина и высота стен обновлены'); }]]),
-      F.note('Типичные толщины: газобетон 30–40, кирпич 38–51, каркас 20–25, перегородки 8–12 см.')));
+    body.append(F.section('Стены по типам', tbl,
+      F.check('Применять к уже нарисованным стенам', s.wallDefaultsLive !== false, (v) => { s.wallDefaultsLive = v; App.saveSoon(); }),
+      F.btns([['Применить сейчас ко всем стенам', () => { for (const w of d.walls) { const dd = d.defaults.wall[w.kind]; w.th = dd.th + (w.ins || 0); w.h = dd.h; w.mat = dd.mat; } Model.commit(); UI.toast('Материал, толщина и высота стен обновлены (Ctrl+Z — отменить)'); }]]),
+      F.note('Толщина — без утеплителя: он добавляется снаружи и задаётся у самой стены. Если галочка снята, таблица задаёт только параметры новых стен. При смене материала толщина встаёт на ближайшую типовую. Типичные толщины: газобетон 30–40, кирпич 38–51, каркас 20–25, перегородки 8–12 см.')));
     body.append(F.section('Файл',
       F.btns([['Сохранить .json', () => IO.saveJSON(), 'primary'], ['Открыть…', () => $('fileJson').click()]]),
       F.btns([['Печать / PDF…', () => $('dlgPrint').showModal()], ['PNG…', () => $('dlgPrint').showModal()]]),

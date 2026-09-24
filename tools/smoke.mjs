@@ -135,6 +135,20 @@ const gr = await page.evaluate(() => {
 });
 console.log('grid', JSON.stringify(gr));
 if (gr.ang.join() !== '30,120,-150,-60' || gr.a1 !== 40 || gr.back !== 0) errors.push('Поворот сетки работает неверно: ' + JSON.stringify(gr));
+// Enter в диалоге ввода = OK (раньше закрывал как «Отмена» — калибровка не срабатывала)
+const pv = await page.evaluate(() => new Promise((res) => { UI.promptNumber('t', 'l', '1', (v) => res(v), () => res('cancel')); setTimeout(() => { $('dlgPromptInput').value = '7'; $('dlgPromptInput').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); }, 30); }));
+console.log('prompt enter', pv);
+if (pv !== 7) errors.push('Enter в диалоге ввода не подтверждает значение');
+// смена материала стены → типовая толщина; таблица «Стены по типам» меняет нарисованные стены
+const wm = await page.evaluate(() => {
+  const w = App.doc.walls.find(x => x.kind === 'ext'), ins = w.ins || 0;
+  App.setWallMat([w], 'brick'); const t1 = w.th - ins;
+  App.setWallDefault('ext', 'th', 51, true); const t2 = w.th - ins;
+  Model.undo(); Model.undo();
+  return [t1, t2];
+});
+console.log('wall mat', wm);
+if (wm[0] !== 38 && wm[0] !== 25 || wm[1] !== 51) errors.push('Толщина стен не меняется: ' + wm);
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

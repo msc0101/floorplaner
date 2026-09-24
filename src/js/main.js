@@ -180,6 +180,40 @@ const App = {
     s.gridOrigin = o; s.gridAngle = App.gridMod(-s.gridAngle);
     Model.commit();
   },
+  /** Ближайшая типовая толщина материала (без утеплителя) или null, если текущая уже типовая */
+  typicalTh(kind, mat, core) {
+    const M = materialsFor(kind)[mat];
+    if (!M || !M.ths || !M.ths.length || M.ths.some(t => Math.abs(t - core) < 0.01)) return null;
+    return M.ths.reduce((b, t) => (Math.abs(t - core) < Math.abs(b - core) ? t : b), M.ths[0]);
+  },
+  /** Сменить материал стен. Если толщина не типовая для нового материала — ставим ближайшую типовую
+   *  (газобетон 40 → кирпич 38), утеплитель сохраняется */
+  setWallMat(walls, mat) {
+    let n = 0, last = null;
+    for (const w of walls) {
+      if (!materialsFor(w.kind)[mat]) continue;
+      w.mat = mat;
+      const ins = w.ins || 0, t = App.typicalTh(w.kind, mat, w.th - ins);
+      if (t !== null) { w.th = t + ins; n++; last = t; }
+    }
+    Model.commit();
+    if (n) UI.toast(`Толщина ${n > 1 ? n + ' стен' : 'стены'} → ${last} см — типовая для «${materialsFor(walls[0].kind)[mat].name}»`);
+  },
+  /** Параметр стен по умолчанию для вида kind; applyExisting — применить и к уже нарисованным стенам этого вида */
+  setWallDefault(kind, key, val, applyExisting) {
+    const dd = App.doc.defaults.wall[kind];
+    dd[key] = val;
+    if (key === 'mat') { const t = App.typicalTh(kind, val, dd.th); if (t !== null) dd.th = t; }
+    let n = 0;
+    if (applyExisting) for (const w of App.doc.walls) {
+      if (w.kind !== kind) continue;
+      n++;
+      if (key === 'h') w.h = dd.h;
+      else { w.mat = dd.mat; w.th = dd.th + (w.ins || 0); }
+    }
+    Model.commit();
+    if (n) UI.toast(`Обновлено стен: ${n} (Ctrl+Z — отменить)`);
+  },
   /** Угол сетки приводится к [0; 90): сетка симметрична относительно поворота на 90° */
   gridMod(a) { a = ((a % 90) + 90) % 90; a = Math.round(a * 1000) / 1000; return a >= 90 - 1e-6 ? 0 : a; },
   setGrid(angle, origin) {

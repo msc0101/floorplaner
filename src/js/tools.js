@@ -872,16 +872,17 @@ const Tools = {
     const a = st.a;
     Tools.st = { a, b };
     App.redraw();
-    UI.promptNumber('Калибровка подложки', 'Реальное расстояние между отмеченными точками (м):', (d / 100).toFixed(2), (val) => {
-      const real = val * 100;
-      if (!(real > 0)) return;
+    // число без единиц — метры; можно и «600 см», «6000 мм»
+    const parse = (s) => (/^\s*-?\d*[.,]?\d+\s*$/.test(s) ? U.num(s, NaN) * 100 : U.parseLen(s));
+    UI.promptNumber('Калибровка подложки', 'Реальное расстояние между отмеченными точками (м, или «600 см»):', (d / 100).toFixed(2), (real) => {
+      if (!(real > 0)) { UI.toast('Расстояние должно быть больше нуля', 'err'); Tools.set('select'); return; }
       const u = App.doc.underlay, k = real / d;
       u.scale *= k;
       u.x = a.x + (u.x - a.x) * k; u.y = a.y + (u.y - a.y) * k;
       Model.commit();
       UI.toast(`Масштаб подложки: 1 px = ${(u.scale * 10).toFixed(2)} мм`);
       Tools.set('select');
-    }, () => Tools.set('select'));
+    }, () => Tools.set('select'), parse);
   },
 
   /* ------------------------------ клавиатура ----------------------------- */
