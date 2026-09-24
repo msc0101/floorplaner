@@ -523,7 +523,10 @@ const View3D = {
     bx(0, 0, w, d, e + ph - 4, e + ph, deck);
     for (let x = -w / 2 + 7; x < w / 2; x += 14) bx(x, 0, 1, d, e + ph, e + ph + 0.3, C('#8c6848'));
     // ступени: от площадки вниз, наружу
-    for (let i = 1; i < g.steps; i++) bx(0, d / 2 + (i - 0.5) * g.tread, g.sw, g.tread, e, e + ph - i * g.rise, i % 2 ? base.map(x => x * 1.05) : base);
+    for (const f of g.flights) for (let i = 1; i < g.steps; i++) {
+      const m = G.add(G.mid(f.a, f.b), G.mul(f.out, (i - 0.5) * g.tread)), across = Math.abs(f.out.y) > 0.5;
+      bx(m.x, m.y, across ? f.sw : g.tread, across ? g.tread : f.sw, e, e + ph - i * g.rise, i % 2 ? base.map(x => x * 1.05) : base);
+    }
     const z0 = e + ph;
     const eave = z0 + 230;
     // сегмент стороны: построить «ленту» элементов вдоль неё (локальные координаты)
@@ -558,20 +561,18 @@ const View3D = {
         seg(s, 8, eave - 12, eave, frame);
       }
     }
-    // дверь в проходе
-    if (g.gap && (o.encl === 'glazed' || o.encl === 'closed')) {
-      bx(0, d / 2 - 4, g.sw, 4, z0, z0 + 205, o.encl === 'glazed' ? glass : C('#7a5236'), o.encl === 'glazed' ? { glass: true } : undefined);
-      bx(0, d / 2 - (o.encl === 'closed' ? 7.5 : 4), g.sw, o.encl === 'closed' ? 15 : 8, z0 + 205, eave, o.encl === 'closed' ? wall : frame);
+    // двери в проходах к ступеням
+    if (o.encl === 'glazed' || o.encl === 'closed') for (const f of g.doors) {
+      const sd = { a: f.a, b: f.b, n: G.mul(f.out, -1) }, closed = o.encl === 'closed';
+      seg(sd, 4, z0, z0 + 205, closed ? C('#7a5236') : glass, closed ? undefined : { glass: true });
+      seg(sd, closed ? 15 : 8, z0 + 205, eave, closed ? wall : frame);
     }
     if (!o.roofed) return;
     // столбы у открытых
     if (o.encl === 'open' || o.encl === 'rail') {
-      const posts = [[-w / 2 + 7, d / 2 - 7], [w / 2 - 7, d / 2 - 7]];
-      if (!o.attached) posts.push([-w / 2 + 7, -d / 2 + 7], [w / 2 - 7, -d / 2 + 7]);
-      const k = Math.max(1, Math.round(w / 300));
-      for (let i = 1; i < k; i++) posts.push([-w / 2 + 7 + (w - 14) * i / k, d / 2 - 7]);
-      for (const [x, y] of posts) bx(x, y, 12, 12, z0, eave, post);
-      bx(0, d / 2 - 7, w, 12, eave - 15, eave, post);
+      for (const q of porchPosts(g, w, d)) bx(q.x, q.y, 12, 12, z0, eave, post);
+      // обвязка по верху столбов
+      for (const side of o.free) { const S = PORCH_SIDES[side]; seg({ a: S.a(w, d), b: S.b(w, d), n: G.mul(S.out, -1) }, 12, eave - 15, eave, post); }
     }
     // крыша: у пристроенной — односкатная от дома, у отдельной — двускатная
     const top = Math.max(it.h || 0, o.ph + 260);

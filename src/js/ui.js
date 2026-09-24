@@ -689,6 +689,14 @@ const UI = {
     }
     body.append(F.section('', F.btns([['Дублировать', () => App.duplicate()], ['Удалить', () => App.deleteSel(), 'danger']])));
   },
+  /** Выбор сторон площадки (ступени, ограждение): кнопки-переключатели */
+  sideChips(label, free, on, onChange) {
+    const set = new Set(on);
+    return U.el('div', { class: 'frow' }, U.el('span', { class: 'flabel' }, label), U.el('div', { class: 'chips' }, ['front', 'left', 'right', 'back'].filter(k => free.includes(k)).map(k => U.el('button', {
+      type: 'button', class: set.has(k) ? 'on' : '', 'aria-pressed': String(set.has(k)), 'data-side': k,
+      onclick: () => { if (set.has(k)) set.delete(k); else set.add(k); onChange(['front', 'left', 'right', 'back'].filter(x => set.has(x))); },
+    }, PORCH_SIDES[k].name))));
+  },
   propsItem(body, it) {
     const def = catItem(it.key);
     UI.head(body, it.label || def.name, CATALOG.find(c => c.id === def.cat)?.name);
@@ -708,10 +716,12 @@ const UI = {
         F.check('С крышей / козырьком', o.roofed, (v) => { it.roofed = v; if (v && it.h < o.ph + 240) it.h = o.ph + 280; Model.commit(); }),
         F.check('Пристроена к дому (задняя сторона — у стены)', o.attached, (v) => { it.attached = v; Model.commit(); }),
         F.num('Высота площадки над землёй', o.ph, (v) => { it.ph = U.clamp(v, 0, 300); Model.commit(); }, { min: 0, max: 300 }),
-        F.select('Ступени', o.steps === 'none' ? 'none' : 'front', [['front', 'Спереди'], ['none', 'Нет']], (v) => { it.steps = v; Model.commit(); }),
-        o.steps !== 'none' ? F.num('Ширина ступеней / прохода', o.stepW, (v) => { it.stepW = U.clamp(v, 60, 1000); Model.commit(); }, { min: 60 }) : null,
+        UI.sideChips('Ступени', o.free, o.stepSides, (list) => { it.stepSides = list; delete it.steps; Model.commit(); }),
+        o.stepSides.length ? F.select('Ступени на стороне', o.stepPos, [['center', 'по центру'], ['start', 'к левому краю (на боковых — к переду)'], ['end', 'к правому краю (на боковых — к дому)']], (v) => { it.stepPos = v; Model.commit(); }) : null,
+        o.stepSides.length ? F.num('Ширина ступеней / прохода', o.stepW, (v) => { it.stepW = U.clamp(v, 60, 1000); Model.commit(); }, { min: 60 }) : null,
+        o.encl !== 'open' ? UI.sideChips({ rail: 'Ограждение', glazed: 'Остекление', closed: 'Стены' }[o.encl], o.free, o.railSides, (list) => { it.railSides = list; Model.commit(); }) : null,
         g.steps ? F.info('Ступени', `${g.steps - 1} шт. + площадка, подъём ${U.fmtLen(g.rise)}, проступь ${g.tread} см`) : null,
-        F.note('Спереди — сторона со ступенями. Высота объекта — до верха крыши. Ступени и проход можно убрать, веранду — развернуть ручкой поворота.')));
+        F.note('Стороны — если смотреть на площадку спереди; «сзади» — сторона у дома (у пристроенной недоступна). Где ступени — там проход в ограждении, у закрытой веранды — дверь. Высота объекта — до верха крыши.')));
     }
     body.append(F.section('Положение',
       F.num('X', it.x / 100, (v) => UI.set(it, 'x', v * 100), { unit: 'м', step: 0.01 }),

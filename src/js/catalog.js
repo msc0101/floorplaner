@@ -366,30 +366,70 @@ const PORCH_ENCL = {
   glazed: { name: 'Закрытая остеклённая', short: 'остеклённая' },
   closed: { name: 'Закрытая утеплённая (стены и окна)', short: 'утеплённая' },
 };
-const PORCH_KEYS = ['encl', 'roofed', 'attached', 'ph', 'steps', 'stepW'];
+const PORCH_KEYS = ['encl', 'roofed', 'attached', 'ph', 'steps', 'stepSides', 'railSides', 'stepPos', 'stepW'];
+/** Стороны площадки в локальных координатах: «спереди» — +d/2, «сзади» — −d/2 (у дома, если пристроена).
+ *  «Слева/справа» — если смотреть на площадку спереди. out — внешняя нормаль. Каждая сторона идёт
+ *  от левого края к правому (боковые — от переда к заду): так «start/end» у ступеней понятны. */
+const PORCH_SIDES = {
+  front: { name: 'спереди', a: (w, d) => ({ x: -w / 2, y: d / 2 }), b: (w, d) => ({ x: w / 2, y: d / 2 }), out: { x: 0, y: 1 } },
+  left:  { name: 'слева', a: (w, d) => ({ x: -w / 2, y: d / 2 }), b: (w, d) => ({ x: -w / 2, y: -d / 2 }), out: { x: -1, y: 0 } },
+  right: { name: 'справа', a: (w, d) => ({ x: w / 2, y: d / 2 }), b: (w, d) => ({ x: w / 2, y: -d / 2 }), out: { x: 1, y: 0 } },
+  back:  { name: 'сзади', a: (w, d) => ({ x: -w / 2, y: -d / 2 }), b: (w, d) => ({ x: w / 2, y: -d / 2 }), out: { x: 0, y: -1 } },
+};
 /** Параметры веранды: из объекта, иначе — из каталога */
 function porchOpt(it) {
   const d = catItem(it.key), g = (k, def) => it[k] ?? d[k] ?? def;
-  return { encl: g('encl', 'open'), roofed: !!g('roofed', false), attached: !!g('attached', true), ph: Math.max(0, +g('ph', 0) || 0), steps: g('steps', 'front'), stepW: Math.max(60, +g('stepW', 120) || 120) };
+  const attached = !!g('attached', true);
+  const free = Object.keys(PORCH_SIDES).filter(k => !(attached && k === 'back'));
+  // ступени: список сторон (старые проекты — steps: 'front' / 'none')
+  let stepSides = it.stepSides ?? d.stepSides ?? (g('steps', 'front') === 'none' ? [] : ['front']);
+  stepSides = stepSides.filter(k => free.includes(k));
+  const railSides = (it.railSides ?? d.railSides ?? free).filter(k => free.includes(k));
+  return { encl: g('encl', 'open'), roofed: !!g('roofed', false), attached, ph: Math.max(0, +g('ph', 0) || 0), stepSides, railSides, free, stepPos: g('stepPos', 'center'), stepW: Math.max(60, +g('stepW', 120) || 120) };
 }
-/** Геометрия в локальных координатах: стороны с ограждением (без прохода к ступеням), проход, ступени.
- *  «Спинка» (−d/2) примыкает к дому, если attached; ступени — спереди (+d/2). */
+/** Геометрия в локальных координатах: стороны с ограждением (без проходов к ступеням), проходы, ступени */
 function porchGeom(it, w, d) {
   const o = porchOpt(it);
-  const sw = Math.min(o.stepW, w - 20);
-  const hasSteps = o.steps !== 'none' && o.ph >= 15;
-  const gap = o.steps !== 'none' ? [-sw / 2, sw / 2] : null;
-  const sides = [[{ x: -w / 2, y: d / 2 }, { x: w / 2, y: d / 2 }], [{ x: -w / 2, y: -d / 2 }, { x: -w / 2, y: d / 2 }], [{ x: w / 2, y: -d / 2 }, { x: w / 2, y: d / 2 }]];
-  if (!o.attached) sides.push([{ x: -w / 2, y: -d / 2 }, { x: w / 2, y: -d / 2 }]);
+  const n = o.ph >= 15 ? Math.max(2, Math.round(o.ph / 17)) : 0;
+  const tread = 30;
+  const gaps = {}, flights = [];
+  for (const k of o.stepSides) {
+    const S = PORCH_SIDES[k], a = S.a(w, d), b = S.b(w, d), L = G.dist(a, b), u = G.unit(G.sub(b, a));
+    const sw = Math.min(o.stepW, L - 20);
+    const s0 = o.stepPos === 'start' ? 10 : o.stepPos === 'end' ? L - 10 - sw : (L - sw) / 2;
+    gaps[k] = [s0, s0 + sw];
+    flights.push({ side: k, a: G.add(a, G.mul(u, s0)), b: G.add(a, G.mul(u, s0 + sw)), u, out: S.out, sw });
+  }
   const segs = [];
-  sides.forEach((s, i) => {
-    if (i === 0 && gap) { segs.push([s[0], { x: gap[0], y: d / 2 }]); segs.push([{ x: gap[1], y: d / 2 }, s[1]]); }
-    else segs.push(s);
-  });
-  // внутренняя нормаль стороны (к центру)
-  const inward = (a, b) => { const m = G.mid(a, b), n = G.perp(G.unit(G.sub(b, a))); return G.dot(n, m) > 0 ? G.mul(n, -1) : n; };
-  const n = hasSteps ? Math.max(2, Math.round(o.ph / 17)) : 0;
-  return { o, sw, gap, segs: segs.filter(([a, b]) => G.dist(a, b) > 5).map(([a, b]) => ({ a, b, n: inward(a, b) })), steps: n, rise: n ? o.ph / n : 0, tread: 30 };
+  for (const k of o.railSides) {
+    const S = PORCH_SIDES[k], a = S.a(w, d), b = S.b(w, d), L = G.dist(a, b), u = G.unit(G.sub(b, a));
+    const inn = G.mul(S.out, -1);
+    const parts = gaps[k] ? [[0, gaps[k][0]], [gaps[k][1], L]] : [[0, L]];
+    for (const [t0, t1] of parts) if (t1 - t0 > 5) segs.push({ side: k, a: G.add(a, G.mul(u, t0)), b: G.add(a, G.mul(u, t1)), n: inn });
+  }
+  // двери — в проходах к ступеням на сторонах с ограждением/стенами
+  const doors = flights.filter(f => o.railSides.includes(f.side));
+  return { o, segs, flights, doors, steps: flights.length ? n : 0, rise: n ? o.ph / n : 0, tread, sw: flights[0] ? flights[0].sw : Math.min(o.stepW, w - 20) };
+}
+
+/** Столбы под крышей открытой веранды: по углам (кроме стороны дома) и не реже чем через ~3 м,
+ *  но не в проходах к ступеням */
+function porchPosts(g, w, d) {
+  const o = g.o, out = [], k = 7;
+  const corners = [{ x: -w / 2 + k, y: d / 2 - k }, { x: w / 2 - k, y: d / 2 - k }];
+  if (!o.attached) corners.push({ x: -w / 2 + k, y: -d / 2 + k }, { x: w / 2 - k, y: -d / 2 + k });
+  out.push(...corners);
+  for (const side of o.free) {
+    const S = PORCH_SIDES[side], a = S.a(w, d), b = S.b(w, d), L = G.dist(a, b), u = G.unit(G.sub(b, a));
+    const n = Math.max(1, Math.round(L / 300)), inn = G.mul(S.out, -k);
+    const f = g.flights.find(x => x.side === side);
+    for (let i = 1; i < n; i++) {
+      const t = L * i / n;
+      if (f) { const t0 = G.dist(a, f.a), t1 = G.dist(a, f.b); if (t > t0 - 15 && t < t1 + 15) continue; }
+      out.push(G.add(G.add(a, G.mul(u, t)), inn));
+    }
+  }
+  return out;
 }
 
 /* ============================ КУХОННЫЕ ГАРНИТУРЫ ============================ */
@@ -983,10 +1023,14 @@ const Painters = (() => {
       box(P, -w / 2 - 25, o.attached ? -d / 2 : -d / 2 - 25, w + 50, d + 25 + (o.attached ? 0 : 25), 0, false);
       c.restore();
     }
-    // ступени
-    if (g.steps) {
+    // ступени — наружу от выбранных сторон
+    const quad = (p0, p1, p2, p3) => { c.beginPath(); c.moveTo(p0.x, p0.y); c.lineTo(p1.x, p1.y); c.lineTo(p2.x, p2.y); c.lineTo(p3.x, p3.y); c.closePath(); c.fill(); c.stroke(); };
+    if (g.steps) for (const f of g.flights) {
       c.fillStyle = P.C.itemFill; thin(P);
-      for (let i = 0; i < g.steps - 1; i++) box(P, -g.sw / 2, d / 2 + i * g.tread, g.sw, g.tread, 0);
+      for (let i = 0; i < g.steps - 1; i++) {
+        const o0 = G.mul(f.out, i * g.tread), o1 = G.mul(f.out, (i + 1) * g.tread);
+        quad(G.add(f.a, o0), G.add(f.b, o0), G.add(f.b, o1), G.add(f.a, o1));
+      }
     }
     // площадка и доски настила
     c.fillStyle = P.C.itemFill; lw(P, 1.4); box(P, -w / 2, -d / 2, w, d, 0);
@@ -1016,24 +1060,21 @@ const Painters = (() => {
         line(P, [p0.x + s.n.x * 7.5, p0.y + s.n.y * 7.5, p1.x + s.n.x * 7.5, p1.y + s.n.y * 7.5]);
       }
     }
-    // дверь в проходе у закрытой веранды
-    if (g.gap && (o.encl === 'glazed' || o.encl === 'closed')) {
-      const dw = Math.min(90, g.sw);
-      thin(P); line(P, [g.gap[0], d / 2, g.gap[0], d / 2 - dw]);
-      c.beginPath(); c.arc(g.gap[0], d / 2, dw, -Math.PI / 2, 0); c.stroke();
+    // дверь в проходе к ступеням у закрытой веранды
+    if (o.encl === 'glazed' || o.encl === 'closed') for (const f of g.doors) {
+      const dw = Math.min(90, f.sw), inn = G.mul(f.out, -1);
+      const a1 = Math.atan2(inn.y, inn.x), a2 = Math.atan2(f.u.y, f.u.x);
+      thin(P); line(P, [f.a.x, f.a.y, f.a.x + inn.x * dw, f.a.y + inn.y * dw]);
+      c.beginPath(); c.arc(f.a.x, f.a.y, dw, a1, a2, G.cross(inn, f.u) < 0); c.stroke();
     }
     // столбы под крышей у открытых
     if (o.roofed && (o.encl === 'open' || o.encl === 'rail')) {
       c.fillStyle = P.C.ink;
-      const posts = [[-w / 2 + 7, d / 2 - 7], [w / 2 - 7, d / 2 - 7]];
-      if (!o.attached) posts.push([-w / 2 + 7, -d / 2 + 7], [w / 2 - 7, -d / 2 + 7]);
-      const k = Math.max(1, Math.round(w / 300));
-      for (let i = 1; i < k; i++) posts.push([-w / 2 + 7 + (w - 14) * i / k, d / 2 - 7]);
-      for (const [x, y] of posts) box(P, x - 6, y - 6, 12, 12, 0);
+      for (const q of porchPosts(g, w, d)) box(P, q.x - 6, q.y - 6, 12, 12, 0);
       c.fillStyle = P.C.itemFill;
     }
     const nm = P.it.label || P.def.name.split(' ')[0];
-    const sz = Math.min(36, w / 7, d / 3);
+    const sz = Math.min(28, w / 9, d / 4);
     // «вниз по экрану» в локальных координатах — чтобы вторая строка шла под первой при любом повороте
     const dn = { x: Math.sin(P.rotRad) * (P.flip ? -1 : 1), y: Math.cos(P.rotRad) };
     text(P, nm, -dn.x * sz * 0.35, -dn.y * sz * 0.35, sz, { bold: true });

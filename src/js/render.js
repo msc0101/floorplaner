@@ -112,7 +112,8 @@ const Render = {
     if (L.shadows && !ctx.isVector) Render.shadows(env);
     lay('ITEMS');
     const items = App.V.items.filter(it => L[catItem(it.key).layer] !== false);
-    const isGround = (it) => { const d = catItem(it.key); return !d.sym && (it.h <= 20 || d.shape === 'rug') && !['tree', 'conifer', 'bush'].includes(d.shape); };
+    // «напольные» объекты — под стенами и дверьми (крыльцо и веранда не закрывают открытую дверь)
+    const isGround = (it) => { const d = catItem(it.key); return !d.sym && (it.h <= 20 || d.shape === 'rug' || d.shape === 'veranda') && !['tree', 'conifer', 'bush'].includes(d.shape); };
     const isCanopy = (it) => ['tree', 'conifer', 'bush', 'hedge'].includes(catItem(it.key).shape);
     for (const it of items) if (isGround(it)) Render.item(env, it);
     lay('WALLS');

@@ -185,12 +185,15 @@ const pv3 = await page.evaluate(() => {
   const encl = Model.get(v.id).encl;
   View3D.build();
   const g = porchGeom(Model.get(made[0].id), 200, 150);
-  const r = { n: made.length, encl, steps: g.steps, segs: g.segs.length, tris: View3D.build().P.length > 0 };
+  // ступени и ограждение — на выбранных сторонах
+  const p0 = Model.get(made[0].id); p0.stepSides = ['left', 'right']; p0.railSides = ['front'];
+  const g2 = porchGeom(p0, p0.w, p0.d);
+  const r = { n: made.length, encl, steps: g.steps, segs: g.segs.length, tris: View3D.build().P.length > 0, flights2: g2.flights.map(f => f.side).join(), segs2: g2.segs.map(s => s.side).join() };
   Model.undo(); Model.undo(); App.sel.clear(); App.selChanged();
   return r;
 });
 console.log('porch/kitchen', JSON.stringify(pv3));
-if (pv3.encl !== 'open' || pv3.steps !== 4 || pv3.segs !== 4) errors.push('Веранда/крыльцо: ' + JSON.stringify(pv3));
+if (pv3.encl !== 'open' || pv3.steps !== 4 || pv3.segs !== 4 || pv3.flights2 !== 'left,right' || pv3.segs2 !== 'front') errors.push('Веранда/крыльцо: ' + JSON.stringify(pv3));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);
