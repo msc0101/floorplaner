@@ -899,6 +899,8 @@ const UI = {
       F.info('Периметр по полу', U.fmtLen(r.perimFloor)),
       F.info('Окна', wins.length ? wins.map(w => w.info.dir).join(', ') : 'нет'),
       F.btns([['Переименовать на плане: двойной клик', null, 'ghost']].map(x => [x[0], () => UI.focusField('roomName'), x[2]])),
+      r.tag && r.tag.fixed ? F.btns([['Подпись — в центр помещения', () => { const t = r.tag; delete t.fixed; const c = G.labelPoint(r.floor); t.x = c.x; t.y = c.y; Model.commit(); }]]) : null,
+      F.note(r.tag && r.tag.fixed ? 'Подпись закреплена там, куда её перетащили.' : 'Подпись стоит по центру помещения; перетащите её, чтобы закрепить в другом месте.'),
     ));
     const name = r.name.toLowerCase();
     const presets = ['Гостиная', 'Кухня', 'Кухня-гостиная', 'Спальня', 'Детская', 'Кабинет', 'Санузел', 'Ванная', 'Туалет', 'Прихожая', 'Коридор', 'Гардероб', 'Котельная', 'Кладовая', 'Терраса', 'Гараж'];

@@ -152,7 +152,8 @@ const Rooms = {
     const bySize = [...rooms].sort((a, b) => a.areaAxis - b.areaAxis);
     for (const r of bySize) {
       const t = tags.find(t => !usedTags.has(t.id) && G.pointInPoly(t, r.axis));
-      if (t) { usedTags.add(t.id); r.tag = t; r.name = t.name; r.label = { x: t.x, y: t.y }; }
+      // подпись — в центре помещения; на месте метки — только если её перетащили вручную (fixed)
+      if (t) { usedTags.add(t.id); r.tag = t; r.name = t.name; if (t.fixed) r.label = { x: t.x, y: t.y }; }
     }
     let n = 1;
     for (const r of rooms) { r.id = r.tag ? r.tag.id : 'room' + n; if (!r.name) r.name = 'Помещение ' + n; n++; }

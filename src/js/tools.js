@@ -239,6 +239,11 @@ const Tools = {
     if (u && !u.locked && u.visible && L.underlay && Underlay.img && G.pointInPoly(p, Underlay.corners())) return 'underlay';
     return null;
   },
+  /** Помещение, чья подпись (название + площадь) под курсором (экранные координаты) */
+  roomLabelAt(sp) {
+    if (!Tools.layerOn('rooms')) return null;
+    return App.rooms.find(r => { const q = View.toScreen(r.label); return Math.abs(sp.x - q.x) < 42 && Math.abs(sp.y - q.y) < 16; }) || null;
+  },
   isRoom(id) { return typeof id === 'string' && App.rooms.some(r => r.id === id); },
 
   /* ------------------------------- ручки --------------------------------- */
@@ -370,6 +375,17 @@ const Tools = {
     if (Math.hypot(sp.x - cr.x, sp.y - cr.y) <= cr.r) { Tools.st = { mode: 'north', start: sp }; return; }
     const id = Tools.hitTest(p);
     const room = Tools.isRoom(id);
+    // подпись помещения можно перетащить (дальше она остаётся на новом месте)
+    const lr = room && Tools.roomLabelAt(sp);
+    if (lr) {
+      let t = lr.tag;
+      const temp = !t;
+      if (temp) t = Model.add('roomTags', { x: lr.label.x, y: lr.label.y, name: lr.name });
+      else { t.x = lr.label.x; t.y = lr.label.y; }
+      App.sel.clear(); App.sel.add(temp ? lr.id : t.id); App.selChanged();
+      Tools.st = { mode: 'move', ids: [t.id], start: p, last: p, moved: false, orig: null, grab: t.id, tempTag: temp && t.id };
+      return;
+    }
     if (!id || room || (Model.coll(id) === 'areas' && Model.get(id).kind === 'plot' && !App.sel.has(id))) {
       Tools.st = { mode: 'box', start: p, sp, id, shift: e.shiftKey, moved: false };
       return;
@@ -392,7 +408,7 @@ const Tools = {
       const hh = Tools.handleAt(sp);
       if (App.hover !== id) { App.hover = id; }
       UI.hoverTip(hh || (e.buttons & 1) ? null : id, sp);
-      App.canvas.style.cursor = hh ? (hh.kind === 'rotate' ? 'grab' : 'pointer') : id && !Tools.isRoom(id) ? 'move' : 'default';
+      App.canvas.style.cursor = hh ? (hh.kind === 'rotate' ? 'grab' : 'pointer') : (id && !Tools.isRoom(id)) || (Tools.isRoom(id) && Tools.roomLabelAt(sp)) ? 'move' : 'default';
       return;
     }
     if (st.mode === 'north') {
@@ -484,9 +500,16 @@ const Tools = {
     }
     if (st.mode === 'toggle') { App.sel.delete(st.id); App.selChanged(); return; }
     if (st.mode === 'handle' || st.mode === 'opening' || st.mode === 'move') {
+      // подпись помещения перетащили руками — дальше она остаётся там, где её оставили
+      if (st.moved && st.mode === 'move') Tools.fixTags(st.ids);
+      if (st.tempTag) {
+        if (st.moved) { App.sel.clear(); App.sel.add(st.tempTag); }
+        else { Model.remove([st.tempTag]); return; }        // просто клик по подписи — метка не нужна
+      }
       if (st.moved) Model.commit();
     }
   },
+  fixTags(ids) { if (ids.length && ids.every(id => Model.coll(id) === 'roomTags')) for (const id of ids) Model.get(id).fixed = true; },
   movableIds(ids) { return ids.filter(id => Model.get(id)); },
 
   /* ----------------------------- ручки: drag ----------------------------- */

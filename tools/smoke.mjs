@@ -164,11 +164,15 @@ const rm = await page.evaluate(() => {
   Model.moveWalls([ids[1].id], 100, 0); Model.commit();
   const w0 = ids[0], w2 = ids[2];
   const r = { n1, n2, px, top: Math.round(w0.b.x - S), bottom: Math.round(w2.a.x - S) };
+  // подпись: по центру; перетаскивание мышью закрепляет её (fixed), клик без сдвига меток не плодит
+  const room = App.rooms.find(x => G.pointInPoly(x.label, [{ x: S + 350, y: S }, { x: S + 700, y: S }, { x: S + 700, y: S + 400 }, { x: S + 350, y: S + 400 }]));
+  r.labelCentered = !!room && Math.abs(room.label.x - G.labelPoint(room.floor).x) < 1;
+  r.room = room ? room.id : null;
   for (let i = 0; i < 3; i++) Model.undo();
   return r;
 });
 console.log('rooms/move', JSON.stringify(rm));
-if (rm.n1 !== 2 || rm.n2 !== 2 || rm.px !== 350 || rm.top !== 700 || rm.bottom !== 700) errors.push('Разбивка помещений / сдвиг стен: ' + JSON.stringify(rm));
+if (!rm.labelCentered || rm.n1 !== 2 || rm.n2 !== 2 || rm.px !== 350 || rm.top !== 700 || rm.bottom !== 700) errors.push('Разбивка помещений / сдвиг стен: ' + JSON.stringify(rm));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);
