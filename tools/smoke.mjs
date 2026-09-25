@@ -283,6 +283,20 @@ const gar = await page.evaluate(() => {
 });
 console.log('garage', JSON.stringify(gar));
 if (gar.walls !== 5 || gar.t !== 25 || gar.dw !== 300 || !gar.pick || !gar.floor || gar.inHole !== 0 || !gar.inside || !gar.gate || !gar.wall || gar.floorZ !== 10 || !gar.pitZ) errors.push('Гараж изнутри: ' + JSON.stringify(gar));
+// смена типа стены меняет толщину на типовую для нового типа (материал и утеплитель учитываются)
+const wkind = await page.evaluate(() => {
+  const f = App.doc.floors[0].id, D = App.doc.defaults.wall;
+  const w = Model.add('walls', { kind: 'ext', th: D.ext.th, h: 300, mat: D.ext.mat, a: { x: 90000, y: 0 }, b: { x: 90500, y: 0 }, floor: f });
+  const w2 = Model.add('walls', { kind: 'ext', th: D.ext.th + 10, ins: 10, h: 300, mat: D.ext.mat, a: { x: 90000, y: 500 }, b: { x: 90500, y: 500 }, floor: f });
+  Model.commit();
+  App.setWallKind([w], 'part'); const r = { part: w.th === D.part.th, mat: w.mat };
+  App.setWallKind([w2], 'int'); r.ins = w2.th === D.int.th + 10;
+  App.setWallKind([w], 'fence'); r.fence = w.th === D.fence.th && w.h === D.fence.h;
+  Model.undo(); Model.undo(); Model.undo(); Model.undo();
+  return r;
+});
+console.log("wallKind", JSON.stringify(wkind));
+if (!wkind.part || !wkind.ins || !wkind.fence) errors.push("Смена типа стены: " + JSON.stringify(wkind));
 // заголовок вкладки — имя открытого файла
 const ttl = await page.evaluate(() => { const f0 = App.fileName; IO.setFile('Дача.json'); const t = document.title; IO.setFile(f0); return t; });
 console.log('title', ttl);

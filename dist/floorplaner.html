@@ -8128,12 +8128,7 @@ const UI = {
     };
     const ang = U.normDeg(-U.deg(G.angle(w.a, w.b)));
     const mats = materialsFor(w.kind), M = mats[w.mat];
-    const setKind = (v) => {
-      w.kind = v;
-      if (!materialsFor(v)[w.mat]) w.mat = App.doc.defaults.wall[v].mat;
-      if (v === 'fence') delete w.ins;
-      Model.commit();
-    };
+    const setKind = (v) => App.setWallKind([w], v);
     body.append(F.section('Параметры',
       F.select('Тип', w.kind, Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name]), setKind),
       F.select('Материал', w.mat, Object.entries(mats).map(([k, v]) => [k, v.name]), (v) => App.setWallMat([w], v), { field: 'mat' }),
@@ -8536,7 +8531,7 @@ const UI = {
     if (walls.length) {
       const same = (k) => walls.every(w => w[k] === walls[0][k]) ? walls[0][k] : null;
       body.append(F.section('Стены (все выделенные)',
-        F.select('Тип', same('kind') ?? '', [['', '— разные —'], ...Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name])], (v) => { if (v) { walls.forEach(w => { w.kind = v; if (!materialsFor(v)[w.mat]) w.mat = App.doc.defaults.wall[v].mat; }); Model.commit(); } }),
+        F.select('Тип', same('kind') ?? '', [['', '— разные —'], ...Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name])], (v) => { if (v) App.setWallKind(walls, v); }),
         F.select('Материал', same('mat') ?? '', [['', '— разные —'], ...Object.entries(walls.every(w => w.kind === 'fence') ? FENCE_MATERIALS : walls.some(w => w.kind === 'fence') ? {} : WALL_MATERIALS).map(([k, v]) => [k, v.name])], (v) => { if (v) App.setWallMat(walls, v); }),
         F.num('Толщина', same('th'), (v) => { walls.forEach(w => (w.th = v)); Model.commit(); }, { min: 2 }),
         F.num('Высота', same('h'), (v) => { walls.forEach(w => (w.h = v)); Model.commit(); }, { min: 0 }),
@@ -10582,6 +10577,26 @@ const App = {
     Model.commit();
     const w0 = walls.find(w => materialsFor(w.kind)[mat]);
     if (n && w0) UI.toast(`Толщина ${n > 1 ? n + ' стен' : 'стены'} → ${last} см — типовая для «${materialsFor(w0.kind)[mat].name}»`);
+  },
+  /** Сменить тип стен (наружная / внутренняя / перегородка / забор): толщина — по умолчанию для нового типа
+   *  (с учётом материала и утеплителя), материал — прежний, если подходит; у забора и обратно — и высота */
+  setWallKind(walls, kind) {
+    const dd = App.doc.defaults.wall[kind];
+    if (!dd) return;
+    let n = 0;
+    for (const w of walls) {
+      if (w.kind === kind) continue;
+      const wasFence = w.kind === 'fence';
+      w.kind = kind;
+      if (!materialsFor(kind)[w.mat]) w.mat = dd.mat;
+      if (kind === 'fence') delete w.ins;
+      const core = w.mat === dd.mat ? dd.th : (App.typicalTh(kind, w.mat, dd.th) ?? dd.th);
+      w.th = core + (w.ins || 0);
+      if (wasFence || kind === 'fence') w.h = dd.h;
+      n++;
+    }
+    Model.commit();
+    if (n) UI.toast(`${WALL_KINDS[kind].name}: толщина ${walls.length > 1 ? 'стен' : 'стены'} ${Math.round(walls[walls.length - 1].th * 10) / 10} см (типовая для этого типа; Ctrl+Z — отменить)`);
   },
   /** Параметр стен по умолчанию для вида kind; applyExisting — применить и к уже нарисованным стенам этого вида */
   setWallDefault(kind, key, val, applyExisting) {

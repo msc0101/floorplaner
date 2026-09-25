@@ -627,12 +627,7 @@ const UI = {
     };
     const ang = U.normDeg(-U.deg(G.angle(w.a, w.b)));
     const mats = materialsFor(w.kind), M = mats[w.mat];
-    const setKind = (v) => {
-      w.kind = v;
-      if (!materialsFor(v)[w.mat]) w.mat = App.doc.defaults.wall[v].mat;
-      if (v === 'fence') delete w.ins;
-      Model.commit();
-    };
+    const setKind = (v) => App.setWallKind([w], v);
     body.append(F.section('Параметры',
       F.select('Тип', w.kind, Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name]), setKind),
       F.select('Материал', w.mat, Object.entries(mats).map(([k, v]) => [k, v.name]), (v) => App.setWallMat([w], v), { field: 'mat' }),
@@ -1035,7 +1030,7 @@ const UI = {
     if (walls.length) {
       const same = (k) => walls.every(w => w[k] === walls[0][k]) ? walls[0][k] : null;
       body.append(F.section('Стены (все выделенные)',
-        F.select('Тип', same('kind') ?? '', [['', '— разные —'], ...Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name])], (v) => { if (v) { walls.forEach(w => { w.kind = v; if (!materialsFor(v)[w.mat]) w.mat = App.doc.defaults.wall[v].mat; }); Model.commit(); } }),
+        F.select('Тип', same('kind') ?? '', [['', '— разные —'], ...Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name])], (v) => { if (v) App.setWallKind(walls, v); }),
         F.select('Материал', same('mat') ?? '', [['', '— разные —'], ...Object.entries(walls.every(w => w.kind === 'fence') ? FENCE_MATERIALS : walls.some(w => w.kind === 'fence') ? {} : WALL_MATERIALS).map(([k, v]) => [k, v.name])], (v) => { if (v) App.setWallMat(walls, v); }),
         F.num('Толщина', same('th'), (v) => { walls.forEach(w => (w.th = v)); Model.commit(); }, { min: 2 }),
         F.num('Высота', same('h'), (v) => { walls.forEach(w => (w.h = v)); Model.commit(); }, { min: 0 }),

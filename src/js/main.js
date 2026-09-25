@@ -276,6 +276,26 @@ const App = {
     const w0 = walls.find(w => materialsFor(w.kind)[mat]);
     if (n && w0) UI.toast(`Толщина ${n > 1 ? n + ' стен' : 'стены'} → ${last} см — типовая для «${materialsFor(w0.kind)[mat].name}»`);
   },
+  /** Сменить тип стен (наружная / внутренняя / перегородка / забор): толщина — по умолчанию для нового типа
+   *  (с учётом материала и утеплителя), материал — прежний, если подходит; у забора и обратно — и высота */
+  setWallKind(walls, kind) {
+    const dd = App.doc.defaults.wall[kind];
+    if (!dd) return;
+    let n = 0;
+    for (const w of walls) {
+      if (w.kind === kind) continue;
+      const wasFence = w.kind === 'fence';
+      w.kind = kind;
+      if (!materialsFor(kind)[w.mat]) w.mat = dd.mat;
+      if (kind === 'fence') delete w.ins;
+      const core = w.mat === dd.mat ? dd.th : (App.typicalTh(kind, w.mat, dd.th) ?? dd.th);
+      w.th = core + (w.ins || 0);
+      if (wasFence || kind === 'fence') w.h = dd.h;
+      n++;
+    }
+    Model.commit();
+    if (n) UI.toast(`${WALL_KINDS[kind].name}: толщина ${walls.length > 1 ? 'стен' : 'стены'} ${Math.round(walls[walls.length - 1].th * 10) / 10} см (типовая для этого типа; Ctrl+Z — отменить)`);
+  },
   /** Параметр стен по умолчанию для вида kind; applyExisting — применить и к уже нарисованным стенам этого вида */
   setWallDefault(kind, key, val, applyExisting) {
     const dd = App.doc.defaults.wall[kind];
