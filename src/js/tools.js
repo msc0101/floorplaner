@@ -377,7 +377,10 @@ const Tools = {
 
   /* ------------------------------ выделение ------------------------------ */
   selDown(e, sp, p) {
+    // цифра подсказки расстояния: задать расстояние точно
     const h = Tools.handleAt(sp);
+    const gh = !h && !e.shiftKey && Render.guideAt(sp);
+    if (gh) { Tools.guideEdit(gh.act); return; }
     if (h) { Tools.beginHandle(h, p, e); return; }
     // компас: вращение стрелки севера
     const cr = Render.compassRect();
@@ -419,7 +422,7 @@ const Tools = {
       const hh = Tools.handleAt(sp);
       if (App.hover !== id) { App.hover = id; }
       UI.hoverTip(hh || (e.buttons & 1) ? null : id, sp);
-      App.canvas.style.cursor = hh ? (hh.kind === 'rotate' ? 'grab' : 'pointer') : (id && !Tools.isRoom(id)) || (Tools.isRoom(id) && Tools.roomLabelAt(sp)) ? 'move' : 'default';
+      App.canvas.style.cursor = hh || Render.guideAt(sp) ? (hh && hh.kind === 'rotate' ? 'grab' : 'pointer') : (id && !Tools.isRoom(id)) || (Tools.isRoom(id) && Tools.roomLabelAt(sp)) ? 'move' : 'default';
       return;
     }
     if (st.mode === 'north') {
@@ -931,6 +934,25 @@ const Tools = {
     const obj = Model.add('items', it);
     Model.commit();
     if (!e.shiftKey) { Tools.set('select'); App.sel.clear(); App.sel.add(obj.id); App.selChanged(); }
+  },
+
+  /** Клик по цифре подсказки: ввести точное расстояние — объект (или проём вдоль стены) сдвигается */
+  guideEdit(act) {
+    const o = Model.get(act.id);
+    if (!o) return;
+    const cur = Math.round(act.len * 10) / 10;
+    UI.promptNumber('Расстояние', act.kind === 'opening' ? 'От проёма до угла / соседнего проёма, см (или «1.2 м»):' : 'От объекта до стены, см (или «1.2 м»):', String(cur), (v) => {
+      if (!(v >= 0)) { UI.toast('Расстояние не может быть отрицательным', 'err'); return; }
+      if (act.kind === 'opening') {
+        const w = Model.get(o.wall), L = w ? Model.wallLen(w) : 0;
+        o.pos = U.clamp(o.pos + act.sign * (v - act.len), o.w / 2, Math.max(o.w / 2, L - o.w / 2));
+      } else {
+        const k = act.len - v;
+        o.x += act.dir.x * k; o.y += act.dir.y * k;
+      }
+      Model.commit();
+      UI.toast(`Расстояние: ${U.fmtLen(v)}`);
+    }, null, (s) => U.parseLen(s));
   },
 
   /* ------------------------------ калибровка ----------------------------- */

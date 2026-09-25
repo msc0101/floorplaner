@@ -937,6 +937,7 @@ const Render = {
   /* ---------------------------- выделение -------------------------------- */
   selection(env) {
     const { ctx, px, C } = env;
+    Render._guideHits = [];
     ctx.save();
     const hl = (id, strong) => {
       const o = Model.get(id), c = Model.coll(id);
@@ -979,8 +980,8 @@ const Render = {
     // направляющие расстояний до стен
     if (App.sel.size === 1 && App.doc.settings.showGuides !== false) {
       const id = [...App.sel][0];
-      if (Model.coll(id) === 'items') Render.itemGuides(env, Model.get(id));
-      if (Model.coll(id) === 'openings') Render.openingGuides(env, Model.get(id));
+      if (Model.coll(id) === 'items') Render.itemGuides(env, Model.get(id), true);
+      if (Model.coll(id) === 'openings') Render.openingGuides(env, Model.get(id), true);
     }
     // ручки
     for (const h of Tools.handles()) Render.handle(env, h);
@@ -1019,29 +1020,47 @@ const Render = {
     }
     return hit ? { t: best, p: hit } : null;
   },
-  itemGuides(env, it) {
-    if (catItem(it.key).layer === 'siteobj' && it.w > 250) return;
-    const segs = Render.wallFaces();
-    const dirs = [[1, 0, it.w / 2], [-1, 0, it.w / 2], [0, 1, it.d / 2], [0, -1, it.d / 2]];
+  /** Препятствия для подсказок расстояний от объекта: грани стен и забора, стены гаража/сарая, граница участка */
+  guideFaces(self) {
+    const segs = [];
+    for (const w of App.V.walls) { const r = Model.wallRect(w); for (let i = 0; i < 4; i++) segs.push([r[i], r[(i + 1) % 4], w.id]); }
+    for (const b of App.V.items) {
+      if (b === self || !BLD_HOLLOW.has(catItem(b.key).shape)) continue;
+      for (const r of bldShell(b, b.w, b.d).walls) {
+        const q = [{ x: r.x0, y: r.y0 }, { x: r.x1, y: r.y0 }, { x: r.x1, y: r.y1 }, { x: r.x0, y: r.y1 }].map(v => bldWorld(b, v));
+        for (let i = 0; i < 4; i++) segs.push([q[i], q[(i + 1) % 4], b.id]);
+      }
+    }
+    for (const a of App.V.areas) if (a.kind === 'plot') for (let i = 0; i < a.pts.length; i++) segs.push([a.pts[i], a.pts[(i + 1) % a.pts.length], a.id]);
+    return segs;
+  },
+  /** Расстояния от сторон объекта до ближайших стен (пунктир); interactive — по цифре можно кликнуть и задать точно */
+  itemGuides(env, it, interactive) {
+    const def = catItem(it.key), site = def.layer === 'site' || def.layer === 'siteobj';
+    const segs = Render.guideFaces(it), { w, d } = Tools.itemDrawSize(it);
+    const dirs = [[1, 0, w / 2], [-1, 0, w / 2], [0, 1, d / 2], [0, -1, d / 2]];
     for (const [dx, dy, half] of dirs) {
       const dir = G.toWorld({ x: dx, y: dy }, 0, 0, it.rot);
       const start = G.add(it, G.mul(dir, half));
-      const h = Render.rayHit(start, dir, segs, 800);
-      if (h && h.t > 0.5) Render.guide(env, start, h.p, h.t);
+      const h = Render.rayHit(start, dir, segs, site ? 3000 : 800);
+      if (h && h.t > 0.5) Render.guide(env, start, h.p, h.t, null, interactive ? { kind: 'item', id: it.id, dir, len: h.t } : null);
     }
   },
-  openingGuides(env, op) {
+  openingGuides(env, op, interactive) {
     const g = Model.opGeom(op);
     if (!g) return;
     const segs = Render.wallFaces();
-    for (const [pt, dir, rem] of [[g.a, G.mul(g.u, -1), g.pos - g.width / 2], [g.b, g.u, g.L - g.pos - g.width / 2]]) {
+    for (const [pt, dir, rem, sign] of [[g.a, G.mul(g.u, -1), g.pos - g.width / 2, 1], [g.b, g.u, g.L - g.pos - g.width / 2, -1]]) {
       const h = Render.rayHit(pt, dir, segs, rem + 0.01, g.w.id);
       const end = h ? h.p : G.add(pt, G.mul(dir, rem));
       const d = h ? h.t : rem;
-      if (d > 0.5) Render.guide(env, pt, end, d, G.mul(g.n, g.th / 2 + 14 * env.px));
+      if (d > 0.5) Render.guide(env, pt, end, d, G.mul(g.n, g.th / 2 + 14 * env.px), interactive ? { kind: 'opening', id: op.id, sign, len: d } : null);
     }
   },
-  guide(env, a, b, len, offset) {
+  _guideHits: [],
+  /** Подсказка расстояния под курсором (экранные координаты) */
+  guideAt(sp) { return Render._guideHits.find(g => sp.x >= g.x0 - 3 && sp.x <= g.x1 + 3 && sp.y >= g.y0 - 3 && sp.y <= g.y1 + 3) || null; },
+  guide(env, a, b, len, offset, act) {
     const { ctx, px, C } = env;
     if (offset) { a = G.add(a, offset); b = G.add(b, offset); }
     ctx.save();
@@ -1050,7 +1069,13 @@ const Render = {
     ctx.setLineDash([]);
     for (const p of [a, b]) { ctx.beginPath(); ctx.arc(p.x, p.y, 2 * px, 0, Math.PI * 2); ctx.fillStyle = C.accent; ctx.fill(); }
     ctx.restore();
-    if (G.dist(a, b) * env.scale > 24) Render.label(env, U.fmtLen(len), G.mid(a, b), G.angle(a, b), { size: 10.5, color: C.accent, bg: true, pad: 2 });
+    const short = G.dist(a, b) * env.scale <= 24;
+    if (short && !act) return;
+    // короткую подсказку подписываем рядом, чтобы по ней можно было кликнуть
+    const at = short ? G.add(G.mid(a, b), G.mul(G.perp(G.unit(G.sub(b, a))), 12 * px)) : G.mid(a, b);
+    const o = { size: 10.5, color: C.accent, bg: true, pad: 2, prio: act ? 30 : 8 };
+    Render.label(env, U.fmtLen(len), at, G.angle(a, b), o);
+    if (act && !env.exporting) Render._guideHits.push({ ...Render._labelBox(env, U.fmtLen(len), at, G.angle(a, b), o), act });
   },
 
   /* ------------------------ экранные элементы ---------------------------- */

@@ -319,6 +319,24 @@ const grow = await page.evaluate(() => {
 });
 console.log('grow', JSON.stringify(grow));
 if (grow.top !== -10 || grow.top2 !== -10 || grow.th2 !== 50 || grow.left !== -10 || grow.right !== -10 || grow.part !== -10 || grow.partX !== 120300 || grow.undo !== 0) errors.push('Утолщение наружу: ' + JSON.stringify(grow));
+// подсказки расстояний у выделенного объекта: по цифре можно задать точное расстояние до стены
+await page.evaluate(() => {
+  const f = App.doc.floors[0].id, X = 140000, d = { kind: 'ext', th: 20, h: 300, mat: 'aerated', floor: f };
+  Model.add('walls', { ...d, a: { x: X, y: 0 }, b: { x: X, y: 500 } });
+  const it = Model.add('items', { key: 'box', x: X + 200, y: 250, w: 100, d: 100, h: 50, rot: 0, floor: f });
+  Model.commit(); App.sel.clear(); App.sel.add(it.id); App.selChanged(); View.fit({ x0: X - 100, y0: 0, x1: X + 400, y1: 500 }); App.redraw();
+  window._gdId = it.id;
+});
+await page.waitForTimeout(150);
+const gd = await page.evaluate(() => {
+  const g = Render._guideHits.find(h => h.act.dir.x < -0.5), r = { len: g && Math.round(g.act.len) };
+  if (g) { const o = UI.promptNumber; UI.promptNumber = (t, l, v, ok) => ok(45); Tools.guideEdit(g.act); UI.promptNumber = o; }
+  r.x = Model.get(window._gdId).x;
+  Model.undo(); Model.undo();
+  return r;
+});
+console.log('guides', JSON.stringify(gd));
+if (gd.len !== 140 || gd.x !== 140105) errors.push('Подсказки расстояний: ' + JSON.stringify(gd));
 // заголовок вкладки — имя открытого файла
 const ttl = await page.evaluate(() => { const f0 = App.fileName; IO.setFile('Дача.json'); const t = document.title; IO.setFile(f0); return t; });
 console.log('title', ttl);
