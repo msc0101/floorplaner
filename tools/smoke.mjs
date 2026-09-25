@@ -301,6 +301,24 @@ const wkind = await page.evaluate(() => {
 });
 console.log("wallKind", JSON.stringify(wkind));
 if (!wkind.part || !wkind.ins || !wkind.fence) errors.push("Смена типа стены: " + JSON.stringify(wkind));
+// наружная стена утолщается наружу: внутренняя грань и перегородки на месте, соседние стены подтягиваются
+const grow = await page.evaluate(() => {
+  const f = App.doc.floors[0].id, X = 120000, d = { kind: 'ext', th: 30, h: 300, mat: 'aerated', floor: f };
+  const A = (ax, ay, bx, by, o = d) => Model.add('walls', { ...o, a: { x: ax, y: ay }, b: { x: bx, y: by } });
+  const top = A(X, 0, X + 300, 0), top2 = A(X + 300, 0, X + 600, 0), right = A(X + 600, 0, X + 600, 400);
+  A(X + 600, 400, X, 400); const left = A(X, 400, X, 0);
+  const part = A(X + 300, 0, X + 300, 400, { ...d, kind: 'part', th: 10 });
+  Model.commit();
+  const T = (id) => Model.get(id);
+  UI.set(T(top.id), 'th', 50);
+  const r = { top: T(top.id).a.y, top2: T(top2.id).b.y, th2: T(top2.id).th, left: T(left.id).b.y, right: T(right.id).a.y, part: T(part.id).a.y };
+  UI.set(T(part.id), 'th', 20); r.partX = T(part.id).a.x;
+  Model.undo(); Model.undo(); r.undo = T(top.id).a.y;
+  Model.undo();
+  return r;
+});
+console.log('grow', JSON.stringify(grow));
+if (grow.top !== -10 || grow.top2 !== -10 || grow.th2 !== 50 || grow.left !== -10 || grow.right !== -10 || grow.part !== -10 || grow.partX !== 120300 || grow.undo !== 0) errors.push('Утолщение наружу: ' + JSON.stringify(grow));
 // заголовок вкладки — имя открытого файла
 const ttl = await page.evaluate(() => { const f0 = App.fileName; IO.setFile('Дача.json'); const t = document.title; IO.setFile(f0); return t; });
 console.log('title', ttl);

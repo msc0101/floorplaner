@@ -22,6 +22,7 @@ const IO = {
     App.heat = null;
     Model.reindex();
     Underlay.sync();
+    Model._skipGrow = true;
     Model.commit();
     UI._welcomeOff = false; UI.refresh();
     View.fit({ x0: -500, y0: -400, x1: 1000, y1: 800 });
@@ -58,7 +59,8 @@ const IO = {
     App.heat = null;
     Model.reindex();
     Underlay.sync();
-    if (keepHistory) Model.commit(); else { Model.resetHistory(); App.changed(); }
+    // другой документ — толщины стен с прежним не сравниваем
+    if (keepHistory) { Model._skipGrow = true; Model.commit(); } else { Model.resetHistory(); App.changed(); }
     setTimeout(() => View.fit(Model.contentBBox()), 0);
   },
 

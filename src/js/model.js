@@ -166,13 +166,65 @@ const Model = {
   /** Зафиксировать изменение: снимок в историю + пересчёты */
   commit() {
     Model.cleanGroups();
+    try { Model.growOutward(); } catch (e) { console.error(e); }
     const s = Model.snapshot();
+    Model._thBase = { key: s, map: Model.wallMap(App.doc.walls) };
     if (Model._undo[Model._undo.length - 1] !== s) {
       Model._undo.push(s);
       if (Model._undo.length > 150) Model._undo.shift();
       Model._redo = [];
     }
     App.changed();
+  },
+  wallMap(walls) { return new Map(walls.map(w => [w.id, { th: w.th, ins: w.ins || 0, mat: w.mat, kind: w.kind, floor: w.floor, a: { ...w.a }, b: { ...w.b } }])); },
+  /** Наружные стены утолщаются наружу: если у стены изменилась только толщина (материал, утеплитель, тип размера),
+   *  её ось сдвигается наружу на половину прироста — внутренняя грань и планировка остаются на месте.
+   *  Прямая стена, разрезанная примыканиями на части, меняется целиком — без ступенек на фасаде. */
+  growOutward() {
+    const top = Model._undo[Model._undo.length - 1];
+    if (Model._skipGrow || !top) { Model._skipGrow = false; return; }
+    let base = Model._thBase && Model._thBase.key === top ? Model._thBase.map : null;
+    if (!base) base = Model.wallMap(JSON.parse(top).walls || []);
+    const f1 = App.doc.floors[0].id, fl = (w) => w.floor || f1;
+    const same = (o, w) => o && G.dist(o.a, w.a) < 0.01 && G.dist(o.b, w.b) < 0.01;
+    const seeds = App.doc.walls.filter(w => { const o = base.get(w.id); return w.kind === 'ext' && o && o.kind === 'ext' && Math.abs(o.th - w.th) > 0.01 && same(o, w); });
+    if (!seeds.length) return;
+    const done = new Set();
+    for (const w of seeds) {
+      if (done.has(w.id)) continue;
+      const o = base.get(w.id), u = G.unit(G.sub(w.b, w.a)), n = G.perp(u), m = G.mid(w.a, w.b);
+      // прямая стена целиком: соседи на той же линии с тем же прежним сечением и нетронутые
+      const chain = [w]; done.add(w.id);
+      for (let k = 0; k < chain.length; k++) {
+        const c = chain[k];
+        for (const x of App.doc.walls) {
+          if (done.has(x.id) || x.kind !== 'ext' || fl(x) !== fl(w)) continue;
+          const ox = base.get(x.id);
+          if (!same(ox, x) || Math.abs(ox.th - o.th) > 0.01 || ox.ins !== o.ins || ox.mat !== o.mat) continue;
+          // касаются или заходят друг на друга (нахлёст при рисовании)
+          if (!['a', 'b'].some(e => G.distSeg(x[e], c.a, c.b) < 1 || G.distSeg(c[e], x.a, x.b) < 1)) continue;
+          if (G.proj(x.a, w.a, w.b).perp > 0.5 || G.proj(x.b, w.a, w.b).perp > 0.5) continue;
+          const changed = Math.abs(x.th - ox.th) > 0.01;
+          if (!changed) { x.th = w.th; if (w.ins) x.ins = w.ins; else delete x.ins; x.mat = w.mat; }
+          chain.push(x); done.add(x.id);
+        }
+      }
+      // где помещения — там внутрь; нет помещений — к центру наружных стен этажа
+      const rooms = ((App.floorData || []).find(f => f.floor.id === fl(w)) || {}).rooms || [];
+      const inAt = (k) => rooms.some(r => G.pointInPoly(G.add(m, G.mul(n, k * (o.th / 2 + 15))), r.axis));
+      let out;
+      const ip = inAt(1), im = inAt(-1);
+      if (ip !== im) out = ip ? -1 : 1;
+      else {
+        const ext = App.doc.walls.filter(x => x.kind === 'ext' && fl(x) === fl(w));
+        const c = ext.reduce((s2, x) => G.add(s2, G.mul(G.mid(x.a, x.b), 1 / ext.length)), { x: 0, y: 0 });
+        out = G.dot(G.sub(c, m), n) > 0 ? -1 : 1;
+      }
+      const d = (w.th - o.th) / 2 * out;
+      const saveV = App.V;
+      App.V = Model.viewOf(fl(w));
+      try { Model.moveWalls(chain.map(x => x.id), n.x * d, n.y * d); } finally { App.V = saveV; }
+    }
   },
   undo() {
     if (Model._undo.length < 2) return false;
