@@ -6592,7 +6592,7 @@ const Tools = {
     const id = Tools.hitTest(p);
     const room = Tools.isRoom(id);
     // подпись помещения можно перетащить (дальше она остаётся на новом месте)
-    const lr = room && Tools.roomLabelAt(sp);
+    const lr = room && !(e.shiftKey || e.ctrlKey || e.metaKey) && Tools.roomLabelAt(sp);
     if (lr) {
       let t = lr.tag;
       const temp = !t;
@@ -10230,11 +10230,15 @@ const App = {
     window.addEventListener('beforeunload', () => IO.autosave());
     // буфер обмена между вкладками и окнами: системный буфер (copy/paste) + общее хранилище вкладок
     const typingIn = (t) => t && (/^(input|textarea|select)$/i.test(t.tagName || '') || t.isContentEditable);
-    document.addEventListener('copy', (e) => {
-      if (typingIn(e.target) || !App._copyArmed || !App.clipboard) return;
-      App._copyArmed = false;
+    // Ctrl+C / Ctrl+X над планом: браузер шлёт copy/cut — кладём скопированное в системный буфер
+    const onCopy = (e) => {
+      const armed = App._copyArmed && performance.now() - App._copyArmed < 1000;
+      App._copyArmed = 0;
+      if (!armed || typingIn(e.target) || document.querySelector('dialog[open]') || !App.clipboard || !e.clipboardData) return;
       e.clipboardData.setData('text/plain', App.clipText()); e.preventDefault();
-    });
+    };
+    document.addEventListener('copy', onCopy);
+    document.addEventListener('cut', onCopy);
     document.addEventListener('paste', (e) => {
       if (typingIn(e.target) || document.querySelector('dialog[open]')) return;
       const c = App.parseClip(e.clipboardData && e.clipboardData.getData('text/plain'));
@@ -10383,7 +10387,7 @@ const App = {
     if (!ids.length) return;
     App.clipboard = { app: 'floorplaner-clipboard', v: 1, t: Date.now(), data: App.collect(ids), bbox: Model.bboxOf(ids), n: ids.length };
     try { localStorage.setItem(App.CLIP_KEY, JSON.stringify(App.clipboard)); } catch (e) { /* хранилище недоступно */ }
-    App._copyArmed = true;                  // событие copy от Ctrl+C положит данные в системный буфер
+    if (opts.keyboard) App._copyArmed = performance.now();   // событие copy/cut от Ctrl+C/X положит данные в системный буфер
     if (!opts.keyboard && navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(App.clipText()).catch(() => {});
     if (!opts.silent) UI.toast(`Скопировано: ${ids.length}. Вставить можно и в другой вкладке (Ctrl+V)`);
   },
@@ -10471,7 +10475,8 @@ const App = {
       if (t !== null) { w.th = t + ins; n++; last = t; }
     }
     Model.commit();
-    if (n) UI.toast(`Толщина ${n > 1 ? n + ' стен' : 'стены'} → ${last} см — типовая для «${materialsFor(walls[0].kind)[mat].name}»`);
+    const w0 = walls.find(w => materialsFor(w.kind)[mat]);
+    if (n && w0) UI.toast(`Толщина ${n > 1 ? n + ' стен' : 'стены'} → ${last} см — типовая для «${materialsFor(w0.kind)[mat].name}»`);
   },
   /** Параметр стен по умолчанию для вида kind; applyExisting — применить и к уже нарисованным стенам этого вида */
   setWallDefault(kind, key, val, applyExisting) {
@@ -10677,7 +10682,6 @@ const App = {
       if (code === 'KeyC') { App.copy({ keyboard: true }); return; }
       if (code === 'KeyX') { App.cut(); return; }
       if (code === 'KeyV') { App._pasteHandled = false; setTimeout(() => { if (!App._pasteHandled) App.paste(); }, 80); return; }
-      if (code === 'KeyX') { App.copy(); App.deleteSel(); return; }
       if (code === 'KeyA') { e.preventDefault(); App.selectAll(); return; }
       if (code === 'KeyN' && e.altKey) { e.preventDefault(); UI.action('new'); return; }
       return;

@@ -385,7 +385,7 @@ const Tools = {
     const id = Tools.hitTest(p);
     const room = Tools.isRoom(id);
     // подпись помещения можно перетащить (дальше она остаётся на новом месте)
-    const lr = room && Tools.roomLabelAt(sp);
+    const lr = room && !(e.shiftKey || e.ctrlKey || e.metaKey) && Tools.roomLabelAt(sp);
     if (lr) {
       let t = lr.tag;
       const temp = !t;
