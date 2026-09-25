@@ -1408,7 +1408,7 @@ const UI = {
     } else if (Tools.isRoom(id)) {
       add('Переименовать', () => UI.focusField('roomName'));
     }
-    if (App.clipboard) add('Вставить', () => App.paste(p));
+    if (App.clipLoad()) add(`Вставить (${App.clipboard.n || 'скопированное'})`, () => App.paste(p));
     add('Показать всё', () => View.fit(Model.contentBBox()));
     m.hidden = false;
     const r = App.canvas.getBoundingClientRect();

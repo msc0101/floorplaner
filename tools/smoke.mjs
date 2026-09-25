@@ -258,6 +258,16 @@ const pit = await page.evaluate(() => {
 });
 console.log('pit', JSON.stringify(pit));
 if (pit.n !== 9 || pit.depth !== 170 || pit.side2 !== 'left' || !pit.tris || pit.bottom !== -170 || pit.firstStep !== -19) errors.push('Погреб/яма: ' + JSON.stringify(pit));
+// буфер между вкладками: копия пишется в общее хранилище и читается обратно
+const clip = await page.evaluate(() => {
+  App.sel.clear(); for (const w of App.V.walls.slice(0, 2)) App.sel.add(w.id);
+  App.copy({ silent: true }); const stored = App.parseClip(localStorage.getItem(App.CLIP_KEY));
+  App.clipboard = null; const loaded = App.clipLoad();
+  App.sel.clear();
+  return { stored: !!stored && stored.data.walls.length === 2, loaded: !!loaded, n: loaded && loaded.n };
+});
+console.log('clipboard', JSON.stringify(clip));
+if (!clip.stored || !clip.loaded || clip.n !== 2) errors.push('Буфер между вкладками: ' + JSON.stringify(clip));
 // прогулка в 3D: WASD, столкновения со стенами, подъём по лестнице на мансарду, Esc
 const wk = await page.evaluate(() => {
   IO.loadDemo(); View3D.toggle(true);

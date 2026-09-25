@@ -26,6 +26,22 @@ const App = {
     window.addEventListener('keydown', App.keydown);
     window.addEventListener('keyup', (e) => { if (e.code === 'Space') { Input.space = false; if (Tools.cur !== 'pan') App.canvas.style.cursor = ''; } });
     window.addEventListener('beforeunload', () => IO.autosave());
+    // буфер обмена между вкладками и окнами: системный буфер (copy/paste) + общее хранилище вкладок
+    const typingIn = (t) => t && (/^(input|textarea|select)$/i.test(t.tagName || '') || t.isContentEditable);
+    document.addEventListener('copy', (e) => {
+      if (typingIn(e.target) || !App._copyArmed || !App.clipboard) return;
+      App._copyArmed = false;
+      e.clipboardData.setData('text/plain', App.clipText()); e.preventDefault();
+    });
+    document.addEventListener('paste', (e) => {
+      if (typingIn(e.target) || document.querySelector('dialog[open]')) return;
+      const c = App.parseClip(e.clipboardData && e.clipboardData.getData('text/plain'));
+      e.preventDefault();
+      App._pasteHandled = true;
+      if (c && (!App.clipboard || c.t >= (App.clipboard.t || 0))) App.clipboard = c;
+      App.paste();
+    });
+    window.addEventListener('storage', (e) => { if (e.key === App.CLIP_KEY) App.clipLoad(); });
     Tools.set('select', { force: true });
     if (!App.isEmpty()) View.fit(Model.contentBBox()); else View.fit({ x0: -600, y0: -400, x1: 1400, y1: 1000 });
     UI.refresh();
@@ -158,14 +174,34 @@ const App = {
     if (!ids.length) return;
     App.pasteData(App.collect(ids), 50, 50);
   },
-  copy() {
+  CLIP_KEY: 'floorplaner:clipboard',
+  /** Копировать выделенное: в память, в общее хранилище вкладок и (по Ctrl+C / через API) в системный буфер */
+  copy(opts = {}) {
     const ids = App.selIds();
     if (!ids.length) return;
-    App.clipboard = { data: App.collect(ids), bbox: Model.bboxOf(ids) };
-    UI.toast('Скопировано: ' + ids.length);
+    App.clipboard = { app: 'floorplaner-clipboard', v: 1, t: Date.now(), data: App.collect(ids), bbox: Model.bboxOf(ids), n: ids.length };
+    try { localStorage.setItem(App.CLIP_KEY, JSON.stringify(App.clipboard)); } catch (e) { /* хранилище недоступно */ }
+    App._copyArmed = true;                  // событие copy от Ctrl+C положит данные в системный буфер
+    if (!opts.keyboard && navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(App.clipText()).catch(() => {});
+    if (!opts.silent) UI.toast(`Скопировано: ${ids.length}. Вставить можно и в другой вкладке (Ctrl+V)`);
+  },
+  /** Вырезать: скопировать и удалить */
+  cut() { if (!App.selIds().length) return; App.copy({ keyboard: true, silent: true }); const n = App.selIds().length; App.deleteSel(); UI.toast(`Вырезано: ${n}. Вставьте здесь или в другой вкладке (Ctrl+V)`); },
+  clipText() { return JSON.stringify(App.clipboard); },
+  parseClip(txt) {
+    if (!txt || txt.length < 20 || txt[0] !== '{') return null;
+    try { const c = JSON.parse(txt); return c && c.app === 'floorplaner-clipboard' && c.data ? c : null; } catch (e) { return null; }
+  },
+  /** Подхватить скопированное в другой вкладке (если оно новее) */
+  clipLoad() {
+    let c = null;
+    try { c = App.parseClip(localStorage.getItem(App.CLIP_KEY)); } catch (e) { /* хранилище недоступно */ }
+    if (c && (!App.clipboard || (c.t || 0) > (App.clipboard.t || 0))) App.clipboard = c;
+    return App.clipboard;
   },
   paste(at) {
-    if (!App.clipboard) return;
+    App.clipLoad();
+    if (!App.clipboard) { UI.toast('Буфер пуст: выделите объекты и нажмите Ctrl+C (здесь или в другой вкладке)'); return; }
     const b = App.clipboard.bbox;
     const target = at || View.toWorld(Tools.mouse);
     let dx = 50, dy = 50;
@@ -434,8 +470,11 @@ const App = {
       if (code === 'KeyP') { e.preventDefault(); $('dlgPrint').showModal(); return; }
       if (code === 'KeyD') { e.preventDefault(); App.duplicate(); return; }
       if (code === 'KeyG') { e.preventDefault(); if (e.shiftKey) App.ungroup(); else App.group(); return; }
-      if (code === 'KeyC') { App.copy(); return; }
-      if (code === 'KeyV') { e.preventDefault(); App.paste(); return; }
+      // Ctrl+C / Ctrl+V: без preventDefault — браузер пошлёт события copy/paste (системный буфер обмена);
+      // если paste не пришёл (нет доступа к буферу), вставим из общего хранилища вкладок
+      if (code === 'KeyC') { App.copy({ keyboard: true }); return; }
+      if (code === 'KeyX') { App.cut(); return; }
+      if (code === 'KeyV') { App._pasteHandled = false; setTimeout(() => { if (!App._pasteHandled) App.paste(); }, 80); return; }
       if (code === 'KeyX') { App.copy(); App.deleteSel(); return; }
       if (code === 'KeyA') { e.preventDefault(); App.selectAll(); return; }
       if (code === 'KeyN' && e.altKey) { e.preventDefault(); UI.action('new'); return; }
