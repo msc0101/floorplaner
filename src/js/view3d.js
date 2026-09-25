@@ -574,16 +574,32 @@ const View3D = {
     const { eave, roofZ } = g;
     if (BLD_HOLLOW.has(sh)) {
       // «как дом»: пол, стены с толщиной, ворота/дверь; внутри — пусто (погреб, яма, машина, мебель видны без крыши)
-      const s = bldShell(it, it.w, it.d), wallH = eave - e;
-      const bx = (r, z0, z1, col, opt) => { const q = G.toWorld({ x: (r.x0 + r.x1) / 2, y: (r.y0 + r.y1) / 2 }, it.x, it.y, rot); box(q.x, q.y, r.x1 - r.x0, r.y1 - r.y0, rot, z0, z1, col, opt); };
+      const s = bldShell(it, it.w, it.d);
+      const bx = (r, z0, z1, col, opt) => { const q = bldWorld(it, { x: (r.x0 + r.x1) / 2, y: (r.y0 + r.y1) / 2 }); box(q.x, q.y, r.x1 - r.x0, r.y1 - r.y0, rot, z0, z1, col, opt); };
       View3D.slab(it, s.inner, e, e + View3D.BLD_FLOOR, C(sh === 'garage' ? '#b9b8b2' : '#b08a64'));
       const wallC = C(it.key === 'bathhouse' ? '#c79a64' : '#ddd3c3'), baseC = C('#8a857d');
+      const band = (r, z0, z1, col, opt) => { if (z1 - z0 > 0.5) { bx(r, z0, Math.min(z1, e + 40), baseC); bx(r, Math.max(z0, e + 40), z1, col, opt); } };
+      const piece = (r, z0, z1, col, opt) => { if (z1 - z0 < 0.5) return; if (z0 < e + 40) band(r, z0, z1, col, opt); else bx(r, z0, z1, col, opt); };
       for (const r of s.walls) { bx(r, e, e + 40, baseC); bx(r, e + 40, eave, wallC, { topK: 0.8 }); }
-      if (s.dw > 0) {
-        const dh = Math.max(0, s.gate ? Math.min(230, wallH - 20) : Math.min(205, wallH - 15)), r = s.door, ym = (r.y0 + r.y1) / 2;
-        if (e + dh < eave) bx(r, e + dh, eave, wallC);                                             // перемычка
-        bx({ x0: r.x0, y0: ym - 2, x1: r.x1, y1: ym + 2 }, e + View3D.BLD_FLOOR, e + dh, C(s.gate ? '#b9c0c7' : '#6b4a33'));
-        if (s.gate) for (let z = e + 50; z < e + dh - 10; z += 50) bx({ x0: r.x0 + 3, y0: r.y1 - 1.5, x1: r.x1 - 3, y1: r.y1 + 0.5 }, z, z + 1.5, C('#9aa3ab'));
+      const F0 = e + View3D.BLD_FLOOR;
+      for (const o of s.ops) {
+        const top = Math.min(e + o.sill + o.h, eave - 5), bot = e + o.sill;
+        piece(o.rect, top, eave, wallC);                                                        // перемычка
+        if (o.cat === 'window') {
+          piece(o.rect, e, bot, wallC);                                                         // под окном
+          const F = o.F, m = G.mul(G.add(G.add(F.c, G.mul(F.u, o.s0)), G.add(F.c, G.mul(F.u, o.s1))), 0.5), half = (o.s1 - o.s0) / 2;
+          const along = Math.abs(F.u.x) > 0.5;
+          const q = (hw, hd) => along ? { x0: m.x - hw, y0: m.y - hd, x1: m.x + hw, y1: m.y + hd } : { x0: m.x - hd, y0: m.y - hw, x1: m.x + hd, y1: m.y + hw };
+          bx(q(half, 2), bot, top, [0.8, 0.9, 0.95], { glass: true });
+          bx(q(half, 4), bot, bot + 5, C('#eeeeea')); bx(q(half, 4), top - 5, top, C('#eeeeea'));
+          bx(q(2.5, 4), bot, top, C('#eeeeea'));
+        } else if (o.type !== 'arch') {
+          const F = o.F, m = G.mul(G.add(G.add(F.c, G.mul(F.u, o.s0)), G.add(F.c, G.mul(F.u, o.s1))), 0.5), half = (o.s1 - o.s0) / 2;
+          const along = Math.abs(F.u.x) > 0.5, gate = o.type === 'gate';
+          const q = (hw, hd, off = 0) => { const c2 = G.add(m, G.mul(F.n, off)); return along ? { x0: c2.x - hw, y0: c2.y - hd, x1: c2.x + hw, y1: c2.y + hd } : { x0: c2.x - hd, y0: c2.y - hw, x1: c2.x + hd, y1: c2.y + hw }; };
+          bx(q(half, 2), F0, top, C(gate ? '#b9c0c7' : '#6b4a33'));
+          if (gate) for (let z = e + 50; z < top - 10; z += 50) bx(q(half - 3, 1, -s.t / 2 + 1), z, z + 1.5, C('#9aa3ab'));
+        }
       }
     } else if (sh === 'greenhouse') {
       box(it.x, it.y, it.w, it.d, rot, e, eave, [0.8, 0.9, 0.95], { glass: true });

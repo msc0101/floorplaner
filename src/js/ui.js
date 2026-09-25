@@ -755,8 +755,27 @@ const UI = {
       const sh = bldShell(it, it.w, it.d);
       body.append(F.section('Стены',
         F.num('Толщина стен', sh.t, (v) => { it.wallT = U.clamp(v, 3, 60); Model.commit(); }, { min: 3, max: 60, field: 'wallT' }),
-        F.info('Внутри', `${U.fmtLen(sh.inner.x1 - sh.inner.x0)} × ${U.fmtLen(sh.inner.y1 - sh.inner.y0)}, ${sh.gate ? 'ворота' : 'дверь'} ${U.fmtLen(sh.dw)} спереди`),
+        F.info('Внутри', `${U.fmtLen(sh.inner.x1 - sh.inner.x0)} × ${U.fmtLen(sh.inner.y1 - sh.inner.y0)}`),
         F.note('Внутри постройки видно всё, что в ней стоит: погреб, смотровую яму, машину, верстак. Крыша рисуется в слое «Крыша» — выключите его (на плане или в 3D), чтобы посмотреть сверху. В 3D пол вырезается под открытую яму.')));
+      // проёмы: правим копию списка (по умолчанию у гаража — ворота, у сарая — дверь)
+      const edit = (i, fn) => { const ops = bldOps(it).map(o => ({ ...o })); fn(ops, ops[i]); it.ops = ops; Model.commit(); };
+      const rows = bldOps(it).map((o, i) => {
+        const T = OPENING_TYPES[o.type] || OPENING_TYPES.door, win = T.cat === 'window';
+        return U.el('div', { class: 'bld-op' },
+          F.select('', o.type, Object.entries(OPENING_TYPES).map(([k, v]) => [k, v.name]), (v) => edit(i, (ops, x) => { const N = OPENING_TYPES[v]; x.type = v; x.w = N.w; x.h = N.h; x.sill = N.cat === 'window' ? N.sill : 0; })),
+          F.select('Сторона', o.side, Object.entries(BLD_SIDES), (v) => edit(i, (ops, x) => { x.side = v; x.pos = 0; })),
+          F.num('Смещение от центра', o.pos || 0, (v) => edit(i, (ops, x) => { x.pos = v; })),
+          F.num('Ширина', o.w, (v) => edit(i, (ops, x) => { x.w = U.clamp(v, 30, 1000); }), { min: 30 }),
+          F.num('Высота', o.h || T.h, (v) => edit(i, (ops, x) => { x.h = U.clamp(v, 30, 600); }), { min: 30 }),
+          win ? F.num('Подоконник', o.sill ?? T.sill, (v) => edit(i, (ops, x) => { x.sill = U.clamp(v, 0, 300); }), { min: 0 }) : null,
+          F.btns([!win && o.type !== 'gate' && o.type !== 'arch' ? ['Петли ⇄', () => edit(i, (ops, x) => { x.hinge = x.hinge ? 0 : 1; })] : null, ['Удалить', () => edit(i, (ops) => { ops.splice(i, 1); }), 'danger']]));
+      });
+      body.append(F.section('Ворота, двери и окна',
+        ...rows,
+        rows.length ? null : F.info('Проёмов нет', ''),
+        F.btns([['+ Дверь', () => edit(0, (ops) => { const T = OPENING_TYPES.door; ops.push({ type: 'door', side: 'back', pos: 0, w: T.w, h: T.h, sill: 0, hinge: 0 }); })],
+          ['+ Окно', () => edit(0, (ops) => { const T = OPENING_TYPES.win2; ops.push({ type: 'win2', side: 'left', pos: 0, w: T.w, h: T.h, sill: T.sill }); })]]),
+        F.note('Или инструментами «Дверь» (D) и «Окно» (O): наведите на стену постройки и кликните. Смещение — от середины стены вдоль неё.')));
     }
     if (def.shape === 'pit') {
       const g = pitGeom(it, it.w, it.d);

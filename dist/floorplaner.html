@@ -538,6 +538,8 @@ body.mode-3d.walking .walk-hud { display: block; position: absolute; left: 50%; 
   padding: 6px 12px; border-radius: 8px; background: rgba(20, 24, 30, .72); color: #fff; font-size: 12px; line-height: 1.4; text-align: center; pointer-events: none; }
 body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; z-index: 4; pointer-events: none;
   background: linear-gradient(#fff, #fff) center/2px 100% no-repeat, linear-gradient(#fff, #fff) center/100% 2px no-repeat; opacity: .8; filter: drop-shadow(0 0 1px #000); }
+.bld-op { border-top: 1px dashed var(--border); padding-top: 6px; margin-top: 6px; }
+.bld-op > select { width: 100%; margin-bottom: 4px; }
 
 </style>
 </head>
@@ -1631,18 +1633,64 @@ function bldRoofRect(it, w, d) {
 
 /* ===================== ПОСТРОЙКИ «КАК ДОМ»: стены с толщиной, внутри — пусто ===================== */
 const BLD_HOLLOW = new Set(['building', 'garage']);
-/** Стены постройки в локальных координатах: толщина t, прямоугольники стен (с проёмом ворот/двери спереди, +d/2),
- *  проём door, внутренний контур inner. Внутрь можно ставить погреб, смотровую яму, мебель — всё видно. */
+const BLD_SIDES = { front: 'спереди (+Г)', back: 'сзади (−Г)', left: 'слева (−Ш)', right: 'справа (+Ш)' };
+/** Толщина стен постройки */
+function bldWallT(it) {
+  const def = catItem(it.key), w = it.w, d = it.d;
+  const tDef = def.key === 'house' ? 40 : def.shape === 'garage' ? 25 : Math.min(w, d) < 160 ? 5 : 15;
+  return U.clamp(+(it.wallT ?? def.wallT ?? tDef) || tDef, 3, Math.max(3, Math.min(w, d) / 4));
+}
+/** Сторона постройки: ось стены (u — вдоль, n — внутрь), допустимый диапазон проёмов lo..hi (без углов) */
+function bldSide(side, w, d, t) {
+  const F = {
+    front: { c: { x: 0, y: d / 2 - t / 2 }, u: { x: 1, y: 0 }, n: { x: 0, y: -1 }, L: w },
+    back:  { c: { x: 0, y: -d / 2 + t / 2 }, u: { x: 1, y: 0 }, n: { x: 0, y: 1 }, L: w },
+    left:  { c: { x: -w / 2 + t / 2, y: 0 }, u: { x: 0, y: 1 }, n: { x: 1, y: 0 }, L: d },
+    right: { c: { x: w / 2 - t / 2, y: 0 }, u: { x: 0, y: 1 }, n: { x: -1, y: 0 }, L: d },
+  }[side];
+  F.lo = -F.L / 2 + t; F.hi = F.L / 2 - t;
+  // прямоугольник стены от s0 до s1 вдоль стороны (локальные координаты постройки)
+  F.rect = (s0, s1) => {
+    const a = G.add(F.c, G.mul(F.u, s0)), b = G.add(F.c, G.mul(F.u, s1)), h = t / 2;
+    const xs = [a.x - F.n.x * h, a.x + F.n.x * h, b.x - F.n.x * h, b.x + F.n.x * h], ys = [a.y - F.n.y * h, a.y + F.n.y * h, b.y - F.n.y * h, b.y + F.n.y * h];
+    return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+  };
+  return F;
+}
+/** Проёмы постройки (по умолчанию — ворота у гаража, дверь у сарая/бани спереди по центру) */
+function bldOps(it) {
+  if (Array.isArray(it.ops)) return it.ops;
+  const def = catItem(it.key), t = bldWallT(it), gate = def.shape === 'garage';
+  const w = Math.max(0, gate ? Math.min(it.w - 2 * t - 20, 300) : Math.min(90, it.w - 2 * t - 10));
+  if (w < 30) return [];
+  const T = OPENING_TYPES[gate ? 'gate' : 'door'];
+  return [{ type: gate ? 'gate' : 'door', side: 'front', pos: 0, w, h: T.h, sill: 0, hinge: 0 }];
+}
+/** Локальные координаты постройки ↔ план (с учётом зеркального отражения, как на плане) */
+function bldWorld(it, q) { return G.toWorld({ x: it.flip ? -q.x : q.x, y: q.y }, it.x, it.y, it.rot || 0); }
+function bldLocal(it, p) { const q = G.toLocal(p, it.x, it.y, it.rot || 0); return { x: it.flip ? -q.x : q.x, y: q.y }; }
+/** Стены постройки в локальных координатах: толщина t, куски стен между проёмами, проёмы ops (с rect, s0, s1, cat),
+ *  внутренний контур inner. Внутрь можно ставить погреб, смотровую яму, мебель — всё видно. */
 function bldShell(it, w, d) {
-  const def = catItem(it.key), sh = def.shape;
-  const tDef = def.key === 'house' ? 40 : sh === 'garage' ? 25 : Math.min(w, d) < 160 ? 5 : 15;
-  const t = U.clamp(+(it.wallT ?? def.wallT ?? tDef) || tDef, 3, Math.max(3, Math.min(w, d) / 4));
-  const gate = sh === 'garage';
-  const dw = Math.max(0, gate ? Math.min(w - 2 * t - 20, 300) : Math.min(90, w - 2 * t - 10));
+  const t = bldWallT(it);
   const R = (x0, y0, x1, y1) => ({ x0, y0, x1, y1 });
-  const walls = [R(-w / 2, -d / 2, w / 2, -d / 2 + t), R(-w / 2, -d / 2 + t, -w / 2 + t, d / 2), R(w / 2 - t, -d / 2 + t, w / 2, d / 2)];
-  for (const r of [R(-w / 2 + t, d / 2 - t, -dw / 2, d / 2), R(dw / 2, d / 2 - t, w / 2 - t, d / 2)]) if (r.x1 - r.x0 > 0.5) walls.push(r);
-  return { t, gate, dw, walls, door: R(-dw / 2, d / 2 - t, dw / 2, d / 2), inner: R(-w / 2 + t, -d / 2 + t, w / 2 - t, d / 2 - t) };
+  const ops = [];
+  for (const o of bldOps(it)) {
+    const T = OPENING_TYPES[o.type] || OPENING_TYPES.door, S = BLD_SIDES[o.side] ? o.side : 'front', F = bldSide(S, w, d, t);
+    const ow = Math.min(+o.w || T.w, F.hi - F.lo), c = U.clamp(+o.pos || 0, F.lo + ow / 2, F.hi - ow / 2);
+    if (!(ow > 5)) continue;
+    ops.push({ ...o, type: OPENING_TYPES[o.type] ? o.type : 'door', side: S, cat: T.cat, w: ow, h: +o.h || T.h, sill: T.cat === 'door' ? 0 : (o.sill ?? T.sill), s0: c - ow / 2, s1: c + ow / 2, F, rect: F.rect(c - ow / 2, c + ow / 2) });
+  }
+  const walls = [];
+  for (const side of Object.keys(BLD_SIDES)) {
+    const F = bldSide(side, w, d, t), full = side === 'front' || side === 'back';
+    const gaps = ops.filter(o => o.side === side).sort((a, b) => a.s0 - b.s0);
+    let from = full ? -F.L / 2 : F.lo;
+    for (const g of gaps) { if (g.s0 - from > 0.5) walls.push(F.rect(from, g.s0)); from = Math.max(from, g.s1); }
+    const to = full ? F.L / 2 : F.hi;
+    if (to - from > 0.5) walls.push(F.rect(from, to));
+  }
+  return { t, ops, walls, inner: R(-w / 2 + t, -d / 2 + t, w / 2 - t, d / 2 - t) };
 }
 
 /* ============================ КУХОННЫЕ ГАРНИТУРЫ ============================ */
@@ -2172,22 +2220,34 @@ const Painters = (() => {
     }
     c.restore();
   };
-  /** Постройка «как дом»: пол, стены с толщиной, ворота или дверь; крыша — отдельно, в слое «Крыша» (S._roof) */
+  /** Постройка «как дом»: пол, стены с толщиной, ворота, двери и окна; крыша — отдельно, в слое «Крыша» (S._roof) */
   const shell = (P, w, d) => {
     const s = bldShell(P.it, w, d), c = P.ctx;
     c.save();
     c.fillStyle = P.it.color || P.C.itemFill; thin(P); box(P, -w / 2, -d / 2, w, d, 0);   // пол
     c.fillStyle = P.C.wallExt; c.strokeStyle = P.C.wallStroke; lw(P, 0.8);
     for (const r of s.walls) box(P, r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0, 0);
-    // проём: ворота — полотно в проёме, дверь — полотно и дуга открывания внутрь
-    const r = s.door, y = (r.y0 + r.y1) / 2;
     c.strokeStyle = P.C.ink;
-    if (s.gate && s.dw > 0) {
-      lw(P, 1.2); line(P, [r.x0, y - 2, r.x1, y - 2]); line(P, [r.x0, y + 2, r.x1, y + 2]);
-      c.setLineDash([10 * P.px, 5 * P.px]); thin(P); line(P, [r.x0, r.y0 - 50, r.x1, r.y0 - 50]); c.setLineDash([]);
-    } else if (s.dw > 0) {
-      thin(P); line(P, [r.x0, r.y0, r.x0, r.y0 - s.dw]);
-      c.beginPath(); c.arc(r.x0, r.y0, s.dw, -Math.PI / 2, 0); c.stroke();
+    for (const o of s.ops) {
+      const F = o.F, at = (sv, k) => G.add(G.add(F.c, G.mul(F.u, sv)), G.mul(F.n, k));   // k — смещение внутрь от оси стены
+      const L = (a, b) => line(P, [a.x, a.y, b.x, b.y]);
+      if (o.cat === 'window') {
+        c.fillStyle = P.C.opening; thin(P); box(P, o.rect.x0, o.rect.y0, o.rect.x1 - o.rect.x0, o.rect.y1 - o.rect.y0, 0);
+        L(at(o.s0, 0), at(o.s1, 0)); L(at(o.s0, -s.t / 4), at(o.s1, -s.t / 4));
+      } else if (o.type === 'gate') {
+        lw(P, 1.2); L(at(o.s0, -2), at(o.s1, -2)); L(at(o.s0, 2), at(o.s1, 2));
+        c.setLineDash([10 * P.px, 5 * P.px]); thin(P); L(at(o.s0, s.t / 2 + 50), at(o.s1, s.t / 2 + 50)); c.setLineDash([]);
+      } else if (o.type === 'arch') {
+        thin(P); L(at(o.s0, -s.t / 2), at(o.s0, s.t / 2)); L(at(o.s1, -s.t / 2), at(o.s1, s.t / 2));
+      } else {
+        // дверь: полотно и дуга открывания внутрь, петли — у начала (hinge 0) или конца проёма
+        const h0 = o.hinge ? o.s1 : o.s0, h1 = o.hinge ? o.s0 : o.s1, r = o.s1 - o.s0;
+        const pv = at(h0, s.t / 2), leaf = G.add(pv, G.mul(F.n, r)), jamb = at(h1, s.t / 2);
+        thin(P); L(pv, leaf);
+        const a0 = Math.atan2(leaf.y - pv.y, leaf.x - pv.x), a1 = Math.atan2(jamb.y - pv.y, jamb.x - pv.x);
+        let da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+        c.beginPath(); c.arc(pv.x, pv.y, r, a0, a1, da < 0); c.stroke();
+      }
     }
     c.restore();
   };
@@ -5547,16 +5607,32 @@ const View3D = {
     const { eave, roofZ } = g;
     if (BLD_HOLLOW.has(sh)) {
       // «как дом»: пол, стены с толщиной, ворота/дверь; внутри — пусто (погреб, яма, машина, мебель видны без крыши)
-      const s = bldShell(it, it.w, it.d), wallH = eave - e;
-      const bx = (r, z0, z1, col, opt) => { const q = G.toWorld({ x: (r.x0 + r.x1) / 2, y: (r.y0 + r.y1) / 2 }, it.x, it.y, rot); box(q.x, q.y, r.x1 - r.x0, r.y1 - r.y0, rot, z0, z1, col, opt); };
+      const s = bldShell(it, it.w, it.d);
+      const bx = (r, z0, z1, col, opt) => { const q = bldWorld(it, { x: (r.x0 + r.x1) / 2, y: (r.y0 + r.y1) / 2 }); box(q.x, q.y, r.x1 - r.x0, r.y1 - r.y0, rot, z0, z1, col, opt); };
       View3D.slab(it, s.inner, e, e + View3D.BLD_FLOOR, C(sh === 'garage' ? '#b9b8b2' : '#b08a64'));
       const wallC = C(it.key === 'bathhouse' ? '#c79a64' : '#ddd3c3'), baseC = C('#8a857d');
+      const band = (r, z0, z1, col, opt) => { if (z1 - z0 > 0.5) { bx(r, z0, Math.min(z1, e + 40), baseC); bx(r, Math.max(z0, e + 40), z1, col, opt); } };
+      const piece = (r, z0, z1, col, opt) => { if (z1 - z0 < 0.5) return; if (z0 < e + 40) band(r, z0, z1, col, opt); else bx(r, z0, z1, col, opt); };
       for (const r of s.walls) { bx(r, e, e + 40, baseC); bx(r, e + 40, eave, wallC, { topK: 0.8 }); }
-      if (s.dw > 0) {
-        const dh = Math.max(0, s.gate ? Math.min(230, wallH - 20) : Math.min(205, wallH - 15)), r = s.door, ym = (r.y0 + r.y1) / 2;
-        if (e + dh < eave) bx(r, e + dh, eave, wallC);                                             // перемычка
-        bx({ x0: r.x0, y0: ym - 2, x1: r.x1, y1: ym + 2 }, e + View3D.BLD_FLOOR, e + dh, C(s.gate ? '#b9c0c7' : '#6b4a33'));
-        if (s.gate) for (let z = e + 50; z < e + dh - 10; z += 50) bx({ x0: r.x0 + 3, y0: r.y1 - 1.5, x1: r.x1 - 3, y1: r.y1 + 0.5 }, z, z + 1.5, C('#9aa3ab'));
+      const F0 = e + View3D.BLD_FLOOR;
+      for (const o of s.ops) {
+        const top = Math.min(e + o.sill + o.h, eave - 5), bot = e + o.sill;
+        piece(o.rect, top, eave, wallC);                                                        // перемычка
+        if (o.cat === 'window') {
+          piece(o.rect, e, bot, wallC);                                                         // под окном
+          const F = o.F, m = G.mul(G.add(G.add(F.c, G.mul(F.u, o.s0)), G.add(F.c, G.mul(F.u, o.s1))), 0.5), half = (o.s1 - o.s0) / 2;
+          const along = Math.abs(F.u.x) > 0.5;
+          const q = (hw, hd) => along ? { x0: m.x - hw, y0: m.y - hd, x1: m.x + hw, y1: m.y + hd } : { x0: m.x - hd, y0: m.y - hw, x1: m.x + hd, y1: m.y + hw };
+          bx(q(half, 2), bot, top, [0.8, 0.9, 0.95], { glass: true });
+          bx(q(half, 4), bot, bot + 5, C('#eeeeea')); bx(q(half, 4), top - 5, top, C('#eeeeea'));
+          bx(q(2.5, 4), bot, top, C('#eeeeea'));
+        } else if (o.type !== 'arch') {
+          const F = o.F, m = G.mul(G.add(G.add(F.c, G.mul(F.u, o.s0)), G.add(F.c, G.mul(F.u, o.s1))), 0.5), half = (o.s1 - o.s0) / 2;
+          const along = Math.abs(F.u.x) > 0.5, gate = o.type === 'gate';
+          const q = (hw, hd, off = 0) => { const c2 = G.add(m, G.mul(F.n, off)); return along ? { x0: c2.x - hw, y0: c2.y - hd, x1: c2.x + hw, y1: c2.y + hd } : { x0: c2.x - hd, y0: c2.y - hw, x1: c2.x + hd, y1: c2.y + hw }; };
+          bx(q(half, 2), F0, top, C(gate ? '#b9c0c7' : '#6b4a33'));
+          if (gate) for (let z = e + 50; z < top - 10; z += 50) bx(q(half - 3, 1, -s.t / 2 + 1), z, z + 1.5, C('#9aa3ab'));
+        }
       }
     } else if (sh === 'greenhouse') {
       box(it.x, it.y, it.w, it.d, rot, e, eave, [0.8, 0.9, 0.95], { glass: true });
@@ -6169,8 +6245,9 @@ const Walk = {
         if (!(it.h >= 40)) continue;
         // гараж, сарай, баня — только стены: внутрь можно зайти через ворота/дверь
         if (BLD_HOLLOW.has(sh)) {
-          const s = bldShell(it, it.w, it.d), W = (x, y) => G.toWorld({ x, y }, it.x, it.y, it.rot || 0);
-          for (const r of s.walls) list.push({ poly: [W(r.x0, r.y0), W(r.x1, r.y0), W(r.x1, r.y1), W(r.x0, r.y1)], h: it.h });
+          const s = bldShell(it, it.w, it.d), W = (x, y) => bldWorld(it, { x, y });
+          const rects = s.walls.concat(s.ops.filter(o => o.cat === 'window').map(o => o.rect));   // окна — не проход
+          for (const r of rects) list.push({ poly: [W(r.x0, r.y0), W(r.x1, r.y0), W(r.x1, r.y1), W(r.x0, r.y1)], h: it.h });
           continue;
         }
         list.push({ poly: Model.itemPts(it), h: it.h });
@@ -6989,6 +7066,17 @@ const Tools = {
     const type = isDoor ? o.doorType : o.winType;
     const width = isDoor ? o.doorW : o.winW;
     const hit = Model.nearestWall(p, 50 / View.scale);
+    // стены гаража / сарая / бани — проём добавляется в саму постройку
+    const bh = Tools.bldWallAt(p, 50 / View.scale);
+    if (bh && (!hit || bh.dist < hit.pr.d)) {
+      const T = OPENING_TYPES[type];
+      const range = bh.F.hi - bh.F.lo;
+      if (range < width + 2) return { bld: bh.it, bad: true };
+      let pos = bh.s;
+      if (App.doc.settings.snap) pos = U.round(pos, 5);
+      pos = U.clamp(pos, bh.F.lo + width / 2, bh.F.hi - width / 2);
+      return { bld: bh.it, bop: { type, side: bh.side, pos, w: width, h: isDoor ? o.doorH : o.winH, sill: isDoor ? 0 : (T.sill === 0 ? 0 : o.winSill), hinge: bh.s < pos ? 0 : 1 } };
+    }
     if (!hit) return null;
     const w = hit.w, L = Model.wallLen(w);
     if (L < width + 2) return { w, bad: true };
@@ -7005,10 +7093,35 @@ const Tools = {
       },
     };
   },
+  /** Ближайшая к точке стена постройки «как дом»: {it, side, F, s (вдоль стены), dist} */
+  bldWallAt(p, tol) {
+    let best = null;
+    for (const it of App.V.items) {
+      if (!BLD_HOLLOW.has(catItem(it.key).shape) || App.doc.settings.layers[catItem(it.key).layer] === false) continue;
+      const q = bldLocal(it, p), t = bldWallT(it);
+      if (Math.abs(q.x) > it.w / 2 + tol || Math.abs(q.y) > it.d / 2 + tol) continue;
+      for (const side of Object.keys(BLD_SIDES)) {
+        const F = bldSide(side, it.w, it.d, t), rel = G.sub(q, F.c), sv = G.dot(rel, F.u), dist = Math.max(0, Math.abs(G.dot(rel, F.n)) - t / 2);
+        if (dist > tol || sv < -F.L / 2 || sv > F.L / 2) continue;
+        if (!best || dist < best.dist) best = { it, side, F, s: sv, dist };
+      }
+    }
+    return best;
+  },
   openingClick(e, p) {
     const pv = Tools.openingPreview(p);
     if (!pv) { UI.toast('Кликните по стене'); return; }
     if (pv.bad) { UI.toast('Стена короче проёма', 'err'); return; }
+    if (pv.bld) {
+      const it = pv.bld, ops = bldOps(it), b = pv.bop;
+      const busy = bldShell(it, it.w, it.d).ops.some(o => o.side === b.side && o.s1 > b.pos - b.w / 2 && o.s0 < b.pos + b.w / 2);
+      if (busy) { UI.toast('Здесь уже есть проём', 'err'); return; }
+      it.ops = ops.map(o => ({ ...o })).concat([b]);
+      App.sel.clear(); App.sel.add(it.id);
+      Model.commit(); App.selChanged();
+      UI.toast(`${OPENING_TYPES[b.type].name} — в постройке «${it.label || catItem(it.key).name}». Положение и размеры — в её свойствах`);
+      return;
+    }
     const op = { ...pv.op }; delete op.id;
     // пересечение с существующими проёмами
     const g0 = [op.pos - op.w / 2, op.pos + op.w / 2];
@@ -7281,7 +7394,15 @@ const Tools = {
       Tools.drawSnapMark(env, q);
     } else if (t === 'door' || t === 'window') {
       const pv = Tools.openingPreview(cur);
-      if (pv && pv.op) {
+      if (pv && pv.bop) {
+        const it = pv.bld, tmp = { ...it, ops: bldOps(it).concat([pv.bop]) };
+        ctx.globalAlpha = 0.85; Render.item(env, tmp); ctx.globalAlpha = 1;
+        const o = bldShell(tmp, it.w, it.d).ops.pop(), r = o.rect;
+        Render.polyPath(ctx, [{ x: r.x0, y: r.y0 }, { x: r.x1, y: r.y0 }, { x: r.x1, y: r.y1 }, { x: r.x0, y: r.y1 }].map(q => bldWorld(it, q)));
+        ctx.strokeStyle = C.accent; ctx.lineWidth = 1.5 * px; ctx.stroke();
+      } else if (pv && pv.bad && pv.bld) {
+        Render.polyPath(ctx, Model.itemPts(pv.bld)); ctx.strokeStyle = C.dim; ctx.stroke();
+      } else if (pv && pv.op) {
         const tmp = pv.op;
         App.V.openings.push(tmp);
         ctx.globalAlpha = 0.8;
@@ -8256,8 +8377,27 @@ const UI = {
       const sh = bldShell(it, it.w, it.d);
       body.append(F.section('Стены',
         F.num('Толщина стен', sh.t, (v) => { it.wallT = U.clamp(v, 3, 60); Model.commit(); }, { min: 3, max: 60, field: 'wallT' }),
-        F.info('Внутри', `${U.fmtLen(sh.inner.x1 - sh.inner.x0)} × ${U.fmtLen(sh.inner.y1 - sh.inner.y0)}, ${sh.gate ? 'ворота' : 'дверь'} ${U.fmtLen(sh.dw)} спереди`),
+        F.info('Внутри', `${U.fmtLen(sh.inner.x1 - sh.inner.x0)} × ${U.fmtLen(sh.inner.y1 - sh.inner.y0)}`),
         F.note('Внутри постройки видно всё, что в ней стоит: погреб, смотровую яму, машину, верстак. Крыша рисуется в слое «Крыша» — выключите его (на плане или в 3D), чтобы посмотреть сверху. В 3D пол вырезается под открытую яму.')));
+      // проёмы: правим копию списка (по умолчанию у гаража — ворота, у сарая — дверь)
+      const edit = (i, fn) => { const ops = bldOps(it).map(o => ({ ...o })); fn(ops, ops[i]); it.ops = ops; Model.commit(); };
+      const rows = bldOps(it).map((o, i) => {
+        const T = OPENING_TYPES[o.type] || OPENING_TYPES.door, win = T.cat === 'window';
+        return U.el('div', { class: 'bld-op' },
+          F.select('', o.type, Object.entries(OPENING_TYPES).map(([k, v]) => [k, v.name]), (v) => edit(i, (ops, x) => { const N = OPENING_TYPES[v]; x.type = v; x.w = N.w; x.h = N.h; x.sill = N.cat === 'window' ? N.sill : 0; })),
+          F.select('Сторона', o.side, Object.entries(BLD_SIDES), (v) => edit(i, (ops, x) => { x.side = v; x.pos = 0; })),
+          F.num('Смещение от центра', o.pos || 0, (v) => edit(i, (ops, x) => { x.pos = v; })),
+          F.num('Ширина', o.w, (v) => edit(i, (ops, x) => { x.w = U.clamp(v, 30, 1000); }), { min: 30 }),
+          F.num('Высота', o.h || T.h, (v) => edit(i, (ops, x) => { x.h = U.clamp(v, 30, 600); }), { min: 30 }),
+          win ? F.num('Подоконник', o.sill ?? T.sill, (v) => edit(i, (ops, x) => { x.sill = U.clamp(v, 0, 300); }), { min: 0 }) : null,
+          F.btns([!win && o.type !== 'gate' && o.type !== 'arch' ? ['Петли ⇄', () => edit(i, (ops, x) => { x.hinge = x.hinge ? 0 : 1; })] : null, ['Удалить', () => edit(i, (ops) => { ops.splice(i, 1); }), 'danger']]));
+      });
+      body.append(F.section('Ворота, двери и окна',
+        ...rows,
+        rows.length ? null : F.info('Проёмов нет', ''),
+        F.btns([['+ Дверь', () => edit(0, (ops) => { const T = OPENING_TYPES.door; ops.push({ type: 'door', side: 'back', pos: 0, w: T.w, h: T.h, sill: 0, hinge: 0 }); })],
+          ['+ Окно', () => edit(0, (ops) => { const T = OPENING_TYPES.win2; ops.push({ type: 'win2', side: 'left', pos: 0, w: T.w, h: T.h, sill: T.sill }); })]]),
+        F.note('Или инструментами «Дверь» (D) и «Окно» (O): наведите на стену постройки и кликните. Смещение — от середины стены вдоль неё.')));
     }
     if (def.shape === 'pit') {
       const g = pitGeom(it, it.w, it.d);

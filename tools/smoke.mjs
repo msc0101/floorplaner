@@ -264,7 +264,7 @@ const gar = await page.evaluate(() => {
   const g = Model.add('items', { key: 'garage2', x: X, y: Y, w: 650, d: 650, h: 320, rot: 0, floor: f });
   const pt = Model.add('items', { key: 'inspPit', x: X, y: Y - 50, w: 90, d: 400, h: 0, rot: 0, floor: f, cover: 'open' });
   Model.commit();
-  const s = bldShell(g, g.w, g.d), r = { walls: s.walls.length, t: s.t, dw: s.dw };
+  const s = bldShell(g, g.w, g.d), r = { walls: s.walls.length, t: s.t, dw: s.ops[0].w };
   r.pick = Tools.hitTest({ x: X, y: Y - 50 }) === pt.id;
   const A = View3D.build(), P = A.P;
   let inHole = 0, floor = 0;
@@ -278,11 +278,15 @@ const gar = await page.evaluate(() => {
   Walk.level = 0; Walk._blk = null; Walk.foot = 0;
   r.inside = Walk.depth(X + 200, Y + 100) === 0; r.gate = Walk.depth(X, Y + 325) === 0; r.wall = Walk.depth(X - 320, Y) > 0;
   r.floorZ = Walk.top(X + 200, Y + 100); r.pitZ = Walk.top(X, Y + 100) < -100;
+  // дверь инструментом в заднюю стену: проём добавляется в постройку, через него можно пройти
+  Tools.set('door'); Tools.openingClick({}, { x: X + 150, y: Y - 320 }); Tools.set('select');
+  r.ops = (g.ops || []).length; Walk._blk = null; r.backDoor = Walk.depth(X + 150, Y - 312) === 0 && Walk.depth(X - 150, Y - 312) > 0;
+  Model.undo();
   Model.undo();
   return r;
 });
 console.log('garage', JSON.stringify(gar));
-if (gar.walls !== 5 || gar.t !== 25 || gar.dw !== 300 || !gar.pick || !gar.floor || gar.inHole !== 0 || !gar.inside || !gar.gate || !gar.wall || gar.floorZ !== 10 || !gar.pitZ) errors.push('Гараж изнутри: ' + JSON.stringify(gar));
+if (gar.walls !== 5 || gar.t !== 25 || gar.dw !== 300 || !gar.pick || !gar.floor || gar.inHole !== 0 || !gar.inside || !gar.gate || !gar.wall || gar.floorZ !== 10 || !gar.pitZ || gar.ops !== 2 || !gar.backDoor) errors.push('Гараж изнутри: ' + JSON.stringify(gar));
 // смена типа стены меняет толщину на типовую для нового типа (материал и утеплитель учитываются)
 const wkind = await page.evaluate(() => {
   const f = App.doc.floors[0].id, D = App.doc.defaults.wall;

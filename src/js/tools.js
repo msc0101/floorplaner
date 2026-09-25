@@ -707,6 +707,17 @@ const Tools = {
     const type = isDoor ? o.doorType : o.winType;
     const width = isDoor ? o.doorW : o.winW;
     const hit = Model.nearestWall(p, 50 / View.scale);
+    // стены гаража / сарая / бани — проём добавляется в саму постройку
+    const bh = Tools.bldWallAt(p, 50 / View.scale);
+    if (bh && (!hit || bh.dist < hit.pr.d)) {
+      const T = OPENING_TYPES[type];
+      const range = bh.F.hi - bh.F.lo;
+      if (range < width + 2) return { bld: bh.it, bad: true };
+      let pos = bh.s;
+      if (App.doc.settings.snap) pos = U.round(pos, 5);
+      pos = U.clamp(pos, bh.F.lo + width / 2, bh.F.hi - width / 2);
+      return { bld: bh.it, bop: { type, side: bh.side, pos, w: width, h: isDoor ? o.doorH : o.winH, sill: isDoor ? 0 : (T.sill === 0 ? 0 : o.winSill), hinge: bh.s < pos ? 0 : 1 } };
+    }
     if (!hit) return null;
     const w = hit.w, L = Model.wallLen(w);
     if (L < width + 2) return { w, bad: true };
@@ -723,10 +734,35 @@ const Tools = {
       },
     };
   },
+  /** Ближайшая к точке стена постройки «как дом»: {it, side, F, s (вдоль стены), dist} */
+  bldWallAt(p, tol) {
+    let best = null;
+    for (const it of App.V.items) {
+      if (!BLD_HOLLOW.has(catItem(it.key).shape) || App.doc.settings.layers[catItem(it.key).layer] === false) continue;
+      const q = bldLocal(it, p), t = bldWallT(it);
+      if (Math.abs(q.x) > it.w / 2 + tol || Math.abs(q.y) > it.d / 2 + tol) continue;
+      for (const side of Object.keys(BLD_SIDES)) {
+        const F = bldSide(side, it.w, it.d, t), rel = G.sub(q, F.c), sv = G.dot(rel, F.u), dist = Math.max(0, Math.abs(G.dot(rel, F.n)) - t / 2);
+        if (dist > tol || sv < -F.L / 2 || sv > F.L / 2) continue;
+        if (!best || dist < best.dist) best = { it, side, F, s: sv, dist };
+      }
+    }
+    return best;
+  },
   openingClick(e, p) {
     const pv = Tools.openingPreview(p);
     if (!pv) { UI.toast('Кликните по стене'); return; }
     if (pv.bad) { UI.toast('Стена короче проёма', 'err'); return; }
+    if (pv.bld) {
+      const it = pv.bld, ops = bldOps(it), b = pv.bop;
+      const busy = bldShell(it, it.w, it.d).ops.some(o => o.side === b.side && o.s1 > b.pos - b.w / 2 && o.s0 < b.pos + b.w / 2);
+      if (busy) { UI.toast('Здесь уже есть проём', 'err'); return; }
+      it.ops = ops.map(o => ({ ...o })).concat([b]);
+      App.sel.clear(); App.sel.add(it.id);
+      Model.commit(); App.selChanged();
+      UI.toast(`${OPENING_TYPES[b.type].name} — в постройке «${it.label || catItem(it.key).name}». Положение и размеры — в её свойствах`);
+      return;
+    }
     const op = { ...pv.op }; delete op.id;
     // пересечение с существующими проёмами
     const g0 = [op.pos - op.w / 2, op.pos + op.w / 2];
@@ -999,7 +1035,15 @@ const Tools = {
       Tools.drawSnapMark(env, q);
     } else if (t === 'door' || t === 'window') {
       const pv = Tools.openingPreview(cur);
-      if (pv && pv.op) {
+      if (pv && pv.bop) {
+        const it = pv.bld, tmp = { ...it, ops: bldOps(it).concat([pv.bop]) };
+        ctx.globalAlpha = 0.85; Render.item(env, tmp); ctx.globalAlpha = 1;
+        const o = bldShell(tmp, it.w, it.d).ops.pop(), r = o.rect;
+        Render.polyPath(ctx, [{ x: r.x0, y: r.y0 }, { x: r.x1, y: r.y0 }, { x: r.x1, y: r.y1 }, { x: r.x0, y: r.y1 }].map(q => bldWorld(it, q)));
+        ctx.strokeStyle = C.accent; ctx.lineWidth = 1.5 * px; ctx.stroke();
+      } else if (pv && pv.bad && pv.bld) {
+        Render.polyPath(ctx, Model.itemPts(pv.bld)); ctx.strokeStyle = C.dim; ctx.stroke();
+      } else if (pv && pv.op) {
         const tmp = pv.op;
         App.V.openings.push(tmp);
         ctx.globalAlpha = 0.8;

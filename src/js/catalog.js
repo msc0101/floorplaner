@@ -534,18 +534,64 @@ function bldRoofRect(it, w, d) {
 
 /* ===================== ПОСТРОЙКИ «КАК ДОМ»: стены с толщиной, внутри — пусто ===================== */
 const BLD_HOLLOW = new Set(['building', 'garage']);
-/** Стены постройки в локальных координатах: толщина t, прямоугольники стен (с проёмом ворот/двери спереди, +d/2),
- *  проём door, внутренний контур inner. Внутрь можно ставить погреб, смотровую яму, мебель — всё видно. */
+const BLD_SIDES = { front: 'спереди (+Г)', back: 'сзади (−Г)', left: 'слева (−Ш)', right: 'справа (+Ш)' };
+/** Толщина стен постройки */
+function bldWallT(it) {
+  const def = catItem(it.key), w = it.w, d = it.d;
+  const tDef = def.key === 'house' ? 40 : def.shape === 'garage' ? 25 : Math.min(w, d) < 160 ? 5 : 15;
+  return U.clamp(+(it.wallT ?? def.wallT ?? tDef) || tDef, 3, Math.max(3, Math.min(w, d) / 4));
+}
+/** Сторона постройки: ось стены (u — вдоль, n — внутрь), допустимый диапазон проёмов lo..hi (без углов) */
+function bldSide(side, w, d, t) {
+  const F = {
+    front: { c: { x: 0, y: d / 2 - t / 2 }, u: { x: 1, y: 0 }, n: { x: 0, y: -1 }, L: w },
+    back:  { c: { x: 0, y: -d / 2 + t / 2 }, u: { x: 1, y: 0 }, n: { x: 0, y: 1 }, L: w },
+    left:  { c: { x: -w / 2 + t / 2, y: 0 }, u: { x: 0, y: 1 }, n: { x: 1, y: 0 }, L: d },
+    right: { c: { x: w / 2 - t / 2, y: 0 }, u: { x: 0, y: 1 }, n: { x: -1, y: 0 }, L: d },
+  }[side];
+  F.lo = -F.L / 2 + t; F.hi = F.L / 2 - t;
+  // прямоугольник стены от s0 до s1 вдоль стороны (локальные координаты постройки)
+  F.rect = (s0, s1) => {
+    const a = G.add(F.c, G.mul(F.u, s0)), b = G.add(F.c, G.mul(F.u, s1)), h = t / 2;
+    const xs = [a.x - F.n.x * h, a.x + F.n.x * h, b.x - F.n.x * h, b.x + F.n.x * h], ys = [a.y - F.n.y * h, a.y + F.n.y * h, b.y - F.n.y * h, b.y + F.n.y * h];
+    return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+  };
+  return F;
+}
+/** Проёмы постройки (по умолчанию — ворота у гаража, дверь у сарая/бани спереди по центру) */
+function bldOps(it) {
+  if (Array.isArray(it.ops)) return it.ops;
+  const def = catItem(it.key), t = bldWallT(it), gate = def.shape === 'garage';
+  const w = Math.max(0, gate ? Math.min(it.w - 2 * t - 20, 300) : Math.min(90, it.w - 2 * t - 10));
+  if (w < 30) return [];
+  const T = OPENING_TYPES[gate ? 'gate' : 'door'];
+  return [{ type: gate ? 'gate' : 'door', side: 'front', pos: 0, w, h: T.h, sill: 0, hinge: 0 }];
+}
+/** Локальные координаты постройки ↔ план (с учётом зеркального отражения, как на плане) */
+function bldWorld(it, q) { return G.toWorld({ x: it.flip ? -q.x : q.x, y: q.y }, it.x, it.y, it.rot || 0); }
+function bldLocal(it, p) { const q = G.toLocal(p, it.x, it.y, it.rot || 0); return { x: it.flip ? -q.x : q.x, y: q.y }; }
+/** Стены постройки в локальных координатах: толщина t, куски стен между проёмами, проёмы ops (с rect, s0, s1, cat),
+ *  внутренний контур inner. Внутрь можно ставить погреб, смотровую яму, мебель — всё видно. */
 function bldShell(it, w, d) {
-  const def = catItem(it.key), sh = def.shape;
-  const tDef = def.key === 'house' ? 40 : sh === 'garage' ? 25 : Math.min(w, d) < 160 ? 5 : 15;
-  const t = U.clamp(+(it.wallT ?? def.wallT ?? tDef) || tDef, 3, Math.max(3, Math.min(w, d) / 4));
-  const gate = sh === 'garage';
-  const dw = Math.max(0, gate ? Math.min(w - 2 * t - 20, 300) : Math.min(90, w - 2 * t - 10));
+  const t = bldWallT(it);
   const R = (x0, y0, x1, y1) => ({ x0, y0, x1, y1 });
-  const walls = [R(-w / 2, -d / 2, w / 2, -d / 2 + t), R(-w / 2, -d / 2 + t, -w / 2 + t, d / 2), R(w / 2 - t, -d / 2 + t, w / 2, d / 2)];
-  for (const r of [R(-w / 2 + t, d / 2 - t, -dw / 2, d / 2), R(dw / 2, d / 2 - t, w / 2 - t, d / 2)]) if (r.x1 - r.x0 > 0.5) walls.push(r);
-  return { t, gate, dw, walls, door: R(-dw / 2, d / 2 - t, dw / 2, d / 2), inner: R(-w / 2 + t, -d / 2 + t, w / 2 - t, d / 2 - t) };
+  const ops = [];
+  for (const o of bldOps(it)) {
+    const T = OPENING_TYPES[o.type] || OPENING_TYPES.door, S = BLD_SIDES[o.side] ? o.side : 'front', F = bldSide(S, w, d, t);
+    const ow = Math.min(+o.w || T.w, F.hi - F.lo), c = U.clamp(+o.pos || 0, F.lo + ow / 2, F.hi - ow / 2);
+    if (!(ow > 5)) continue;
+    ops.push({ ...o, type: OPENING_TYPES[o.type] ? o.type : 'door', side: S, cat: T.cat, w: ow, h: +o.h || T.h, sill: T.cat === 'door' ? 0 : (o.sill ?? T.sill), s0: c - ow / 2, s1: c + ow / 2, F, rect: F.rect(c - ow / 2, c + ow / 2) });
+  }
+  const walls = [];
+  for (const side of Object.keys(BLD_SIDES)) {
+    const F = bldSide(side, w, d, t), full = side === 'front' || side === 'back';
+    const gaps = ops.filter(o => o.side === side).sort((a, b) => a.s0 - b.s0);
+    let from = full ? -F.L / 2 : F.lo;
+    for (const g of gaps) { if (g.s0 - from > 0.5) walls.push(F.rect(from, g.s0)); from = Math.max(from, g.s1); }
+    const to = full ? F.L / 2 : F.hi;
+    if (to - from > 0.5) walls.push(F.rect(from, to));
+  }
+  return { t, ops, walls, inner: R(-w / 2 + t, -d / 2 + t, w / 2 - t, d / 2 - t) };
 }
 
 /* ============================ КУХОННЫЕ ГАРНИТУРЫ ============================ */
@@ -1075,22 +1121,34 @@ const Painters = (() => {
     }
     c.restore();
   };
-  /** Постройка «как дом»: пол, стены с толщиной, ворота или дверь; крыша — отдельно, в слое «Крыша» (S._roof) */
+  /** Постройка «как дом»: пол, стены с толщиной, ворота, двери и окна; крыша — отдельно, в слое «Крыша» (S._roof) */
   const shell = (P, w, d) => {
     const s = bldShell(P.it, w, d), c = P.ctx;
     c.save();
     c.fillStyle = P.it.color || P.C.itemFill; thin(P); box(P, -w / 2, -d / 2, w, d, 0);   // пол
     c.fillStyle = P.C.wallExt; c.strokeStyle = P.C.wallStroke; lw(P, 0.8);
     for (const r of s.walls) box(P, r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0, 0);
-    // проём: ворота — полотно в проёме, дверь — полотно и дуга открывания внутрь
-    const r = s.door, y = (r.y0 + r.y1) / 2;
     c.strokeStyle = P.C.ink;
-    if (s.gate && s.dw > 0) {
-      lw(P, 1.2); line(P, [r.x0, y - 2, r.x1, y - 2]); line(P, [r.x0, y + 2, r.x1, y + 2]);
-      c.setLineDash([10 * P.px, 5 * P.px]); thin(P); line(P, [r.x0, r.y0 - 50, r.x1, r.y0 - 50]); c.setLineDash([]);
-    } else if (s.dw > 0) {
-      thin(P); line(P, [r.x0, r.y0, r.x0, r.y0 - s.dw]);
-      c.beginPath(); c.arc(r.x0, r.y0, s.dw, -Math.PI / 2, 0); c.stroke();
+    for (const o of s.ops) {
+      const F = o.F, at = (sv, k) => G.add(G.add(F.c, G.mul(F.u, sv)), G.mul(F.n, k));   // k — смещение внутрь от оси стены
+      const L = (a, b) => line(P, [a.x, a.y, b.x, b.y]);
+      if (o.cat === 'window') {
+        c.fillStyle = P.C.opening; thin(P); box(P, o.rect.x0, o.rect.y0, o.rect.x1 - o.rect.x0, o.rect.y1 - o.rect.y0, 0);
+        L(at(o.s0, 0), at(o.s1, 0)); L(at(o.s0, -s.t / 4), at(o.s1, -s.t / 4));
+      } else if (o.type === 'gate') {
+        lw(P, 1.2); L(at(o.s0, -2), at(o.s1, -2)); L(at(o.s0, 2), at(o.s1, 2));
+        c.setLineDash([10 * P.px, 5 * P.px]); thin(P); L(at(o.s0, s.t / 2 + 50), at(o.s1, s.t / 2 + 50)); c.setLineDash([]);
+      } else if (o.type === 'arch') {
+        thin(P); L(at(o.s0, -s.t / 2), at(o.s0, s.t / 2)); L(at(o.s1, -s.t / 2), at(o.s1, s.t / 2));
+      } else {
+        // дверь: полотно и дуга открывания внутрь, петли — у начала (hinge 0) или конца проёма
+        const h0 = o.hinge ? o.s1 : o.s0, h1 = o.hinge ? o.s0 : o.s1, r = o.s1 - o.s0;
+        const pv = at(h0, s.t / 2), leaf = G.add(pv, G.mul(F.n, r)), jamb = at(h1, s.t / 2);
+        thin(P); L(pv, leaf);
+        const a0 = Math.atan2(leaf.y - pv.y, leaf.x - pv.x), a1 = Math.atan2(jamb.y - pv.y, jamb.x - pv.x);
+        let da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+        c.beginPath(); c.arc(pv.x, pv.y, r, a0, a1, da < 0); c.stroke();
+      }
     }
     c.restore();
   };

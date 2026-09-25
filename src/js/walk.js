@@ -159,8 +159,9 @@ const Walk = {
         if (!(it.h >= 40)) continue;
         // гараж, сарай, баня — только стены: внутрь можно зайти через ворота/дверь
         if (BLD_HOLLOW.has(sh)) {
-          const s = bldShell(it, it.w, it.d), W = (x, y) => G.toWorld({ x, y }, it.x, it.y, it.rot || 0);
-          for (const r of s.walls) list.push({ poly: [W(r.x0, r.y0), W(r.x1, r.y0), W(r.x1, r.y1), W(r.x0, r.y1)], h: it.h });
+          const s = bldShell(it, it.w, it.d), W = (x, y) => bldWorld(it, { x, y });
+          const rects = s.walls.concat(s.ops.filter(o => o.cat === 'window').map(o => o.rect));   // окна — не проход
+          for (const r of rects) list.push({ poly: [W(r.x0, r.y0), W(r.x1, r.y0), W(r.x1, r.y1), W(r.x0, r.y1)], h: it.h });
           continue;
         }
         list.push({ poly: Model.itemPts(it), h: it.h });
