@@ -635,7 +635,7 @@ const View3D = {
       `precision ${hp} float;
        varying vec3 vN; varying vec3 vC; varying vec3 vW; varying vec4 vL;
        uniform vec3 uL; uniform vec3 uSky; uniform vec3 uGround; uniform vec3 uEye; uniform vec3 uSunCol;
-       uniform float uFog; uniform float uSunK; uniform float uUseShadow; uniform float uTexel; uniform float uAlpha; uniform sampler2D uShadow;
+       uniform float uFog; uniform float uSunK; uniform float uAmb; uniform float uUseShadow; uniform float uTexel; uniform float uAlpha; uniform sampler2D uShadow;
        float unpack(vec4 v){ return dot(v, vec4(1.0, 1.0/255.0, 1.0/65025.0, 1.0/16581375.0)); }
        float shadowAt(vec3 n){
          vec3 s = vL.xyz / vL.w * 0.5 + 0.5;
@@ -652,7 +652,7 @@ const View3D = {
          vec3 n = normalize(vN);
          float dif = max(dot(n, uL), 0.0) * uSunK;
          float sh = (uUseShadow > 0.5 && dif > 0.0) ? shadowAt(n) : 1.0;
-         vec3 amb = mix(uGround, uSky, 0.5 + 0.5 * n.y) * 0.62;
+         vec3 amb = mix(uGround, uSky, 0.5 + 0.5 * n.y) * uAmb;
          vec3 col = vC * (amb + dif * sh * uSunCol);
          float dist = length(vW - uEye);
          col = mix(col, uSky * 1.02, clamp(1.0 - exp(-dist * uFog), 0.0, 0.8));
@@ -660,7 +660,7 @@ const View3D = {
        }`);
     const pr = View3D.prog;
     View3D.loc = { p: gl.getAttribLocation(pr, 'p'), n: gl.getAttribLocation(pr, 'n'), c: gl.getAttribLocation(pr, 'c') };
-    for (const u of ['uVP', 'uLVP', 'uL', 'uSky', 'uGround', 'uEye', 'uSunCol', 'uFog', 'uSunK', 'uUseShadow', 'uTexel', 'uAlpha', 'uShadow']) View3D.loc[u] = gl.getUniformLocation(pr, u);
+    for (const u of ['uAmb', 'uVP', 'uLVP', 'uL', 'uSky', 'uGround', 'uEye', 'uSunCol', 'uFog', 'uSunK', 'uUseShadow', 'uTexel', 'uAlpha', 'uShadow']) View3D.loc[u] = gl.getUniformLocation(pr, u);
     // карта теней: глубина, упакованная в RGBA
     View3D.depthProg = prog(
       `attribute vec3 p; uniform mat4 uLVP; void main(){ gl_Position = uLVP * vec4(p, 1.0); }`,
@@ -725,7 +725,7 @@ const View3D = {
     const dpr = window.devicePixelRatio || 1;
     const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
-    if (View3D.dirty) View3D.build();
+    if (View3D.dirty) { View3D.build(); Walk.invalidate(); }
     const lt = View3D.light();
     const bb = View3D.bounds;
     const cx = (bb.x0 + bb.x1) / 200, cz = (bb.y0 + bb.y1) / 200;
@@ -770,12 +770,15 @@ const View3D = {
     gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
     gl.useProgram(View3D.prog);
     const c = View3D.cam;
-    const eye = [c.tx + c.dist * Math.cos(c.pitch) * Math.sin(c.yaw), c.ty + c.dist * Math.sin(c.pitch), c.tz + c.dist * Math.cos(c.pitch) * Math.cos(c.yaw)];
-    const VP = M4.mul(M4.persp(0.8, w / Math.max(1, h), 0.1, 4000), M4.lookAt(eye, [c.tx, c.ty, c.tz], [0, 1, 0]));
+    // прогулка — камера на уровне глаз; иначе — орбита вокруг цели
+    const wc = Walk.on ? Walk.camera() : null;
+    const eye = wc ? wc.eye : [c.tx + c.dist * Math.cos(c.pitch) * Math.sin(c.yaw), c.ty + c.dist * Math.sin(c.pitch), c.tz + c.dist * Math.cos(c.pitch) * Math.cos(c.yaw)];
+    const VP = M4.mul(M4.persp(wc ? wc.fov : 0.8, w / Math.max(1, h), wc ? 0.05 : 0.1, 4000), M4.lookAt(eye, wc ? wc.at : [c.tx, c.ty, c.tz], [0, 1, 0]));
     gl.uniformMatrix4fv(L.uVP, false, VP);
     gl.uniformMatrix4fv(L.uLVP, false, LVP);
     gl.uniform3fv(L.uL, lt.L); gl.uniform3fv(L.uSky, lt.sky); gl.uniform3fv(L.uGround, lt.ground); gl.uniform3fv(L.uEye, eye); gl.uniform3fv(L.uSunCol, lt.sunCol);
     gl.uniform1f(L.uFog, 0.35 / (R * 6)); gl.uniform1f(L.uSunK, lt.sunK);
+    gl.uniform1f(L.uAmb, Walk.on ? 0.82 : 0.62);   // на прогулке внутри дома светлее
     gl.uniform1f(L.uUseShadow, shadows ? 1 : 0); gl.uniform1f(L.uTexel, 1 / View3D.sm.size);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, View3D.sm.tex); gl.uniform1i(L.uShadow, 0);
     const drawMesh = (m, alpha) => {
@@ -855,6 +858,7 @@ const View3D = {
       }
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       drag.x = e.clientX; drag.y = e.clientY;
+      if (Walk.on) { Walk.look(dx, dy); return; }
       if (drag.pan) {
         const k = c.dist / 700;
         c.tx -= (Math.cos(c.yaw) * dx) * k; c.tz += (Math.sin(c.yaw) * dx) * k;
@@ -867,7 +871,10 @@ const View3D = {
     const end = (e) => { pts.delete(e.pointerId); if (!pts.size) drag = null; };
     cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
     cv.addEventListener('contextmenu', (e) => e.preventDefault());
-    cv.addEventListener('wheel', (e) => { e.preventDefault(); View3D.cam.dist = U.clamp(View3D.cam.dist * Math.exp(e.deltaY * 0.0012), 2, 1500); View3D.redraw(); }, { passive: false });
+    // прогулка: отпущенные клавиши, потеря фокуса окна
+    window.addEventListener('keyup', (e) => { if (Walk.on) Walk.key(e, false); });
+    window.addEventListener('blur', () => Walk.keys.clear());
+    cv.addEventListener('wheel', (e) => { e.preventDefault(); if (Walk.on) return; View3D.cam.dist = U.clamp(View3D.cam.dist * Math.exp(e.deltaY * 0.0012), 2, 1500); View3D.redraw(); }, { passive: false });
   },
 
   /* ------------------------------ вкл/выкл -------------------------------- */
@@ -877,6 +884,7 @@ const View3D = {
       try { if (!View3D.init()) { UI.toast('WebGL недоступен в этом браузере', 'err'); return; } }
       catch (e) { console.error(e); UI.toast('Не удалось запустить 3D: ' + e.message, 'err'); return; }
     }
+    if (!on && Walk.on) Walk.stop();
     View3D.active = on;
     document.body.classList.toggle('mode-3d', on);
     $('btn3d').classList.toggle('on', on);

@@ -46,6 +46,11 @@ const sun0 = await page.evaluate(() => { const st = Sun.state(), prev = { ...st 
 await page.evaluate(() => { View3D.toggle(true); document.querySelector('.p3d-head').click(); View3D.fit(); View3D.cam.dist *= 0.72; View3D.redraw(); });
 await page.waitForTimeout(700);
 await shot('3d.png');
+// прогулка от первого лица у дома
+await page.evaluate(() => { Walk.start(); Walk.level = 0; Walk._blk = null; Walk.x = 1200; Walk.y = 2900; Walk.foot = 0; Walk.yaw = 0.15; Walk.pitch = 0.05; View3D.draw(); });
+await page.waitForTimeout(500);
+await shot('walk.png');
+await page.evaluate(() => Walk.stop());
 await page.evaluate((s0) => { document.querySelector('.p3d-head').click(); Object.assign(Sun.state(), s0); View3D.toggle(false); }, sun0);
 
 // проверка отступов

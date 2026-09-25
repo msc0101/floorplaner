@@ -180,6 +180,8 @@
       <canvas id="canvas" aria-label="План"></canvas>
       <canvas id="canvas3d" aria-label="3D-вид"></canvas>
       <div class="panel3d" id="panel3d"></div>
+      <div class="walk-cross" aria-hidden="true"></div>
+      <div class="walk-hud" id="walkHud" aria-live="polite"></div>
       <div class="welcome" id="welcome" hidden>
         <h2>Спланируйте дом и участок</h2>
         <p>Рисуйте в реальных размерах: стены, окна и двери, мебель и технику, септик, трубы, кабели. Ориентируйте участок по сторонам света и смотрите тени и инсоляцию.</p>
@@ -294,6 +296,9 @@
           <tr><td>Стена / Комната</td><td><kbd>W</kbd> / <kbd>Q</kbd></td></tr>
           <tr><td>Дверь / Окно / Крыша</td><td><kbd>D</kbd> / <kbd>O</kbd> / <kbd>J</kbd></td></tr>
           <tr><td>3D-вид (и обратно)</td><td><kbd>3</kbd>, <kbd>Esc</kbd></td></tr>
+          <tr><td>3D: прогулка — ходить / поворот</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, <kbd>↑</kbd><kbd>↓</kbd> / <kbd>←</kbd><kbd>→</kbd>, мышь</td></tr>
+          <tr><td>3D: бегом / прыжок / присесть</td><td><kbd>Shift</kbd> / <kbd>Space</kbd> / <kbd>C</kbd></td></tr>
+          <tr><td>3D: этаж выше, ниже / сквозь стены</td><td><kbd>PgUp</kbd> <kbd>PgDn</kbd> / <kbd>N</kbd></td></tr>
           <tr><td>Зона / Забор / Дорога / Сети</td><td><kbd>B</kbd> / <kbd>F</kbd> / <kbd>P</kbd> / <kbd>U</kbd></td></tr>
           <tr><td>Размер / Рулетка / Текст</td><td><kbd>N</kbd> / <kbd>M</kbd> / <kbd>T</kbd></td></tr>
           <tr><td>Примечание к объекту</td><td><kbd>K</kbd></td></tr>
@@ -331,6 +336,7 @@
 <script src="js/checks.js"></script>
 <script src="js/render.js"></script>
 <script src="js/view3d.js"></script>
+<script src="js/walk.js"></script>
 <script src="js/tools.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/drawing.js"></script>

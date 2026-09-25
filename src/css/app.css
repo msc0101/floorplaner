@@ -477,3 +477,9 @@ button.mini:disabled { opacity: .35; }
 .panel3d.collapsed { width: auto; }
 .panel3d.collapsed > :not(.p3d-head) { display: none; }
 .panel3d.collapsed .p3d-head::after { content: '▸'; margin-left: 10px; }
+/* прогулка в 3D: подсказка снизу и прицел по центру */
+.walk-hud, .walk-cross { display: none; }
+body.mode-3d.walking .walk-hud { display: block; position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 4; max-width: calc(100% - 32px);
+  padding: 6px 12px; border-radius: 8px; background: rgba(20, 24, 30, .72); color: #fff; font-size: 12px; line-height: 1.4; text-align: center; pointer-events: none; }
+body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; z-index: 4; pointer-events: none;
+  background: linear-gradient(#fff, #fff) center/2px 100% no-repeat, linear-gradient(#fff, #fff) center/100% 2px no-repeat; opacity: .8; filter: drop-shadow(0 0 1px #000); }

@@ -204,6 +204,27 @@ const fz = await page.evaluate(() => {
 });
 console.log('fence', JSON.stringify(fz));
 if (fz.v !== 'fence' || fz.mat !== 'mesh' || fz.rail !== 'fence' || fz.back !== 'ext' || !(fz.found >= 9)) errors.push('Забор: ' + JSON.stringify(fz));
+// прогулка в 3D: WASD, столкновения со стенами, подъём по лестнице на мансарду, Esc
+const wk = await page.evaluate(() => {
+  IO.loadDemo(); View3D.toggle(true);
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', key: 'w', bubbles: true }));
+  window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW', key: 'w', bubbles: true }));
+  const r = { on: Walk.on };
+  const sim = (keys, sec) => { Walk.keys = new Set(keys); for (let t = 0; t < sec; t += 0.05) Walk.update(0.05); Walk.keys.clear(); };
+  const face = (dx, dy) => { Walk.yaw = Math.atan2(-dx, -dy); };
+  const it = App.doc.items.find(i => catItem(i.key).shape === 'stairs');
+  Walk.level = 0; Walk._blk = null; Walk.x = it.x - 140; Walk.y = it.y + it.d / 2 - 25; Walk.foot = 0; Walk.vy = 0;
+  face(1, 0); sim(['KeyW'], 0.8); face(0, -1); sim(['KeyW'], 3);
+  r.level = Walk.level; r.foot = Math.round(Walk.foot);
+  face(0, -1); const y0 = Walk.y; sim(['KeyW'], 2); r.wallStop = Math.round(y0 - Walk.y) < 30;
+  View3D.draw();
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
+  r.off = !Walk.on; r.still3d = View3D.active;
+  View3D.toggle(false);
+  return r;
+});
+console.log('walk', JSON.stringify(wk));
+if (!wk.on || wk.level !== 1 || wk.foot !== 300 || !wk.wallStop || !wk.off || !wk.still3d) errors.push('Прогулка: ' + JSON.stringify(wk));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

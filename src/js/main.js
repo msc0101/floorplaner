@@ -379,6 +379,7 @@ const App = {
     const dlgOpen = document.querySelector('dialog[open]');
     if (e.key === 'F1') { e.preventDefault(); if (!dlgOpen) $('dlgHelp').showModal(); return; }
     if (View3D.active && !dlgOpen && !typing) {
+      if (!(e.ctrlKey || e.metaKey) && Walk.key(e, true)) { e.preventDefault(); return; }   // прогулка: WASD, стрелки…
       if (e.key === 'Escape' || e.code === 'Digit3') { View3D.toggle(false); e.preventDefault(); return; }
       if (!(e.ctrlKey || e.metaKey)) return;       // в 3D — только сочетания с Ctrl (отмена, сохранение, печать…)
     }
