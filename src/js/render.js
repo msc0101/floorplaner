@@ -285,7 +285,7 @@ const Render = {
     ctx.save();
     ctx.lineJoin = 'round'; ctx.lineCap = 'butt';
     // 1) бордюры (чуть шире), 2) покрытие — так соседние дороги сливаются без швов
-    for (const r of App.V.roads) { const k = ROAD_KINDS[r.kind]; path(r); ctx.strokeStyle = k.edge; ctx.lineWidth = r.width + 3 * px; ctx.stroke(); }
+    for (const r of App.V.roads) { const k = ROAD_KINDS[r.kind]; path(r); ctx.strokeStyle = k.edge; ctx.lineWidth = r.width + (roadCurb(r) ? 3 : 0.8) * px; ctx.stroke(); }
     for (const r of App.V.roads) {
       const k = ROAD_KINDS[r.kind];
       path(r); ctx.strokeStyle = dark ? k.fillDark : k.fill; ctx.lineWidth = r.width; ctx.stroke();

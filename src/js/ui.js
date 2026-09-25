@@ -732,6 +732,17 @@ const UI = {
       F.num('Высота', it.h, (v) => UI.set(it, 'h', v), { min: 0 }),
       F.btns([['Сбросить к типовым', () => { it.w = def.w; it.d = def.d; it.h = def.h; Model.commit(); }], ['Поменять Ш↔Г', () => { [it.w, it.d] = [it.d, it.w]; Model.commit(); }]]),
     ));
+    if (BLD_ROOF_SHAPES.has(def.shape)) {
+      const R = bldRoof(it);
+      const types = Object.entries(ITEM_ROOF_TYPES).filter(([k]) => k !== 'arch' || def.shape === 'greenhouse' || def.shape === 'canopy' || def.shape === 'building' || def.shape === 'garage');
+      body.append(F.section('Крыша',
+        F.select('Тип', R.type, types.map(([k, v]) => [k, v.name]), (v) => { it.roofType = v; delete it.roofPitch; Model.commit(); }, { field: 'roofType' }),
+        F.select('Материал', R.mat, Object.entries(ROOF_MATERIALS).map(([k, v]) => [k, v.name]), (v) => { it.roofMat = v; Model.commit(); }, { field: 'roofMat' }),
+        R.type === 'gable' || R.type === 'hip' || R.type === 'shed' ? F.num('Уклон', R.pitch, (v) => { it.roofPitch = U.clamp(v, 3, 60); Model.commit(); }, { unit: '°', min: 3, max: 60 }) : null,
+        R.type === 'gable' || R.type === 'hip' || R.type === 'arch' ? F.select('Конёк', R.ridge, [['long', 'вдоль длинной стороны'], ['short', 'вдоль короткой стороны']], (v) => { it.roofRidge = v; Model.commit(); }) : null,
+        R.type === 'shed' ? F.select('Высокая сторона', R.shedDir, [['back', 'сзади (−Г)'], ['front', 'спереди (+Г)'], ['left', 'слева (−Ш)'], ['right', 'справа (+Ш)']], (v) => { it.roofShed = v; Model.commit(); }) : null,
+        F.note('Высота объекта — до конька; высота стен (столбов) получается из уклона. Направления — относительно самой постройки: поверните её ручкой, крыша повернётся вместе с ней.')));
+    }
     if (def.shape === 'veranda') {
       const o = porchOpt(it), g = porchGeom(it, it.w, it.d);
       body.append(F.section('Исполнение',
@@ -788,6 +799,18 @@ const UI = {
       F.info('Площадь', `${(ar / 1e4).toFixed(2)} м²` + (a.kind === 'plot' ? ` · ${(ar / 1e6).toFixed(2)} сот.` : '')),
       F.info('Периметр', U.fmtLen(per)),
     ));
+    // покрытие: у границы участка и охранных зон — новая зона по тому же контуру, у остальных — смена вида
+    const pave = (kind) => {
+      if (a.kind === 'plot' || a.kind === 'protect' || a.kind === 'zone') {
+        const n = Model.add('areas', { kind, pts: a.pts.map(p => ({ ...p })) });
+        App.sel.clear(); App.sel.add(n.id); Model.commit(); App.selChanged();
+        UI.toast(`${AREA_KINDS[kind].name}: ${(ar / 1e4).toFixed(1)} м² по контуру «${a.name || k.name}», без бордюров`);
+      } else { a.kind = kind; Model.commit(); UI.toast(`Покрытие: ${AREA_KINDS[kind].name.toLowerCase()}, ${(ar / 1e4).toFixed(1)} м²`); }
+    };
+    if (a.kind !== 'water') body.append(F.section('Покрытие',
+      F.btns([['Заасфальтировать', () => pave('asphalt'), a.kind === 'asphalt' ? 'on' : 'primary'], ['Бетон', () => pave('concrete'), a.kind === 'concrete' ? 'on' : ''], ['Щебень', () => pave('gravel'), a.kind === 'gravel' ? 'on' : '']]),
+      F.btns([['Плитка / мощение', () => pave('paving'), a.kind === 'paving' ? 'on' : ''], ['Газон', () => pave('lawn'), a.kind === 'lawn' ? 'on' : '']]),
+      F.note(a.kind === 'plot' ? 'Для границы участка создаётся отдельная зона покрытия по тому же контуру (граница остаётся). Чтобы покрыть только часть — нарисуйте зону инструментом «Зона».' : 'Покрытие ровное, вровень с землёй, без бордюров. Площадь идёт в «Площади» и в смету.')));
     const sides = U.el('div', { class: 'sides' });
     a.pts.forEach((p, i) => {
       const q = a.pts[(i + 1) % a.pts.length];
@@ -850,6 +873,7 @@ const UI = {
       F.num('Ширина', r.width, (v) => UI.set(r, 'width', v), { min: 20 }),
       F.info('Длина по оси', U.fmtLen(len)),
       F.info('Площадь покрытия ≈', U.fmtArea(len * r.width)),
+      F.check('Бордюр по краям', roadCurb(r), (v) => UI.set(r, 'curb', v)),
       F.check('Показывать длину в подписи', r.showLen, (v) => UI.set(r, 'showLen', v)),
       F.btns([['Развернуть', () => { r.pts.reverse(); Model.commit(); }], ['Продолжить', () => { Tools.opts.roadKind = r.kind; Tools.opts.roadW = r.width; Tools.set('road'); Tools.st = { pts: r.pts.map(p => ({ ...p })) }; Model.remove([r.id]); Model.commit(); }]]),
       F.note('Двойной клик по дороге — добавить изгиб, по точке — удалить.')));

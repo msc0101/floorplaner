@@ -224,6 +224,23 @@ const grp = await page.evaluate(() => {
 });
 console.log('groups', JSON.stringify(grp));
 if (grp.members !== 2 || !grp.isGroup || grp.p1x !== 600 || grp.p2b !== 800 || grp.groups !== 2 || grp.left !== 2) errors.push('Группы: ' + JSON.stringify(grp));
+// крыши построек: типы по умолчанию, выбор типа; асфальт без бордюров, бордюр у дороги, смета
+const rf = await page.evaluate(() => {
+  const f = App.doc.floors[0].id, put = (key, extra = {}) => { const d = catItem(key); return Model.add('items', { key, x: 50000, y: 50000, w: d.w, d: d.d, h: d.h, rot: 0, flip: false, floor: f, ...extra }); };
+  const r = { def: ['garage1', 'carport', 'carportLean', 'greenhouse', 'woodshed'].map(k => bldRoof({ key: k }).type).join(',') };
+  const a = put('carport2', { roofType: 'arch', roofMat: 'polycarb' }), b = put('shed', { roofType: 'shed', roofShed: 'left' });
+  r.rect = JSON.stringify(bldRoofRect(Model.get(b.id), 300, 400));
+  const z = Model.add('areas', { kind: 'asphalt', floor: f, pts: [{ x: 50000, y: 50000 }, { x: 51000, y: 50000 }, { x: 51000, y: 50500 }, { x: 50000, y: 50500 }] });
+  const rd = Model.add('roads', { kind: 'road', width: 400, floor: f, pts: [{ x: 50000, y: 51000 }, { x: 52000, y: 51000 }], curb: false });
+  Model.commit();
+  r.tris = View3D.build().P.length > 0;
+  r.asphalt = (Estimate.rows().find(x => x.key === 'site:asphalt') || {}).qty;
+  r.curb = roadCurb(rd);
+  Model.undo(); void a; void z;
+  return r;
+});
+console.log('roofs/asphalt', JSON.stringify(rf));
+if (rf.def !== 'gable,flat,shed,gable,shed' || !rf.tris || !(rf.asphalt >= 50) || rf.curb !== false || !rf.rect.includes('"rot":-90')) errors.push('Крыши построек / асфальт: ' + JSON.stringify(rf));
 // прогулка в 3D: WASD, столкновения со стенами, подъём по лестнице на мансарду, Esc
 const wk = await page.evaluate(() => {
   IO.loadDemo(); View3D.toggle(true);

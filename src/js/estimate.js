@@ -15,7 +15,7 @@ const PRICE_DEFAULTS = {
   'fence:forged': 7500, 'fence:brickF': 18000, 'fence:concreteF': 4500,
   // кровля (за м²)
   'roof:metaltile': 1500, 'roof:profile': 1200, 'roof:seam': 2800, 'roof:soft': 2200, 'roof:ceramic': 3800,
-  'roof:ondulin': 1000, 'roof:slate': 900, 'roof:membrane': 2200, 'roof:frame': 2500,
+  'roof:ondulin': 1000, 'roof:polycarb': 1100, 'roof:slate': 900, 'roof:membrane': 2200, 'roof:frame': 2500,
   // фундамент, перекрытия, полы
   'found:strip': 14000, 'slab:floor': 4500, 'floor:screed': 1200,
   // окна и двери
@@ -40,6 +40,8 @@ const PRICE_DEFAULTS = {
   'item:garage1': 900000, 'item:garage2': 1500000, 'item:carport': 180000, 'item:carport2': 300000, 'item:carportLean': 160000,
   'item:canopy': 200000, 'item:shed': 250000, 'item:bathhouse': 1200000, 'item:gazebo': 250000, 'item:greenhouse': 70000,
   'item:woodshed': 60000, 'item:outhouse': 60000, 'item:showerOut': 40000, 'item:pool': 900000, 'item:terrace': 350000,
+  // благоустройство участка (за м²)
+  'site:asphalt': 1500, 'site:concrete': 2500, 'site:paving': 2200, 'site:gravel': 600, 'site:lawn': 350,
   'item:gate': 120000, 'item:wicket': 25000, 'item:bbq': 40000,
 };
 
@@ -98,6 +100,11 @@ const Estimate = {
     add('Окна и двери', 'door:int', 'Двери межкомнатные', 'шт.', doorsInt);
     add('Окна и двери', 'door:slide', 'Двери раздвижные', 'шт.', slides);
     add('Окна и двери', 'door:gate', 'Ворота', 'шт.', gates);
+    // благоустройство: покрытия зон участка
+    const cover = { asphalt: 'Асфальтирование', concrete: 'Бетонная площадка', paving: 'Мощение плиткой / отмостка', gravel: 'Отсыпка щебнем / гравием', lawn: 'Газон' };
+    const byKind = {};
+    for (const a of d.areas) if (cover[a.kind]) byKind[a.kind] = (byKind[a.kind] || 0) + Math.abs(G.polyArea(a.pts)) / 1e4;
+    for (const [k, m2] of Object.entries(byKind)) add('Благоустройство участка', 'site:' + k, cover[k], 'м²', m2);
     // сети
     const net = {};
     for (const l of d.lines) net[l.kind] = (net[l.kind] || 0) + G.polyPerimeter(l.pts, false) / 100;

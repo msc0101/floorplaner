@@ -43,6 +43,8 @@ const LINE_KINDS = {
 };
 
 /* Дороги, улицы, тропинки: ширина в см */
+/** Бордюр у дороги: по умолчанию — у улиц и проездов; можно выключить в свойствах */
+function roadCurb(r) { return r.curb ?? (r.kind === 'street' || r.kind === 'road'); }
 const ROAD_KINDS = {
   street:   { name: 'Улица', width: 600, fill: '#b9bec7', fillDark: '#4a515c', edge: '#7d8490', center: true },
   road:     { name: 'Дорога / проезд', width: 400, fill: '#c3c7ce', fillDark: '#434a55', edge: '#80868f' },
@@ -114,6 +116,9 @@ const AREA_KINDS = {
   water:   { name: 'Водоём', fill: 'rgba(70,150,230,.35)', stroke: '#3a7bd5', dash: [], layer: 'site' },
   flower:  { name: 'Цветник', fill: 'rgba(230,120,170,.25)', stroke: '#c0508a', dash: [], layer: 'site' },
   zone:    { name: 'Зона (произвольная)', fill: 'rgba(120,140,220,.14)', stroke: '#5b6fd0', dash: [8, 5], layer: 'site' },
+  asphalt: { name: 'Асфальт', fill: 'rgba(62,66,74,.55)', stroke: '#3d4047', dash: [], layer: 'site' },
+  concrete: { name: 'Бетон', fill: 'rgba(175,175,170,.45)', stroke: '#8a8a85', dash: [], layer: 'site' },
+  gravel:  { name: 'Щебень / гравий', fill: 'rgba(190,178,152,.45)', stroke: '#9a8f7a', dash: [], layer: 'site', hatch: true },
   protect: { name: 'Охранная / санитарная зона', fill: 'rgba(230,80,80,.08)', stroke: '#d64545', dash: [4, 6], layer: 'site' },
 };
 
@@ -442,6 +447,38 @@ function porchPosts(g, w, d) {
     }
   }
   return out;
+}
+
+/* ===================== КРЫШИ ПОСТРОЕК (гараж, сарай, навес, теплица) ===================== */
+const BLD_ROOF_SHAPES = new Set(['building', 'garage', 'canopy', 'canopyLean', 'greenhouse']);
+const ITEM_ROOF_TYPES = {
+  gable: { name: 'Двускатная', pitch: 30 },
+  hip:   { name: 'Вальмовая (четырёхскатная)', pitch: 25 },
+  shed:  { name: 'Односкатная', pitch: 12 },
+  flat:  { name: 'Плоская', pitch: 0 },
+  arch:  { name: 'Арочная (полукруглая)', pitch: 0 },
+};
+/** Крыша постройки: тип, материал, уклон, направление конька/ската; значения по умолчанию — от вида постройки */
+function bldRoof(it) {
+  const def = catItem(it.key), sh = def.shape;
+  const dType = sh === 'canopyLean' || def.key === 'woodshed' ? 'shed' : sh === 'canopy' ? 'flat' : 'gable';
+  const type = ITEM_ROOF_TYPES[it.roofType] ? it.roofType : dType;
+  const dMat = sh === 'greenhouse' ? 'polycarb' : sh === 'garage' || sh === 'canopy' || sh === 'canopyLean' ? 'profile' : def.key === 'bathhouse' ? 'soft' : 'metaltile';
+  const mat = ROOF_MATERIALS[it.roofMat] ? it.roofMat : dMat;
+  const pitch = U.isNum(it.roofPitch) ? U.clamp(it.roofPitch, 0, 60) : sh === 'greenhouse' && type === 'gable' ? 35 : ITEM_ROOF_TYPES[type].pitch;
+  const open = sh === 'canopy' || sh === 'canopyLean';
+  return { type, mat, pitch, ridge: it.roofRidge === 'short' ? 'short' : 'long', shedDir: ['back', 'front', 'left', 'right'].includes(it.roofShed) ? it.roofShed : 'back', over: open ? 10 : sh === 'greenhouse' ? 5 : 25, open };
+}
+/** Прямоугольник крыши в локальных координатах постройки: {w, d, rot} (rot — относительно постройки);
+ *  у двускатной/вальмовой/арочной конёк вдоль u, у односкатной высокая сторона — −v. */
+function bldRoofRect(it, w, d) {
+  const R = bldRoof(it), o = R.over;
+  if (R.type === 'shed') {
+    const t = { back: [0, w, d], front: [180, w, d], left: [-90, d, w], right: [90, d, w] }[R.shedDir];
+    return { x: 0, y: 0, rot: t[0], w: t[1] + 2 * o, d: t[2] + 2 * o, type: 'shed', pitch: R.pitch };
+  }
+  const alongW = (w >= d) === (R.ridge === 'long');
+  return { x: 0, y: 0, rot: alongW ? 0 : 90, w: (alongW ? w : d) + 2 * o, d: (alongW ? d : w) + 2 * o, type: R.type, pitch: R.pitch };
 }
 
 /* ============================ КУХОННЫЕ ГАРНИТУРЫ ============================ */
@@ -961,20 +998,40 @@ const Painters = (() => {
     text(P, name, -v.x * sz * 0.35, -v.y * sz * 0.35, sz, { bold: true });
     text(P, (w / 100).toFixed(1).replace(/\.0$/, '') + '×' + (d / 100).toFixed(1).replace(/\.0$/, '') + ' м', v.x * sz * 0.8, v.y * sz * 0.8, sz * 0.75, { color: P.C.muted });
   };
-  S.building = (P, w, d) => { buildingBase(P, w, d); bldLabel(P, w, d); };
+  /** Линии крыши постройки на плане: конёк, рёбра вальм, стрелки ската, рёбра арки; контур свеса */
+  const roofPlan = (P, w, d) => {
+    const r = bldRoofRect(P.it, w, d), R = bldRoof(P.it), c = P.ctx;
+    c.save(); c.strokeStyle = P.C.inkSoft; lw(P, 1); c.setLineDash([9 * P.px, 5 * P.px]);
+    if (R.over > 5) box(P, -w / 2 - R.over, -d / 2 - R.over, w + 2 * R.over, d + 2 * R.over, 0, false);
+    c.setLineDash([]);
+    const L = (a, b) => line(P, [a.x, a.y, b.x, b.y]);
+    if (r.type === 'arch') {
+      const W = r.w / 2, D = r.d / 2, T = (u, v) => G.toWorld({ x: u, y: v }, 0, 0, r.rot);
+      L(T(-W, 0), T(W, 0));
+      for (let u = -W + 100; u < W - 20; u += 100) L(T(u, -D), T(u, D));
+    } else for (const [a, b] of Roof.planLines(r)) L(a, b);
+    for (const [a, b] of Roof.slopeArrows(r)) {
+      L(a, b);
+      const u = G.unit(G.sub(b, a)), n = G.perp(u), k = Math.min(18, G.dist(a, b) * 0.3);
+      line(P, [b.x - u.x * k + n.x * k * 0.5, b.y - u.y * k + n.y * k * 0.5, b.x, b.y, b.x - u.x * k - n.x * k * 0.5, b.y - u.y * k - n.y * k * 0.5]);
+    }
+    c.restore();
+  };
+  S.building = (P, w, d) => { buildingBase(P, w, d); roofPlan(P, w, d); bldLabel(P, w, d); };
   S.garage = (P, w, d) => {
     buildingBase(P, w, d);
     const gw = Math.min(w - 60, 300);
     P.ctx.save(); P.ctx.fillStyle = P.C.bg; lw(P, 1);
     box(P, -gw / 2, d / 2 - 6, gw, 12, 0);
     P.ctx.setLineDash([10 * P.px, 5 * P.px]); line(P, [-gw / 2, d / 2 - 60, gw / 2, d / 2 - 60]); P.ctx.restore();
+    roofPlan(P, w, d);
     bldLabel(P, w, d);
   };
   S.canopy = (P, w, d) => {
     lw(P, 1.2); P.ctx.setLineDash([12 * P.px, 6 * P.px]);
     box(P, -w / 2, -d / 2, w, d, 0);
     P.ctx.setLineDash([]);
-    line(P, [-w / 2, -d / 2, w / 2, d / 2]); line(P, [w / 2, -d / 2, -w / 2, d / 2]);
+    roofPlan(P, w, d);
     P.ctx.fillStyle = P.C.ink;
     const k = Math.max(1, Math.ceil(d / 300));
     for (let i = 0; i <= k; i++) { const y = -d / 2 + 9 + (d - 18) * i / k; box(P, -w / 2 + 2, y - 7, 14, 14, 0); box(P, w / 2 - 16, y - 7, 14, 14, 0); }
@@ -987,13 +1044,10 @@ const Painters = (() => {
     box(P, -w / 2, -d / 2, w, d, 0);
     P.ctx.setLineDash([]);
     lw(P, 2.2); line(P, [-w / 2, -d / 2, w / 2, -d / 2]);
-    thin(P);
-    for (let x = -w / 2 + 60; x < w / 2; x += 60) line(P, [x, -d / 2, x, d / 2]);
+    roofPlan(P, w, d);
     P.ctx.fillStyle = P.C.ink;
     const k = Math.max(1, Math.round(w / 300));
     for (let i = 0; i <= k; i++) { const x = -w / 2 + 8 + (w - 16) * i / k; box(P, x - 7, d / 2 - 16, 14, 14, 0); }
-    // стрелка ската
-    lw(P, 1); line(P, [0, -d / 2 + 30, 0, d / 2 - 40]); line(P, [-8, d / 2 - 54, 0, d / 2 - 40, 8, d / 2 - 54]);
     P.ctx.fillStyle = P.C.itemFill;
     bldLabel(P, w, d);
   };
@@ -1010,11 +1064,10 @@ const Painters = (() => {
   S.greenhouse = (P, w, d) => {
     lw(P, 1.6); P.ctx.fillStyle = P.C.glass;
     box(P, -w / 2, -d / 2, w, d, 0);
-    thin(P);
-    for (let y = -d / 2 + 100; y < d / 2; y += 100) line(P, [-w / 2, y, w / 2, y]);
-    line(P, [0, -d / 2, 0, d / 2]);
+    roofPlan(P, w, d);
     bldLabel(P, w, d);
   };
+
   S.pool = (P, w, d) => {
     P.ctx.fillStyle = P.C.water; box(P, -w / 2, -d / 2, w, d, 30);
     thin(P); box(P, -w / 2 + 15, -d / 2 + 15, w - 30, d - 30, 20, false);

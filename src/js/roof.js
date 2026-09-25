@@ -21,6 +21,7 @@ const ROOF_MATERIALS = {
   ondulin:   { name: 'Ондулин', color: '#4f5e45' },
   slate:     { name: 'Шифер', color: '#8f9397' },
   membrane:  { name: 'Мембрана / наплавляемая (плоская)', color: '#4a4f57' },
+  polycarb:  { name: 'Сотовый поликарбонат', color: '#cfe3ec', glass: true },
 };
 
 const Roof = {
