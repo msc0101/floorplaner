@@ -115,11 +115,15 @@ const Render = {
     // «напольные» объекты — под стенами и дверьми (крыльцо и веранда не закрывают открытую дверь)
     const isGround = (it) => { const d = catItem(it.key); return !d.sym && (it.h <= 20 || d.shape === 'rug' || d.shape === 'veranda') && !['tree', 'conifer', 'bush'].includes(d.shape); };
     const isCanopy = (it) => ['tree', 'conifer', 'bush', 'hedge'].includes(catItem(it.key).shape);
+    // постройки «как дом» (гараж, сарай, баня) — первыми: их пол и стены под тем, что внутри (погреб, машина…)
+    const isShell = (it) => BLD_HOLLOW.has(catItem(it.key).shape);
+    for (const it of items) if (isShell(it)) Render.item(env, it);
     for (const it of items) if (isGround(it)) Render.item(env, it);
     lay('WALLS');
     if (L.walls) Render.walls(env);
     lay('ITEMS');
-    for (const it of items) if (!isGround(it) && !isCanopy(it) && !catItem(it.key).sym) Render.item(env, it);
+    for (const it of items) if (!isGround(it) && !isShell(it) && !isCanopy(it) && !catItem(it.key).sym) Render.item(env, it);
+    for (const it of items) if (isShell(it)) Render.item(env, it, '_label');
     for (const it of items) if (isCanopy(it)) Render.item(env, it);
     // лестницы с нижнего этажа приходят на этот — показываем проём
     if (fi > 0) for (const it of App.doc.items) if (it.floor === App.doc.floors[fi - 1].id && ['stairs', 'stairsL'].includes(catItem(it.key).shape)) Render.stairsFromBelow(env, it);
@@ -129,6 +133,8 @@ const Render = {
     for (const it of items) if (catItem(it.key).sym) Render.item(env, it);
     lay('ROOF');
     if (L.roof !== false) for (const r of App.V.roofs) { env.ghost = r.floor !== App.floor; Roof.draw(env, r); env.ghost = false; }
+    // крыши построек — только линии (конёк, скаты, свес): планировка внутри остаётся видна
+    if (L.roof !== false) for (const it of items) if (isShell(it)) Render.item(env, it, '_roof');
     lay('CHECKS');
     if (L.checks !== false && typeof Checks !== 'undefined') Checks.draw(env);
     lay('DIMS');
@@ -698,10 +704,10 @@ const Render = {
   },
 
   /* ------------------------------ предметы ------------------------------- */
-  item(env, it) {
+  item(env, it, part) {
     const { ctx, px, C } = env;
     const def = catItem(it.key);
-    const painter = Painters.S[def.shape] || Painters.S.labelbox;
+    const painter = Painters.S[part || def.shape] || Painters.S.labelbox;
     let w = it.w, d = it.d;
     if (def.sym) { const k = Math.max(1, def.sym / Math.max(w, d)); w *= k; d *= k; }
     ctx.save();
@@ -712,6 +718,7 @@ const Render = {
     const P = { ctx, px, C, it, def, upright: true, rotRad: U.rad(it.rot || 0), flip: !!it.flip, symMul: 1 };
     try { painter(P, w, d); } catch (e) { console.warn('painter', def.shape, e); }
     ctx.restore();
+    if (part) return;
     if (it.label && !['building', 'garage', 'canopy', 'canopyLean', 'gazebo', 'greenhouse', 'labelbox', 'deck', 'veranda'].includes(def.shape) && Math.min(w, d) * env.scale > 30) {
       Render.label(env, it.label, { x: it.x, y: it.y }, 0, { size: 11, bg: true, prio: 6 });
     }

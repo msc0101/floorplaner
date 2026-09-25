@@ -532,6 +532,22 @@ function bldRoofRect(it, w, d) {
   return { x, y, rot: alongW ? 0 : 90, w: alongW ? W : D, d: alongW ? D : W, type: R.type, pitch: R.pitch };
 }
 
+/* ===================== ПОСТРОЙКИ «КАК ДОМ»: стены с толщиной, внутри — пусто ===================== */
+const BLD_HOLLOW = new Set(['building', 'garage']);
+/** Стены постройки в локальных координатах: толщина t, прямоугольники стен (с проёмом ворот/двери спереди, +d/2),
+ *  проём door, внутренний контур inner. Внутрь можно ставить погреб, смотровую яму, мебель — всё видно. */
+function bldShell(it, w, d) {
+  const def = catItem(it.key), sh = def.shape;
+  const tDef = def.key === 'house' ? 40 : sh === 'garage' ? 25 : Math.min(w, d) < 160 ? 5 : 15;
+  const t = U.clamp(+(it.wallT ?? def.wallT ?? tDef) || tDef, 3, Math.max(3, Math.min(w, d) / 4));
+  const gate = sh === 'garage';
+  const dw = Math.max(0, gate ? Math.min(w - 2 * t - 20, 300) : Math.min(90, w - 2 * t - 10));
+  const R = (x0, y0, x1, y1) => ({ x0, y0, x1, y1 });
+  const walls = [R(-w / 2, -d / 2, w / 2, -d / 2 + t), R(-w / 2, -d / 2 + t, -w / 2 + t, d / 2), R(w / 2 - t, -d / 2 + t, w / 2, d / 2)];
+  for (const r of [R(-w / 2 + t, d / 2 - t, -dw / 2, d / 2), R(dw / 2, d / 2 - t, w / 2 - t, d / 2)]) if (r.x1 - r.x0 > 0.5) walls.push(r);
+  return { t, gate, dw, walls, door: R(-dw / 2, d / 2 - t, dw / 2, d / 2), inner: R(-w / 2 + t, -d / 2 + t, w / 2 - t, d / 2 - t) };
+}
+
 /* ============================ КУХОННЫЕ ГАРНИТУРЫ ============================ */
 const KITCHEN_SHAPES = new Set(['kitchenI', 'kitchenL', 'kitchenU', 'kitchenII', 'kitchenIsland', 'kitchenBar', 'kitchenPen', 'kitchenTall']);
 /** Ленты модулей в локальных координатах (центр — 0,0; y вниз). front — сторона фасада,
@@ -1029,15 +1045,6 @@ const Painters = (() => {
   };
 
   /* --- постройки и благоустройство --- */
-  const buildingBase = (P, w, d, hatchIt = true) => {
-    lw(P, 2.4);
-    box(P, -w / 2, -d / 2, w, d, 0);
-    if (hatchIt) {
-      P.ctx.save(); P.ctx.strokeStyle = P.C.hatch; thin(P);
-      hatch(P, -w / 2, -d / 2, w, d, 40);
-      P.ctx.restore();
-    }
-  };
   const bldLabel = (P, w, d) => {
     const name = P.it.label || P.def.name;
     // «вниз по экрану» в локальных координатах — чтобы строки не менялись местами при повороте
@@ -1068,16 +1075,29 @@ const Painters = (() => {
     }
     c.restore();
   };
-  S.building = (P, w, d) => { buildingBase(P, w, d); roofPlan(P, w, d); bldLabel(P, w, d); };
-  S.garage = (P, w, d) => {
-    buildingBase(P, w, d);
-    const gw = Math.min(w - 60, 300);
-    P.ctx.save(); P.ctx.fillStyle = P.C.bg; lw(P, 1);
-    box(P, -gw / 2, d / 2 - 6, gw, 12, 0);
-    P.ctx.setLineDash([10 * P.px, 5 * P.px]); line(P, [-gw / 2, d / 2 - 60, gw / 2, d / 2 - 60]); P.ctx.restore();
-    roofPlan(P, w, d);
-    bldLabel(P, w, d);
+  /** Постройка «как дом»: пол, стены с толщиной, ворота или дверь; крыша — отдельно, в слое «Крыша» (S._roof) */
+  const shell = (P, w, d) => {
+    const s = bldShell(P.it, w, d), c = P.ctx;
+    c.save();
+    c.fillStyle = P.it.color || P.C.itemFill; thin(P); box(P, -w / 2, -d / 2, w, d, 0);   // пол
+    c.fillStyle = P.C.wallExt; c.strokeStyle = P.C.wallStroke; lw(P, 0.8);
+    for (const r of s.walls) box(P, r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0, 0);
+    // проём: ворота — полотно в проёме, дверь — полотно и дуга открывания внутрь
+    const r = s.door, y = (r.y0 + r.y1) / 2;
+    c.strokeStyle = P.C.ink;
+    if (s.gate && s.dw > 0) {
+      lw(P, 1.2); line(P, [r.x0, y - 2, r.x1, y - 2]); line(P, [r.x0, y + 2, r.x1, y + 2]);
+      c.setLineDash([10 * P.px, 5 * P.px]); thin(P); line(P, [r.x0, r.y0 - 50, r.x1, r.y0 - 50]); c.setLineDash([]);
+    } else if (s.dw > 0) {
+      thin(P); line(P, [r.x0, r.y0, r.x0, r.y0 - s.dw]);
+      c.beginPath(); c.arc(r.x0, r.y0, s.dw, -Math.PI / 2, 0); c.stroke();
+    }
+    c.restore();
   };
+  S.building = (P, w, d) => shell(P, w, d);
+  S.garage = S.building;
+  S._roof = (P, w, d) => roofPlan(P, w, d);
+  S._label = (P, w, d) => bldLabel(P, w, d);     // подпись — поверх того, что внутри
   S.canopy = (P, w, d) => {
     lw(P, 1.2); P.ctx.setLineDash([12 * P.px, 6 * P.px]);
     box(P, -w / 2, -d / 2, w, d, 0);

@@ -110,9 +110,27 @@ const View3D = {
       const ref = [c2.x / 100, (z0 + z1) / 200, c2.y / 100];
       const top = col.map(x => Math.min(1, x * (opt.topK ?? 1)));
       const ids = earcut2(pts);
+      // верх с вырезами (открытые ямы): треугольник у выреза дробим до ~8 см и выкидываем части внутри
+      const holes = opt.holes && opt.holes.length ? opt.holes : null;
+      const topTri = (a, b, c) => {
+        if (holes) {
+          const x0 = Math.min(a.x, b.x, c.x), x1 = Math.max(a.x, b.x, c.x), y0 = Math.min(a.y, b.y, c.y), y1 = Math.max(a.y, b.y, c.y);
+          const hs = holes.filter(h => !(h.bb.x1 < x0 || h.bb.x0 > x1 || h.bb.y1 < y0 || h.bb.y0 > y1));
+          if (hs.length) {
+            const m = { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3 };
+            if (Math.max(x1 - x0, y1 - y0) < 8) { if (hs.some(h => G.pointInPoly(m, h.poly))) return; }
+            else {
+              const ab = G.mid(a, b), bc = G.mid(b, c), ca = G.mid(c, a);
+              topTri(a, ab, ca); topTri(ab, b, bc); topTri(ca, bc, c); topTri(ab, bc, ca);
+              return;
+            }
+          }
+        }
+        tri(V3(a, z1), V3(b, z1), V3(c, z1), top, [0, 1, 0], opt.glass);
+      };
       for (let i = 0; i < ids.length; i += 3) {
         const a = pts[ids[i]], b = pts[ids[i + 1]], c = pts[ids[i + 2]];
-        if (!opt.noTop) tri(V3(a, z1), V3(b, z1), V3(c, z1), top, [0, 1, 0], opt.glass);
+        if (!opt.noTop) topTri(a, b, c);
         if (opt.bottom) tri(V3(a, z0), V3(c, z0), V3(b, z0), col, [0, -1, 0], opt.glass);
       }
       if (opt.noSides) return;
@@ -182,10 +200,8 @@ const View3D = {
       // цвет задаётся в вершинах и плавно интерполируется — без «шахматки»
       const gcol = (x, y) => { const k = 0.95 + View3D.noise(Math.round(x / step) * 0.37, Math.round(y / step) * 0.53) * 0.08; return grass.map(c => c * k); };
       const gv = (x, y) => { const v = V3({ x, y }, 0), c = gcol(x, y); P.push(...v); N.push(0, 1, 0); Cc.push(...c); };
-      // открытые ямы на участке — вырез в газоне (клетки у ямы дробятся на 10 см)
-      const f1 = d.floors[0].id;
-      const holes = d.items.filter(it => catItem(it.key).shape === 'pit' && (it.floor || f1) === f1 && pitGeom(it, it.w, it.d).cover === 'open')
-        .map(it => { const poly = G.rectPts(it.x, it.y, it.w, it.d, it.rot || 0); return { poly, bb: G.bbox(poly) }; });
+      // открытые ямы на участке — вырез в газоне (клетки у ямы дробятся на 10 см), покрытиях и полу построек
+      const holes = View3D.pitHoles();
       const quad = (x, y, s) => { gv(x, y); gv(x + s, y); gv(x + s, y + s); gv(x, y); gv(x + s, y + s); gv(x, y + s); };
       for (let x = gx0; x < gx1; x += step) for (let y = gy0; y < gy1; y += step) {
         const hs = holes.filter(h => !(h.bb.x1 < x || h.bb.x0 > x + step || h.bb.y1 < y || h.bb.y0 > y + step));
@@ -200,7 +216,7 @@ const View3D = {
         const colr = { plot: '#a9cc8a', lawn: '#86c25f', garden: '#8a6a45', paving: '#b8b8bc', road: '#8e9096', water: '#4f93d6', flower: '#d99bb8', zone: '#b8c0e6', protect: '#e5b1b1', asphalt: '#4d5057', concrete: '#b9b8b2', gravel: '#b7ab93' }[a.kind] || '#a9cc8a';
         // покрытия — вровень с землёй, без бордюров
         const hgt = { plot: 0.6, garden: 6, paving: 3, road: 2, water: 1.5, asphalt: 2, concrete: 3, gravel: 2.5 }[a.kind] ?? 1.5;
-        prism(a.pts, 0, hgt, View3D.hex(colr), { noSides: a.kind === 'plot' || a.kind === 'lawn' });
+        prism(a.pts, 0, hgt, View3D.hex(colr), { noSides: a.kind === 'plot' || a.kind === 'lawn', holes });
       }
       for (const r of d.roads) {
         const k = ROAD_KINDS[r.kind];
@@ -208,7 +224,7 @@ const View3D = {
         for (let i = 0; i < r.pts.length - 1; i++) {
           const a = r.pts[i], b2 = r.pts[i + 1], u = G.unit(G.sub(b2, a)), n = G.perp(u);
           const hw = r.width / 2;
-          prism([G.add(a, G.mul(n, hw)), G.add(b2, G.mul(n, hw)), G.sub(b2, G.mul(n, hw)), G.sub(a, G.mul(n, hw))], 0, z, View3D.hex(k.fill));
+          prism([G.add(a, G.mul(n, hw)), G.add(b2, G.mul(n, hw)), G.sub(b2, G.mul(n, hw)), G.sub(a, G.mul(n, hw))], 0, z, View3D.hex(k.fill), { holes });
           if (roadCurb(r)) {
             // бордюры
             for (const s2 of [1, -1]) prism([G.add(a, G.mul(n, s2 * hw)), G.add(b2, G.mul(n, s2 * hw)), G.add(b2, G.mul(n, s2 * (hw - 15))), G.add(a, G.mul(n, s2 * (hw - 15)))], z, z + 12, View3D.hex('#c9c9c9'));
@@ -518,6 +534,7 @@ const View3D = {
   },
   /** Построить крышу объекта по roofGeom; opt: gableGlass, endCol, endGlass */
   itemRoof(it, g, opt = {}) {
+    if (!View3D.opts.roof) return;                                    // «Крыша» выключена — видно, что внутри
     const { face } = View3D._g, C = View3D.hex, { R, r, eave, rise } = g, rot = it.rot || 0, rotW = rot + r.rot;
     const c = G.toWorld({ x: r.x, y: r.y }, it.x, it.y, rot);
     const glassRoof = !!(ROOF_MATERIALS[R.mat] || {}).glass;
@@ -533,18 +550,41 @@ const View3D = {
     }
     View3D.roof({ x: c.x, y: c.y, w: r.w, d: r.d, rot: rotW, type: r.type, pitch: g.pitch, base: eave, mat: R.mat, floor: null, open: R.open, gableGlass: !!opt.gableGlass }, col);
   },
+  BLD_FLOOR: 10,
+  /** Постройка «как дом», внутри которой стоит объект (погреб/яма) — или null */
+  bldHost(it) {
+    const f1 = App.doc.floors[0].id, fid = it.floor || f1;
+    return App.doc.items.find(b => b !== it && (b.floor || f1) === fid && BLD_HOLLOW.has(catItem(b.key).shape) && G.pointInPoly(it, Model.itemPts(b))) || null;
+  },
+  /** Открытые ямы первого этажа (контуры по наружным стенкам) — вырезы в земле, покрытиях и полу построек */
+  pitHoles() {
+    const f1 = App.doc.floors[0].id;
+    return App.doc.items.filter(it => catItem(it.key).shape === 'pit' && (it.floor || f1) === f1 && pitGeom(it, it.w, it.d).cover === 'open')
+      .map(it => { const poly = G.rectPts(it.x, it.y, it.w, it.d, it.rot || 0); return { poly, bb: G.bbox(poly) }; });
+  },
+  /** Пол постройки (прямоугольник r в её локальных координатах) с вырезами под открытые ямы внутри */
+  slab(it, r, z0, z1, col) {
+    const pts = [{ x: r.x0, y: r.y0 }, { x: r.x1, y: r.y0 }, { x: r.x1, y: r.y1 }, { x: r.x0, y: r.y1 }].map(q => G.toWorld(q, it.x, it.y, it.rot || 0));
+    View3D._g.prism(pts, z0, z1, col, { holes: View3D.pitHoles() });
+  },
   building(it, def, e) {
-    const { prism, box } = View3D._g, C = View3D.hex, sh = def.shape, rot = it.rot || 0, H = it.h || 250;
+    const { box } = View3D._g, C = View3D.hex, sh = def.shape, rot = it.rot || 0, H = it.h || 250;
     // карниз не ниже 1.5 м (у навесов 1.8 м) — иначе уклон уменьшаем
     const g = View3D.roofGeom(it, e + H, e + (bldRoof(it).open ? 180 : 150));
     const { eave, roofZ } = g;
-    const pts = Model.itemPts(it);
-    if (sh === 'building' || sh === 'garage') {
-      prism(pts, e, e + 40, C('#8a857d'));
-      prism(pts, e + 40, eave, C(it.key === 'bathhouse' ? '#c79a64' : '#ddd3c3'), { topK: 0.8 });
-      const wallH = eave - e;
-      if (sh === 'garage') { const gw = Math.min(it.w - 60, 300); const q = G.toWorld({ x: 0, y: it.d / 2 }, it.x, it.y, rot); box(q.x, q.y, gw, 4, rot, e, e + Math.min(230, wallH - 20), C('#b9c0c7')); }
-      else { const q = G.toWorld({ x: 0, y: it.d / 2 }, it.x, it.y, rot); box(q.x, q.y, 90, 4, rot, e, e + Math.min(205, wallH - 15), C('#6b4a33')); }
+    if (BLD_HOLLOW.has(sh)) {
+      // «как дом»: пол, стены с толщиной, ворота/дверь; внутри — пусто (погреб, яма, машина, мебель видны без крыши)
+      const s = bldShell(it, it.w, it.d), wallH = eave - e;
+      const bx = (r, z0, z1, col, opt) => { const q = G.toWorld({ x: (r.x0 + r.x1) / 2, y: (r.y0 + r.y1) / 2 }, it.x, it.y, rot); box(q.x, q.y, r.x1 - r.x0, r.y1 - r.y0, rot, z0, z1, col, opt); };
+      View3D.slab(it, s.inner, e, e + View3D.BLD_FLOOR, C(sh === 'garage' ? '#b9b8b2' : '#b08a64'));
+      const wallC = C(it.key === 'bathhouse' ? '#c79a64' : '#ddd3c3'), baseC = C('#8a857d');
+      for (const r of s.walls) { bx(r, e, e + 40, baseC); bx(r, e + 40, eave, wallC, { topK: 0.8 }); }
+      if (s.dw > 0) {
+        const dh = Math.max(0, s.gate ? Math.min(230, wallH - 20) : Math.min(205, wallH - 15)), r = s.door, ym = (r.y0 + r.y1) / 2;
+        if (e + dh < eave) bx(r, e + dh, eave, wallC);                                             // перемычка
+        bx({ x0: r.x0, y0: ym - 2, x1: r.x1, y1: ym + 2 }, e + View3D.BLD_FLOOR, e + dh, C(s.gate ? '#b9c0c7' : '#6b4a33'));
+        if (s.gate) for (let z = e + 50; z < e + dh - 10; z += 50) bx({ x0: r.x0 + 3, y0: r.y1 - 1.5, x1: r.x1 - 3, y1: r.y1 + 0.5 }, z, z + 1.5, C('#9aa3ab'));
+      }
     } else if (sh === 'greenhouse') {
       box(it.x, it.y, it.w, it.d, rot, e, eave, [0.8, 0.9, 0.95], { glass: true });
       box(it.x, it.y, it.w, it.d, rot, e, e + 25, C('#8a857d'));
@@ -640,7 +680,8 @@ const View3D = {
     const fid = it.floor || App.doc.floors[0].id;
     const fd = (App.floorData || []).find(f => f.floor.id === fid);
     const inRoom = !!(fd && fd.rooms.some(r => G.pointInPoly(it, r.axis)));
-    const lift = inRoom ? 3 : 0;
+    const inBld = !inRoom && !!View3D.bldHost(it);                   // в гараже/сарае: пол постройки вырезан под открытую яму
+    const lift = inRoom ? 3 : inBld ? View3D.BLD_FLOOR : 0;
     // стенки изнутри и дно
     const cs = [[-iw, -id], [iw, -id], [iw, id], [-iw, id]];
     for (let k = 0; k < 4; k++) {

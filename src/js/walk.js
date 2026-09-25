@@ -122,6 +122,7 @@ const Walk = {
     for (const it of Walk.itemsOf(i)) {
       const def = catItem(it.key), sh = def.shape;
       if (sh === 'stairs' || sh === 'stairsL') { const q = inRect(it); if (q) cand.push(E + (it.d / 2 - q.y) / it.d * Walk.floorH(i)); continue; }
+      if (BLD_HOLLOW.has(sh)) { if (inRect(it)) cand.push(E + View3D.BLD_FLOOR); continue; }   // пол гаража/сарая
       if (sh !== 'veranda') continue;
       const g = porchGeom(it, it.w, it.d), q0 = G.toLocal(p, it.x, it.y, it.rot || 0);
       const ph = Math.max(g.o.ph, 10);
@@ -156,6 +157,12 @@ const Walk = {
         if (def.sym || skip.has(sh)) continue;
         if (sh === 'tree' || sh === 'conifer') { list.push({ poly: G.rectPts(it.x, it.y, 30, 30, 0), h: 1000 }); continue; }
         if (!(it.h >= 40)) continue;
+        // гараж, сарай, баня — только стены: внутрь можно зайти через ворота/дверь
+        if (BLD_HOLLOW.has(sh)) {
+          const s = bldShell(it, it.w, it.d), W = (x, y) => G.toWorld({ x, y }, it.x, it.y, it.rot || 0);
+          for (const r of s.walls) list.push({ poly: [W(r.x0, r.y0), W(r.x1, r.y0), W(r.x1, r.y1), W(r.x0, r.y1)], h: it.h });
+          continue;
+        }
         list.push({ poly: Model.itemPts(it), h: it.h });
       }
       // ограждение/остекление/стены крыльца и веранды (кроме проходов к ступеням)

@@ -258,6 +258,31 @@ const pit = await page.evaluate(() => {
 });
 console.log('pit', JSON.stringify(pit));
 if (pit.n !== 9 || pit.depth !== 170 || pit.side2 !== 'left' || !pit.tris || pit.bottom !== -170 || pit.firstStep !== -19) errors.push('Погреб/яма: ' + JSON.stringify(pit));
+// гараж «как дом»: стены с толщиной, внутри видно смотровую яму (выбор, 3D-пол с вырезом, прогулка)
+const gar = await page.evaluate(() => {
+  const f = App.doc.floors[0].id, X = 70000, Y = 70000;
+  const g = Model.add('items', { key: 'garage2', x: X, y: Y, w: 650, d: 650, h: 320, rot: 0, floor: f });
+  const pt = Model.add('items', { key: 'inspPit', x: X, y: Y - 50, w: 90, d: 400, h: 0, rot: 0, floor: f, cover: 'open' });
+  Model.commit();
+  const s = bldShell(g, g.w, g.d), r = { walls: s.walls.length, t: s.t, dw: s.dw };
+  r.pick = Tools.hitTest({ x: X, y: Y - 50 }) === pt.id;
+  const A = View3D.build(), P = A.P;
+  let inHole = 0, floor = 0;
+  const poly = G.rectPts(pt.x, pt.y, pt.w, pt.d, 0);
+  for (let i = 0; i < P.length; i += 9) {
+    if (![1, 4, 7].every(k => Math.abs(P[i + k] - 0.1) < 1e-6)) continue;
+    const c = { x: (P[i] + P[i + 3] + P[i + 6]) / 3 * 100, y: (P[i + 2] + P[i + 5] + P[i + 8]) / 3 * 100 };
+    if (Math.abs(c.x - X) < 300 && Math.abs(c.y - Y) < 300) { floor++; if (G.pointInPoly(c, poly)) inHole++; }
+  }
+  r.floor = floor > 0; r.inHole = inHole;
+  Walk.level = 0; Walk._blk = null; Walk.foot = 0;
+  r.inside = Walk.depth(X + 200, Y + 100) === 0; r.gate = Walk.depth(X, Y + 325) === 0; r.wall = Walk.depth(X - 320, Y) > 0;
+  r.floorZ = Walk.top(X + 200, Y + 100); r.pitZ = Walk.top(X, Y + 100) < -100;
+  Model.undo();
+  return r;
+});
+console.log('garage', JSON.stringify(gar));
+if (gar.walls !== 5 || gar.t !== 25 || gar.dw !== 300 || !gar.pick || !gar.floor || gar.inHole !== 0 || !gar.inside || !gar.gate || !gar.wall || gar.floorZ !== 10 || !gar.pitZ) errors.push('Гараж изнутри: ' + JSON.stringify(gar));
 // буфер между вкладками: копия пишется в общее хранилище и читается обратно
 const clip = await page.evaluate(() => {
   App.sel.clear(); for (const w of App.V.walls.slice(0, 2)) App.sel.add(w.id);
