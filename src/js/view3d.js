@@ -489,25 +489,45 @@ const View3D = {
     void face;
   },
   /** Постройка с крышей: стены или столбы до карниза, крыша выбранного типа; высота объекта — до конька */
-  building(it, def, e) {
-    const { prism, box, face } = View3D._g, C = View3D.hex, sh = def.shape, rot = it.rot || 0, H = it.h || 250;
-    const R = bldRoof(it), r = bldRoofRect(it, it.w, it.d), rotW = rot + r.rot;
-    const glassRoof = !!(ROOF_MATERIALS[R.mat] || {}).glass;
-    // подъём крыши по уклону; карниз не ниже 1.5 м (у навесов 1.8 м) — иначе уклон уменьшаем
-    const minEave = R.open ? 180 : 150;
+  /** Геометрия крыши объекта: top — верх (конёк), minEave — ниже карниза не опускаемся (уклон тогда меньше) */
+  roofGeom(it, top, minEave) {
+    const R = bldRoof(it), r = bldRoofRect(it, it.w, it.d);
     const run = r.type === 'gable' ? r.d / 2 : r.type === 'hip' ? Math.min(r.w, r.d) / 2 : r.type === 'shed' ? r.d : 0;
     let rise = r.type === 'arch' ? r.d / 2 : r.type === 'flat' ? 20 : run * Math.tan(U.rad(R.pitch));
-    rise = Math.min(rise, Math.max(10, H - minEave));
-    const eave = e + H - rise;
-    const pitch = run ? U.deg(Math.atan(rise / run)) : 0;
-    const pts = Model.itemPts(it);
-    // высота низа крыши над точкой плана (локальные координаты постройки) — для столбов
+    rise = Math.min(rise, Math.max(10, top - minEave));
+    const eave = top - rise;
+    // высота низа крыши над точкой плана (локальные координаты объекта) — для столбов
     const roofZ = (q) => {
-      const v = G.toLocal(q, 0, 0, r.rot), D = r.d / 2;
+      const v = G.toLocal(q, r.x, r.y, r.rot), D = r.d / 2;
       if (r.type === 'shed') return eave + rise * (D - v.y) / (2 * D);
       if (r.type === 'gable' || r.type === 'hip') return eave + rise * Math.max(0, 1 - Math.abs(v.y) / D);
       return eave;
     };
+    return { R, r, rise, eave, pitch: run ? U.deg(Math.atan(rise / run)) : 0, roofZ };
+  },
+  /** Построить крышу объекта по roofGeom; opt: gableGlass, endCol, endGlass */
+  itemRoof(it, g, opt = {}) {
+    const { face } = View3D._g, C = View3D.hex, { R, r, eave, rise } = g, rot = it.rot || 0, rotW = rot + r.rot;
+    const c = G.toWorld({ x: r.x, y: r.y }, it.x, it.y, rot);
+    const glassRoof = !!(ROOF_MATERIALS[R.mat] || {}).glass;
+    const col = glassRoof ? [0.82, 0.9, 0.95] : null;
+    if (r.type === 'arch') {
+      const W = r.w / 2, D = r.d / 2, n = 14, T = (u, v, z) => { const q = G.toWorld({ x: u, y: v }, c.x, c.y, rotW); return [q.x / 100, z / 100, q.y / 100]; };
+      const prof = Array.from({ length: n + 1 }, (_, i) => { const t = Math.PI * i / n; return { v: -D * Math.cos(t), z: eave + rise * Math.sin(t) }; });
+      const roofCol = col || C((ROOF_MATERIALS[R.mat] || {}).color || '#8f9397');
+      const ref = T(0, 0, eave);
+      for (let i = 0; i < n; i++) face([T(-W, prof[i].v, prof[i].z), T(W, prof[i].v, prof[i].z), T(W, prof[i + 1].v, prof[i + 1].z), T(-W, prof[i + 1].v, prof[i + 1].z)], roofCol, ref, glassRoof);
+      if (!R.open) for (const u of [-W + R.over, W - R.over]) face(prof.map(p => T(u, p.v, p.z)), opt.endCol || C('#ddd3c3'), T(u > 0 ? u - 1 : u + 1, 0, eave + 1), !!opt.endGlass);
+      return;
+    }
+    View3D.roof({ x: c.x, y: c.y, w: r.w, d: r.d, rot: rotW, type: r.type, pitch: g.pitch, base: eave, mat: R.mat, floor: null, open: R.open, gableGlass: !!opt.gableGlass }, col);
+  },
+  building(it, def, e) {
+    const { prism, box } = View3D._g, C = View3D.hex, sh = def.shape, rot = it.rot || 0, H = it.h || 250;
+    // карниз не ниже 1.5 м (у навесов 1.8 м) — иначе уклон уменьшаем
+    const g = View3D.roofGeom(it, e + H, e + (bldRoof(it).open ? 180 : 150));
+    const { eave, roofZ } = g;
+    const pts = Model.itemPts(it);
     if (sh === 'building' || sh === 'garage') {
       prism(pts, e, e + 40, C('#8a857d'));
       prism(pts, e + 40, eave, C(it.key === 'bathhouse' ? '#c79a64' : '#ddd3c3'), { topK: 0.8 });
@@ -524,19 +544,8 @@ const View3D = {
       for (let i = 0; i <= k; i++) { const x = -it.w / 2 + post / 2 + (it.w - post) * i / k; posts.push({ x, y: it.d / 2 - post / 2 }); if (!lean) posts.push({ x, y: -it.d / 2 + post / 2 }); }
       for (const q of posts) { const wq = G.toWorld(q, it.x, it.y, rot); box(wq.x, wq.y, post, post, rot, e, roofZ(q) - 2, C('#6b5a44')); }
     }
-    // крыша
-    const col = glassRoof ? [0.82, 0.9, 0.95] : null;
-    if (r.type === 'arch') {
-      const W = r.w / 2, D = r.d / 2, n = 14, T = (u, v, z) => { const q = G.toWorld({ x: u, y: v }, it.x, it.y, rotW); return [q.x / 100, z / 100, q.y / 100]; };
-      const prof = Array.from({ length: n + 1 }, (_, i) => { const t = Math.PI * i / n; return { v: -D * Math.cos(t), z: eave + rise * Math.sin(t) }; });
-      const roofCol = col || C((ROOF_MATERIALS[R.mat] || {}).color || '#8f9397');
-      const ref = T(0, 0, eave);
-      for (let i = 0; i < n; i++) face([T(-W, prof[i].v, prof[i].z), T(W, prof[i].v, prof[i].z), T(W, prof[i + 1].v, prof[i + 1].z), T(-W, prof[i + 1].v, prof[i + 1].z)], roofCol, ref, glassRoof);
-      const endCol = sh === 'greenhouse' ? [0.8, 0.9, 0.95] : C('#ddd3c3'), endGlass = sh === 'greenhouse';
-      if (!R.open) for (const u of [-W + R.over, W - R.over]) face(prof.map(p => T(u, p.v, p.z)), endCol, T(u > 0 ? u - 1 : u + 1, 0, eave + 1), endGlass);
-      return;
-    }
-    View3D.roof({ x: it.x, y: it.y, w: r.w, d: r.d, rot: rotW, type: r.type, pitch, base: eave, mat: R.mat, floor: null, open: R.open, gableGlass: sh === 'greenhouse' }, col);
+    const gh = sh === 'greenhouse';
+    View3D.itemRoof(it, g, { gableGlass: gh, endGlass: gh, endCol: gh ? [0.8, 0.9, 0.95] : null });
   },
   /** Крыльцо / веранда / терраса: цоколь, настил, ступени, ограждение или остекление, крыша */
   veranda(it, e) {
@@ -556,7 +565,9 @@ const View3D = {
       bx(m.x, m.y, across ? f.sw : g.tread, across ? g.tread : f.sw, e, e + ph - i * g.rise, i % 2 ? base.map(x => x * 1.05) : base);
     }
     const z0 = e + ph;
-    const eave = z0 + 230;
+    // крыша — как у построек (тип, уклон, материал на выбор); верх — высота объекта, карниз не ниже 2.1 м над настилом
+    const rg = o.roofed ? View3D.roofGeom(it, e + Math.max(it.h || 0, o.ph + 260), z0 + 210) : null;
+    const eave = rg ? rg.eave : z0 + 230;
     // сегмент стороны: построить «ленту» элементов вдоль неё (локальные координаты)
     const seg = (s, t, za, zb, col, opt) => {
       const m = G.add(G.mid(s.a, s.b), G.mul(s.n, t / 2)), L2 = G.dist(s.a, s.b);
@@ -598,20 +609,13 @@ const View3D = {
     if (!o.roofed) return;
     // столбы у открытых
     if (o.encl === 'open' || o.encl === 'rail') {
-      for (const q of porchPosts(g, w, d)) bx(q.x, q.y, 12, 12, z0, eave, post);
+      for (const q of porchPosts(g, w, d)) bx(q.x, q.y, 12, 12, z0, rg.roofZ(q) - 2, post);
       // обвязка по верху столбов
       for (const side of o.free) { const S = PORCH_SIDES[side]; seg({ a: S.a(w, d), b: S.b(w, d), n: G.mul(S.out, -1) }, 12, eave - 15, eave, post); }
     }
-    // крыша: у пристроенной — односкатная от дома, у отдельной — двускатная
-    const top = Math.max(it.h || 0, o.ph + 260);
-    if (o.attached) {
-      const rd = d + 30, rise = Math.max(15, top - (eave - e));
-      const c = L(0, 15);
-      View3D.roof({ x: c.x, y: c.y, w: w + 50, d: rd, rot, type: 'shed', pitch: U.deg(Math.atan(rise / rd)), base: eave, mat: 'profile', floor: null });
-    } else {
-      const along = w >= d;
-      View3D.roof({ x: it.x, y: it.y, w: (along ? w : d) + 50, d: (along ? d : w) + 50, rot: along ? rot : rot + 90, type: 'gable', pitch: 25, base: eave, mat: 'metaltile', floor: null });
-    }
+    // крыша: по умолчанию у пристроенной — односкатная от дома, у отдельной — двускатная
+    const glazed = o.encl === 'glazed';
+    View3D.itemRoof(it, rg, { gableGlass: glazed, endGlass: glazed, endCol: glazed ? glass : wall });
   },
   /** Кухонный гарнитур: цоколь, корпуса, столешница, мойка, варочная панель, навесные шкафы, пеналы */
   kitchen(it, def, e) {

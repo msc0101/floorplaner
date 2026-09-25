@@ -726,23 +726,26 @@ const UI = {
     // варианты того же вида
     const same = CATALOG.find(c => c.id === def.cat).items.filter(x => x.shape === def.shape && x.key !== def.key);
     body.append(F.section('Размеры',
-      same.length ? F.select('Типоразмер', '', [['', `${def.name} (${def.w}×${def.d})`], ...same.map(x => [x.key, `${x.name} (${x.w}×${x.d})`])], (v) => { if (!v) return; const d2 = catItem(v); it.key = v; it.w = d2.w; it.d = d2.d; it.h = d2.h; for (const k of PORCH_KEYS) delete it[k]; Model.commit(); }) : null,
+      same.length ? F.select('Типоразмер', '', [['', `${def.name} (${def.w}×${def.d})`], ...same.map(x => [x.key, `${x.name} (${x.w}×${x.d})`])], (v) => { if (!v) return; const d2 = catItem(v); it.key = v; it.w = d2.w; it.d = d2.d; it.h = d2.h; for (const k of PORCH_KEYS) delete it[k]; for (const k of ['roofType', 'roofMat', 'roofPitch', 'roofRidge', 'roofShed']) delete it[k]; Model.commit(); }) : null,
       F.num('Ширина', it.w, (v) => UI.set(it, 'w', v), { min: 1, field: 'w' }),
       F.num('Глубина', it.d, (v) => UI.set(it, 'd', v), { min: 1 }),
       F.num('Высота', it.h, (v) => UI.set(it, 'h', v), { min: 0 }),
       F.btns([['Сбросить к типовым', () => { it.w = def.w; it.d = def.d; it.h = def.h; Model.commit(); }], ['Поменять Ш↔Г', () => { [it.w, it.d] = [it.d, it.w]; Model.commit(); }]]),
     ));
-    if (BLD_ROOF_SHAPES.has(def.shape)) {
+    const roofSection = () => {
       const R = bldRoof(it);
-      const types = Object.entries(ITEM_ROOF_TYPES).filter(([k]) => k !== 'arch' || def.shape === 'greenhouse' || def.shape === 'canopy' || def.shape === 'building' || def.shape === 'garage');
-      body.append(F.section('Крыша',
+      const types = Object.entries(ITEM_ROOF_TYPES).filter(([k]) => k !== 'arch' || def.shape !== 'canopyLean');
+      return F.section('Крыша',
         F.select('Тип', R.type, types.map(([k, v]) => [k, v.name]), (v) => { it.roofType = v; delete it.roofPitch; Model.commit(); }, { field: 'roofType' }),
         F.select('Материал', R.mat, Object.entries(ROOF_MATERIALS).map(([k, v]) => [k, v.name]), (v) => { it.roofMat = v; Model.commit(); }, { field: 'roofMat' }),
         R.type === 'gable' || R.type === 'hip' || R.type === 'shed' ? F.num('Уклон', R.pitch, (v) => { it.roofPitch = U.clamp(v, 3, 60); Model.commit(); }, { unit: '°', min: 3, max: 60 }) : null,
         R.type === 'gable' || R.type === 'hip' || R.type === 'arch' ? F.select('Конёк', R.ridge, [['long', 'вдоль длинной стороны'], ['short', 'вдоль короткой стороны']], (v) => { it.roofRidge = v; Model.commit(); }) : null,
         R.type === 'shed' ? F.select('Высокая сторона', R.shedDir, [['back', 'сзади (−Г)'], ['front', 'спереди (+Г)'], ['left', 'слева (−Ш)'], ['right', 'справа (+Ш)']], (v) => { it.roofShed = v; Model.commit(); }) : null,
-        F.note('Высота объекта — до конька; высота стен (столбов) получается из уклона. Направления — относительно самой постройки: поверните её ручкой, крыша повернётся вместе с ней.')));
-    }
+        F.note(def.shape === 'veranda'
+          ? 'Высота объекта — до верха крыши; «сзади» — сторона у дома: у пристроенной там нет свеса, односкатная поднимается к стене. Столбы доходят до низа ската.'
+          : 'Высота объекта — до конька; высота стен (столбов) получается из уклона. Направления — относительно самой постройки: поверните её ручкой, крыша повернётся вместе с ней.'));
+    };
+    if (BLD_ROOF_SHAPES.has(def.shape)) body.append(roofSection());
     if (def.shape === 'veranda') {
       const o = porchOpt(it), g = porchGeom(it, it.w, it.d);
       body.append(F.section('Исполнение',
@@ -756,6 +759,7 @@ const UI = {
         o.encl !== 'open' ? UI.sideChips({ rail: 'Ограждение', glazed: 'Остекление', closed: 'Стены' }[o.encl], o.free, o.railSides, (list) => { it.railSides = list; Model.commit(); }) : null,
         g.steps ? F.info('Ступени', `${g.steps - 1} шт. + площадка, подъём ${U.fmtLen(g.rise)}, проступь ${g.tread} см`) : null,
         F.note('Стороны — если смотреть на площадку спереди; «сзади» — сторона у дома (у пристроенной недоступна). Где ступени — там проход в ограждении, у закрытой веранды — дверь. Высота объекта — до верха крыши.')));
+      if (o.roofed) body.append(roofSection());
     }
     body.append(F.section('Положение',
       F.num('X', it.x / 100, (v) => UI.set(it, 'x', v * 100), { unit: 'м', step: 0.01 }),

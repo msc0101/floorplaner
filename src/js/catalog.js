@@ -461,24 +461,30 @@ const ITEM_ROOF_TYPES = {
 /** Крыша постройки: тип, материал, уклон, направление конька/ската; значения по умолчанию — от вида постройки */
 function bldRoof(it) {
   const def = catItem(it.key), sh = def.shape;
-  const dType = sh === 'canopyLean' || def.key === 'woodshed' ? 'shed' : sh === 'canopy' ? 'flat' : 'gable';
+  const po = sh === 'veranda' ? porchOpt(it) : null;
+  const dType = po ? (po.attached ? 'shed' : 'gable') : sh === 'canopyLean' || def.key === 'woodshed' ? 'shed' : sh === 'canopy' ? 'flat' : 'gable';
   const type = ITEM_ROOF_TYPES[it.roofType] ? it.roofType : dType;
-  const dMat = sh === 'greenhouse' ? 'polycarb' : sh === 'garage' || sh === 'canopy' || sh === 'canopyLean' ? 'profile' : def.key === 'bathhouse' ? 'soft' : 'metaltile';
+  const dMat = sh === 'greenhouse' ? 'polycarb' : po ? (po.attached ? 'profile' : 'metaltile') : sh === 'garage' || sh === 'canopy' || sh === 'canopyLean' ? 'profile' : def.key === 'bathhouse' ? 'soft' : 'metaltile';
   const mat = ROOF_MATERIALS[it.roofMat] ? it.roofMat : dMat;
   const pitch = U.isNum(it.roofPitch) ? U.clamp(it.roofPitch, 0, 60) : sh === 'greenhouse' && type === 'gable' ? 35 : ITEM_ROOF_TYPES[type].pitch;
-  const open = sh === 'canopy' || sh === 'canopyLean';
-  return { type, mat, pitch, ridge: it.roofRidge === 'short' ? 'short' : 'long', shedDir: ['back', 'front', 'left', 'right'].includes(it.roofShed) ? it.roofShed : 'back', over: open ? 10 : sh === 'greenhouse' ? 5 : 25, open };
+  const open = sh === 'canopy' || sh === 'canopyLean' || (po && (po.encl === 'open' || po.encl === 'rail'));
+  // свесы по сторонам: у пристроенной веранды со стороны дома свеса нет
+  const over = sh === 'canopy' || sh === 'canopyLean' ? 10 : sh === 'greenhouse' ? 5 : 25;
+  const sides = { l: over, r: over, f: over, b: po && po.attached ? 0 : over };
+  return { type, mat, pitch, ridge: it.roofRidge === 'short' ? 'short' : 'long', shedDir: ['back', 'front', 'left', 'right'].includes(it.roofShed) ? it.roofShed : 'back', over, sides, open, veranda: !!po };
 }
 /** Прямоугольник крыши в локальных координатах постройки: {w, d, rot} (rot — относительно постройки);
  *  у двускатной/вальмовой/арочной конёк вдоль u, у односкатной высокая сторона — −v. */
 function bldRoofRect(it, w, d) {
-  const R = bldRoof(it), o = R.over;
+  const R = bldRoof(it), s = R.sides;
+  // габарит крыши со свесами (в осях постройки) и его центр
+  const W = w + s.l + s.r, D = d + s.f + s.b, x = (s.r - s.l) / 2, y = (s.f - s.b) / 2;
   if (R.type === 'shed') {
-    const t = { back: [0, w, d], front: [180, w, d], left: [-90, d, w], right: [90, d, w] }[R.shedDir];
-    return { x: 0, y: 0, rot: t[0], w: t[1] + 2 * o, d: t[2] + 2 * o, type: 'shed', pitch: R.pitch };
+    const t = { back: [0, W, D], front: [180, W, D], left: [-90, D, W], right: [90, D, W] }[R.shedDir];
+    return { x, y, rot: t[0], w: t[1], d: t[2], type: 'shed', pitch: R.pitch };
   }
   const alongW = (w >= d) === (R.ridge === 'long');
-  return { x: 0, y: 0, rot: alongW ? 0 : 90, w: (alongW ? w : d) + 2 * o, d: (alongW ? d : w) + 2 * o, type: R.type, pitch: R.pitch };
+  return { x, y, rot: alongW ? 0 : 90, w: alongW ? W : D, d: alongW ? D : W, type: R.type, pitch: R.pitch };
 }
 
 /* ============================ КУХОННЫЕ ГАРНИТУРЫ ============================ */
@@ -1002,11 +1008,11 @@ const Painters = (() => {
   const roofPlan = (P, w, d) => {
     const r = bldRoofRect(P.it, w, d), R = bldRoof(P.it), c = P.ctx;
     c.save(); c.strokeStyle = P.C.inkSoft; lw(P, 1); c.setLineDash([9 * P.px, 5 * P.px]);
-    if (R.over > 5) box(P, -w / 2 - R.over, -d / 2 - R.over, w + 2 * R.over, d + 2 * R.over, 0, false);
+    if (R.over > 5) { const q = G.rectPts(r.x, r.y, r.w, r.d, r.rot); line(P, [q[0].x, q[0].y, q[1].x, q[1].y, q[2].x, q[2].y, q[3].x, q[3].y], true); }
     c.setLineDash([]);
     const L = (a, b) => line(P, [a.x, a.y, b.x, b.y]);
     if (r.type === 'arch') {
-      const W = r.w / 2, D = r.d / 2, T = (u, v) => G.toWorld({ x: u, y: v }, 0, 0, r.rot);
+      const W = r.w / 2, D = r.d / 2, T = (u, v) => G.toWorld({ x: u, y: v }, r.x, r.y, r.rot);
       L(T(-W, 0), T(W, 0));
       for (let u = -W + 100; u < W - 20; u += 100) L(T(u, -D), T(u, D));
     } else for (const [a, b] of Roof.planLines(r)) L(a, b);
@@ -1082,12 +1088,7 @@ const Painters = (() => {
   /** Крыльцо / веранда / терраса: настил, ограждение или остекление, крыша, ступени */
   S.veranda = (P, w, d) => {
     const c = P.ctx, g = porchGeom(P.it, w, d), o = g.o;
-    // крыша (контур со свесом), у пристроенной — без свеса со стороны дома
-    if (o.roofed) {
-      c.save(); lw(P, 1); c.setLineDash([10 * P.px, 6 * P.px]);
-      box(P, -w / 2 - 25, o.attached ? -d / 2 : -d / 2 - 25, w + 50, d + 25 + (o.attached ? 0 : 25), 0, false);
-      c.restore();
-    }
+    // крыша: контур со свесом (у пристроенной — без свеса со стороны дома), конёк, скаты
     // ступени — наружу от выбранных сторон
     const quad = (p0, p1, p2, p3) => { c.beginPath(); c.moveTo(p0.x, p0.y); c.lineTo(p1.x, p1.y); c.lineTo(p2.x, p2.y); c.lineTo(p3.x, p3.y); c.closePath(); c.fill(); c.stroke(); };
     if (g.steps) for (const f of g.flights) {
@@ -1138,6 +1139,7 @@ const Painters = (() => {
       for (const q of porchPosts(g, w, d)) box(P, q.x - 6, q.y - 6, 12, 12, 0);
       c.fillStyle = P.C.itemFill;
     }
+    if (o.roofed) roofPlan(P, w, d);
     const nm = P.it.label || P.def.name.split(' ')[0];
     const sz = Math.min(28, w / 9, d / 4);
     // «вниз по экрану» в локальных координатах — чтобы вторая строка шла под первой при любом повороте

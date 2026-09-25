@@ -236,11 +236,13 @@ const rf = await page.evaluate(() => {
   r.tris = View3D.build().P.length > 0;
   r.asphalt = (Estimate.rows().find(x => x.key === 'site:asphalt') || {}).qty;
   r.curb = roadCurb(rd);
+  // у крыльца/веранды — тот же выбор крыши; у пристроенной по умолчанию односкатная, без свеса со стороны дома
+  r.porch = bldRoof({ key: 'porch' }).type + '/' + bldRoofRect({ key: 'porch' }, 200, 150).y + '/' + bldRoof({ key: 'terraceRoof' }).type;
   Model.undo(); void a; void z;
   return r;
 });
 console.log('roofs/asphalt', JSON.stringify(rf));
-if (rf.def !== 'gable,flat,shed,gable,shed' || !rf.tris || !(rf.asphalt >= 50) || rf.curb !== false || !rf.rect.includes('"rot":-90')) errors.push('Крыши построек / асфальт: ' + JSON.stringify(rf));
+if (rf.def !== 'gable,flat,shed,gable,shed' || !rf.tris || !(rf.asphalt >= 50) || rf.curb !== false || !rf.rect.includes('"rot":-90') || rf.porch !== 'shed/12.5/gable') errors.push('Крыши построек / асфальт: ' + JSON.stringify(rf));
 // прогулка в 3D: WASD, столкновения со стенами, подъём по лестнице на мансарду, Esc
 const wk = await page.evaluate(() => {
   IO.loadDemo(); View3D.toggle(true);
