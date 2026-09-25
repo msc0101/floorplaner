@@ -726,7 +726,7 @@ const UI = {
     // варианты того же вида
     const same = CATALOG.find(c => c.id === def.cat).items.filter(x => x.shape === def.shape && x.key !== def.key);
     body.append(F.section('Размеры',
-      same.length ? F.select('Типоразмер', '', [['', `${def.name} (${def.w}×${def.d})`], ...same.map(x => [x.key, `${x.name} (${x.w}×${x.d})`])], (v) => { if (!v) return; const d2 = catItem(v); it.key = v; it.w = d2.w; it.d = d2.d; it.h = d2.h; for (const k of PORCH_KEYS) delete it[k]; for (const k of ['roofType', 'roofMat', 'roofPitch', 'roofRidge', 'roofShed']) delete it[k]; Model.commit(); }) : null,
+      same.length ? F.select('Типоразмер', '', [['', `${def.name} (${def.w}×${def.d})`], ...same.map(x => [x.key, `${x.name} (${x.w}×${x.d})`])], (v) => { if (!v) return; const d2 = catItem(v); it.key = v; it.w = d2.w; it.d = d2.d; it.h = d2.h; for (const k of PORCH_KEYS.concat(PIT_KEYS)) delete it[k]; for (const k of ['roofType', 'roofMat', 'roofPitch', 'roofRidge', 'roofShed']) delete it[k]; Model.commit(); }) : null,
       F.num('Ширина', it.w, (v) => UI.set(it, 'w', v), { min: 1, field: 'w' }),
       F.num('Глубина', it.d, (v) => UI.set(it, 'd', v), { min: 1 }),
       F.num('Высота', it.h, (v) => UI.set(it, 'h', v), { min: 0 }),
@@ -746,6 +746,19 @@ const UI = {
           : 'Высота объекта — до конька; высота стен (столбов) получается из уклона. Направления — относительно самой постройки: поверните её ручкой, крыша повернётся вместе с ней.'));
     };
     if (BLD_ROOF_SHAPES.has(def.shape)) body.append(roofSection());
+    if (def.shape === 'pit') {
+      const g = pitGeom(it, it.w, it.d);
+      body.append(F.section('Погреб / яма',
+        F.num('Глубина', g.depth, (v) => { it.pitDepth = U.clamp(v, 30, 600); Model.commit(); }, { min: 30, max: 600, field: 'pitDepth' }),
+        F.select('Лестница', g.stair, Object.entries(PIT_STAIRS), (v) => { it.stair = v; Model.commit(); }, { field: 'stair' }),
+        g.stair !== 'none' ? F.select('Спуск со стороны', g.side, [['back', 'сзади (−Г)'], ['front', 'спереди (+Г)'], ['left', 'слева (−Ш)'], ['right', 'справа (+Ш)']], (v) => { it.stairSide = v; Model.commit(); }) : null,
+        g.stair !== 'none' ? F.num('Ширина лестницы', g.sw, (v) => { it.stairW = U.clamp(v, 40, 200); Model.commit(); }, { min: 40 }) : null,
+        F.select('Сверху', g.cover, Object.entries(PIT_COVERS), (v) => { it.cover = v; Model.commit(); }, { field: 'cover' }),
+        g.stair === 'stairs' ? F.info('Ступени', `${g.n} шт., подъём ${U.fmtLen(g.rise)}, проступь ${U.fmtLen(g.tread)}, марш ${U.fmtLen(g.L)}${g.tread < 14 ? ' — очень круто, лучше удлинить яму' : ''}`) : null,
+        F.info('Внутри', `${U.fmtLen(g.iw)} × ${U.fmtLen(g.id)}, стенки ${g.t} см`),
+        F.info('Выемка грунта', `${g.volume.toFixed(1)} м³`),
+        F.note('Размеры — снаружи по стенкам. Под домом ставьте люк: пол дома его перекрывает, в 3D виден только люк. Открытую яму видно в 3D, в прогулке в неё можно спуститься по ступеням.')));
+    }
     if (def.shape === 'veranda') {
       const o = porchOpt(it), g = porchGeom(it, it.w, it.d);
       body.append(F.section('Исполнение',

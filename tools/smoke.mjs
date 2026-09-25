@@ -243,6 +243,21 @@ const rf = await page.evaluate(() => {
 });
 console.log('roofs/asphalt', JSON.stringify(rf));
 if (rf.def !== 'gable,flat,shed,gable,shed' || !rf.tris || !(rf.asphalt >= 50) || rf.curb !== false || !rf.rect.includes('"rot":-90') || rf.porch !== 'shed/12.5/gable') errors.push('Крыши построек / асфальт: ' + JSON.stringify(rf));
+// погреб / смотровая яма: геометрия лестницы, 3D, спуск в открытую яму в прогулке
+const pit = await page.evaluate(() => {
+  const f = App.doc.floors[0].id, d = catItem('inspPit');
+  const it = Model.add('items', { key: 'inspPit', x: 60000, y: 60000, w: d.w, d: d.d, h: 0, rot: 0, floor: f });
+  const c = Model.add('items', { key: 'cellar', x: 61000, y: 60000, w: 200, d: 250, h: 0, rot: 0, floor: f, stairSide: 'left' });
+  Model.commit();
+  const g = pitGeom(it, it.w, it.d), g2 = pitGeom(c, c.w, c.d);
+  const r = { n: g.n, depth: g.depth, L: Math.round(g.L), side2: g2.side, tris: View3D.build().P.length > 0 };
+  Walk.level = 0; Walk._blk = null; Walk.foot = 0;
+  r.bottom = Walk.top(it.x, it.y + it.d / 2 - 30); r.firstStep = Math.round(Walk.top(it.x, it.y - it.d / 2 + 12 + 5));
+  Model.undo();
+  return r;
+});
+console.log('pit', JSON.stringify(pit));
+if (pit.n !== 9 || pit.depth !== 170 || pit.side2 !== 'left' || !pit.tris || pit.bottom !== -170 || pit.firstStep !== -19) errors.push('Погреб/яма: ' + JSON.stringify(pit));
 // прогулка в 3D: WASD, столкновения со стенами, подъём по лестнице на мансарду, Esc
 const wk = await page.evaluate(() => {
   IO.loadDemo(); View3D.toggle(true);

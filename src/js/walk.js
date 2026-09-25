@@ -104,6 +104,20 @@ const Walk = {
       const q = inRect(it); if (!q) continue;
       hole = true; cand.push(Walk.elev(i - 1) + (it.d / 2 - q.y) / it.d * Walk.floorH(i - 1));
     }
+    // открытая яма (и погреб с погребницей): внутри — дно или ступени
+    for (const it of Walk.itemsOf(i)) {
+      if (catItem(it.key).shape !== 'pit') continue;
+      const g = pitGeom(it, it.w, it.d);
+      if (g.cover === 'hatch') continue;
+      const q = G.toLocal(p, it.x, it.y, it.rot || 0);
+      if (Math.abs(q.x) > g.iw / 2 || Math.abs(q.y) > g.id / 2) continue;
+      let z = E - g.depth;
+      if (g.flight && g.stair === 'stairs') {
+        const s = G.dot(G.sub(q, g.edge), g.dir), a = Math.abs(G.dot(G.sub(q, g.edge), g.across));
+        if (s >= 0 && s <= g.L && a <= g.sw / 2) z = E - (Math.floor(s / g.tread) + 1) * g.rise;
+      }
+      return z;
+    }
     if (!hole) cand.push(E);
     for (const it of Walk.itemsOf(i)) {
       const def = catItem(it.key), sh = def.shape;

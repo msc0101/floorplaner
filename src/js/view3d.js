@@ -182,9 +182,19 @@ const View3D = {
       // цвет задаётся в вершинах и плавно интерполируется — без «шахматки»
       const gcol = (x, y) => { const k = 0.95 + View3D.noise(Math.round(x / step) * 0.37, Math.round(y / step) * 0.53) * 0.08; return grass.map(c => c * k); };
       const gv = (x, y) => { const v = V3({ x, y }, 0), c = gcol(x, y); P.push(...v); N.push(0, 1, 0); Cc.push(...c); };
+      // открытые ямы на участке — вырез в газоне (клетки у ямы дробятся на 10 см)
+      const f1 = d.floors[0].id;
+      const holes = d.items.filter(it => catItem(it.key).shape === 'pit' && (it.floor || f1) === f1 && pitGeom(it, it.w, it.d).cover === 'open')
+        .map(it => { const poly = G.rectPts(it.x, it.y, it.w, it.d, it.rot || 0); return { poly, bb: G.bbox(poly) }; });
+      const quad = (x, y, s) => { gv(x, y); gv(x + s, y); gv(x + s, y + s); gv(x, y); gv(x + s, y + s); gv(x, y + s); };
       for (let x = gx0; x < gx1; x += step) for (let y = gy0; y < gy1; y += step) {
-        gv(x, y); gv(x + step, y); gv(x + step, y + step);
-        gv(x, y); gv(x + step, y + step); gv(x, y + step);
+        const hs = holes.filter(h => !(h.bb.x1 < x || h.bb.x0 > x + step || h.bb.y1 < y || h.bb.y0 > y + step));
+        if (!hs.length) { quad(x, y, step); continue; }
+        const sub = 10;
+        for (let sx = x; sx < x + step; sx += sub) for (let sy = y; sy < y + step; sy += sub) {
+          const c = { x: sx + sub / 2, y: sy + sub / 2 };
+          if (!hs.some(h => G.pointInPoly(c, h.poly))) quad(sx, sy, sub);
+        }
       }
       for (const a of d.areas) {
         const colr = { plot: '#a9cc8a', lawn: '#86c25f', garden: '#8a6a45', paving: '#b8b8bc', road: '#8e9096', water: '#4f93d6', flower: '#d99bb8', zone: '#b8c0e6', protect: '#e5b1b1', asphalt: '#4d5057', concrete: '#b9b8b2', gravel: '#b7ab93' }[a.kind] || '#a9cc8a';
@@ -417,6 +427,7 @@ const View3D = {
     }
     if (sh === 'pool') { box(it.x, it.y, it.w + 60, it.d + 60, rot, e, e + 8, C('#e5e1d6')); box(it.x, it.y, it.w, it.d, rot, e + 8, e + 9, C('#3f97d8')); return; }
     if (sh === 'veranda') { View3D.veranda(it, e); return; }
+    if (sh === 'pit') { View3D.pit(it, e); return; }
     if (KITCHEN_SHAPES.has(sh)) { View3D.kitchen(it, def, e); return; }
     if (sh === 'deck') { box(it.x, it.y, it.w, it.d, rot, e, e + 25, C('#a8805a')); for (let x = -it.w / 2 + 7; x < it.w / 2; x += 14) { const q = G.toWorld({ x, y: 0 }, it.x, it.y, rot); box(q.x, q.y, 1, it.d, rot, e + 25, e + 25.3, C('#8c6848')); } return; }
     if (sh === 'parking') { box(it.x, it.y, it.w, it.d, rot, e, e + 3, C('#a9abb0')); return; }
@@ -616,6 +627,59 @@ const View3D = {
     // крыша: по умолчанию у пристроенной — односкатная от дома, у отдельной — двускатная
     const glazed = o.encl === 'glazed';
     View3D.itemRoof(it, rg, { gableGlass: glazed, endGlass: glazed, endCol: glazed ? glass : wall });
+  },
+  /** Погреб / подпол / смотровая яма: стенки и дно внутри, ступени или стремянка, бортик, люк или погребница */
+  pit(it, e) {
+    const { face, box, wire } = View3D._g, C = View3D.hex, rot = it.rot || 0, g = pitGeom(it, it.w, it.d);
+    const L = (x, y) => G.toWorld({ x, y }, it.x, it.y, rot);
+    const V = (x, y, z) => { const q = L(x, y); return [q.x / 100, z / 100, q.y / 100]; };
+    const bx = (r, z0, z1, col, opt) => { const q = L((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2); box(q.x, q.y, r.x1 - r.x0, r.y1 - r.y0, rot, z0, z1, col, opt); };
+    const top = e, bot = e - g.depth, iw = g.iw / 2, id = g.id / 2, w = it.w / 2, d = it.d / 2;
+    const wallC = C('#9d9a93'), floorC = C('#6f6a62'), stepC = C('#8f8a82'), wood = C('#9a7550');
+    // в помещении (пол дома поверх) — видно только люк
+    const fid = it.floor || App.doc.floors[0].id;
+    const fd = (App.floorData || []).find(f => f.floor.id === fid);
+    const inRoom = !!(fd && fd.rooms.some(r => G.pointInPoly(it, r.axis)));
+    const lift = inRoom ? 3 : 0;
+    // стенки изнутри и дно
+    const cs = [[-iw, -id], [iw, -id], [iw, id], [-iw, id]];
+    for (let k = 0; k < 4; k++) {
+      const [ax, ay] = cs[k], [bx2, by2] = cs[(k + 1) % 4];
+      face([V(ax, ay, top), V(bx2, by2, top), V(bx2, by2, bot), V(ax, ay, bot)], wallC.map(x => x * (0.82 + 0.06 * k)), V((ax + bx2) * 1.5, (ay + by2) * 1.5, (top + bot) / 2));
+    }
+    face(cs.map(([x, y]) => V(x, y, bot)), floorC, V(0, 0, bot - 100));
+    // бортик по краю (у открытой ямы и погребницы)
+    if (g.cover !== 'hatch') {
+      const t = g.t;
+      for (const r of [{ x0: -w, y0: -d, x1: w, y1: -d + t }, { x0: -w, y0: d - t, x1: w, y1: d }, { x0: -w, y0: -d + t, x1: -w + t, y1: d - t }, { x0: w - t, y0: -d + t, x1: w, y1: d - t }]) bx(r, top - 20, top + 3 + lift, wallC);
+    }
+    // лестница
+    if (g.flight && g.stair === 'stairs') for (let i = 0; i < g.n; i++) bx(g.rect(i * g.tread, (i + 1) * g.tread, g.sw), bot, top - (i + 1) * g.rise, i % 2 ? stepC : stepC.map(x => x * 0.93));
+    if (g.flight && g.stair === 'ladder') {
+      const hw = g.sw / 2 - 4, P3 = (along, s2, z) => { const q = L(g.edge.x + g.dir.x * along + g.across.x * hw * s2, g.edge.y + g.dir.y * along + g.across.y * hw * s2); return [q.x, q.y, z]; };
+      for (const s2 of [-1, 1]) wire(P3(Math.max(10, g.L - 5), s2, bot), P3(4, s2, top + 90), 2.5, wood);
+      for (let z = bot + 30; z < top + 80; z += 30) { const k = (z - bot) / (top + 90 - bot), along = Math.max(10, g.L - 5) + (4 - Math.max(10, g.L - 5)) * k; wire(P3(along, -1, z), P3(along, 1, z), 1.8, wood); }
+    }
+    // сверху: люк или погребница
+    if (g.cover === 'hatch') {
+      bx(g.lid, top + lift, top + lift + 3, wood);
+      const c = G.add(G.mul({ x: g.lid.x0 + g.lid.x1, y: g.lid.y0 + g.lid.y1 }, 0.5), { x: 0, y: 0 });
+      bx({ x0: c.x - 8, y0: c.y - 2, x1: c.x + 8, y1: c.y + 2 }, top + lift + 3, top + lift + 5, C('#3a3d42'));
+      if (!inRoom) bx({ x0: -w, y0: -d, x1: w, y1: d }, top - 1, top + 0.5, C('#8a8f86'));   // перекрытие погреба на участке
+    } else if (g.cover === 'house') {
+      const h = g.house, H = 180;
+      bx(h, top, top + H, C('#ddd3c3'));
+      const along = Math.abs(g.dir.y) > 0.5;
+      const c = L((h.x0 + h.x1) / 2, (h.y0 + h.y1) / 2);
+      View3D.roof({ x: c.x, y: c.y, w: (along ? h.y1 - h.y0 : h.x1 - h.x0) + 30, d: (along ? h.x1 - h.x0 : h.y1 - h.y0) + 30, rot: rot + (along ? 90 : 0), type: 'gable', pitch: 35, base: top + H, mat: 'metaltile', floor: null });
+      // дверь — со стороны, где начинается спуск
+      const dm = G.add(g.edge, G.mul(g.dir, -g.t - 10));
+      const dw = Math.min(70, (along ? h.x1 - h.x0 : h.y1 - h.y0) - 20);
+      bx(along ? { x0: dm.x - dw / 2, y0: dm.y - 3, x1: dm.x + dw / 2, y1: dm.y + 3 } : { x0: dm.x - 3, y0: dm.y - dw / 2, x1: dm.x + 3, y1: dm.y + dw / 2 }, top, top + 165, C('#6b4a33'));
+    } else if (inRoom) {
+      // открытая яма в помещении: пол дома её перекрывает — показываем тёмный проём
+      face([V(-iw, -id, top + 3.4), V(iw, -id, top + 3.4), V(iw, id, top + 3.4), V(-iw, id, top + 3.4)], [0.12, 0.12, 0.13], V(0, 0, top - 100));
+    }
   },
   /** Кухонный гарнитур: цоколь, корпуса, столешница, мойка, варочная панель, навесные шкафы, пеналы */
   kitchen(it, def, e) {

@@ -326,6 +326,13 @@ const CATALOG = [
     { key: 'parking', name: 'Парковочное место', shape: 'parking', w: 250, d: 530, h: 0 },
     { key: 'car', name: 'Автомобиль', shape: 'car', w: 185, d: 460, h: 150, shadow: true },
   ]},
+  { id: 'pits', name: 'Погреба и ямы', layer: 'siteobj', items: [
+    { key: 'cellar', name: 'Погреб с лестницей', kw: 'подвал кессон яма', shape: 'pit', w: 200, d: 250, h: 0, pitDepth: 250, stair: 'stairs', stairSide: 'back', stairW: 70, cover: 'hatch' },
+    { key: 'cellarHouse', name: 'Погреб с погребницей', kw: 'подвал кессон яма домик', shape: 'pit', w: 200, d: 250, h: 0, pitDepth: 250, stair: 'stairs', stairSide: 'back', stairW: 70, cover: 'house' },
+    { key: 'podpol', name: 'Подпол (под полом, с люком)', kw: 'погреб подвал люк', shape: 'pit', w: 150, d: 150, h: 0, pitDepth: 170, stair: 'ladder', stairSide: 'back', stairW: 50, cover: 'hatch' },
+    { key: 'inspPit', name: 'Смотровая яма (гараж)', kw: 'яма гараж ремонт', shape: 'pit', w: 80, d: 350, h: 0, pitDepth: 170, stair: 'stairs', stairSide: 'back', stairW: 60, cover: 'open' },
+    { key: 'pitOpen', name: 'Яма / приямок (открытая)', kw: 'котлован приямок', shape: 'pit', w: 150, d: 150, h: 0, pitDepth: 120, stair: 'ladder', stairSide: 'back', stairW: 50, cover: 'open' },
+  ]},
   { id: 'green', name: 'Озеленение', layer: 'siteobj', items: [
     { key: 'tree', name: 'Дерево лиственное', shape: 'tree', w: 600, d: 600, h: 1200, shadow: true },
     { key: 'fruitTree', name: 'Дерево плодовое', shape: 'tree', w: 400, d: 400, h: 500, shadow: true },
@@ -447,6 +454,44 @@ function porchPosts(g, w, d) {
     }
   }
   return out;
+}
+
+/* ===================== ПОГРЕБ / ПОДПОЛ / СМОТРОВАЯ ЯМА ===================== */
+const PIT_KEYS = ['pitDepth', 'stair', 'stairSide', 'stairW', 'cover'];
+const PIT_STAIRS = { stairs: 'Лестница со ступенями', ladder: 'Стремянка (приставная)', none: 'Без лестницы' };
+const PIT_COVERS = { hatch: 'Люк (закрыта сверху)', open: 'Открытая', house: 'Погребница (домик над входом)' };
+/** Геометрия ямы в локальных координатах: стенки t, лестница вдоль стороны stairSide (от неё вниз, в глубь ямы) */
+function pitGeom(it, w, d) {
+  const def = catItem(it.key), g = (k, v) => it[k] ?? def[k] ?? v;
+  const t = 12, depth = U.clamp(+g('pitDepth', 200) || 200, 30, 600);
+  const stair = PIT_STAIRS[g('stair', 'stairs')] ? g('stair', 'stairs') : 'stairs';
+  const cover = PIT_COVERS[g('cover', 'hatch')] ? g('cover', 'hatch') : 'hatch';
+  const side = ['back', 'front', 'left', 'right'].includes(g('stairSide', 'back')) ? g('stairSide', 'back') : 'back';
+  // направление спуска (от стороны внутрь), поперёк — «across»; размеры ямы внутри
+  const dir = { back: { x: 0, y: 1 }, front: { x: 0, y: -1 }, left: { x: 1, y: 0 }, right: { x: -1, y: 0 } }[side];
+  const iw = w - 2 * t, id = d - 2 * t;
+  const along = dir.y ? id : iw, acrossLen = dir.y ? iw : id;
+  const sw = Math.min(Math.max(40, +g('stairW', 70) || 70), acrossLen);
+  // ступени: подъём ~20 см, проступь 20–25 см; если не влезает — круче
+  const n = Math.max(2, Math.round(depth / 20)), rise = depth / n;
+  let tread = stair === 'ladder' ? 0 : Math.min(25, (along - 30) / n);
+  if (stair === 'stairs' && tread < 12) tread = Math.max(8, (along - 10) / n);
+  const L = stair === 'stairs' ? tread * n : stair === 'ladder' ? 40 : 0;
+  const edge = { x: -dir.x * along / 2, y: -dir.y * along / 2 };                // середина стороны спуска (внутри)
+  const across = { x: Math.abs(dir.y), y: Math.abs(dir.x) };
+  const rect = (from, to, width) => {                                             // прямоугольник вдоль спуска
+    const a = G.add(edge, G.mul(dir, from)), b = G.add(edge, G.mul(dir, to)), hw = width / 2;
+    const xs = [a.x - across.x * hw, a.x + across.x * hw, b.x - across.x * hw, b.x + across.x * hw], ys = [a.y - across.y * hw, a.y + across.y * hw, b.y - across.y * hw, b.y + across.y * hw];
+    return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+  };
+  return {
+    t, depth, stair, cover, side, dir, across, edge, sw, n, rise, tread, L, iw, id,
+    flight: stair === 'none' ? null : rect(0, Math.max(L, 20), sw),
+    lid: rect(0, Math.min(Math.max(L, 60), along), Math.min(sw + 16, acrossLen)),              // люк над лестницей
+    house: rect(-t - 10, Math.min(Math.max(L, 80), along) + 10, Math.min(sw + 60, acrossLen + 2 * t + 20)), // погребница
+    volume: w * d * depth / 1e6,
+    rect,
+  };
 }
 
 /* ===================== КРЫШИ ПОСТРОЕК (гараж, сарай, навес, теплица) ===================== */
@@ -1146,6 +1191,46 @@ const Painters = (() => {
     const dn = { x: Math.sin(P.rotRad) * (P.flip ? -1 : 1), y: Math.cos(P.rotRad) };
     text(P, nm, -dn.x * sz * 0.35, -dn.y * sz * 0.35, sz, { bold: true });
     text(P, PORCH_ENCL[o.encl] ? PORCH_ENCL[o.encl].short + (o.roofed && o.encl !== 'closed' && o.encl !== 'glazed' ? ', под крышей' : '') : '', dn.x * sz * 0.75, dn.y * sz * 0.75, sz * 0.55, { color: P.C.muted });
+  };
+  /** Погреб / подпол / смотровая яма: стенки, углубление, лестница со стрелкой «вниз», люк или погребница */
+  S.pit = (P, w, d) => {
+    const c = P.ctx, g = pitGeom(P.it, w, d), t = g.t;
+    const R = (r, fill) => box(P, r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0, 0, fill);
+    // стенки — с штриховкой, внутри — затемнение (ниже уровня пола/земли)
+    c.fillStyle = P.C.itemFill; lw(P, 1.4); box(P, -w / 2, -d / 2, w, d, 0);
+    c.save(); c.strokeStyle = P.C.hatch; thin(P); hatch(P, -w / 2, -d / 2, w, d, 10); c.restore();
+    c.save(); c.fillStyle = 'rgba(40,50,70,.16)'; thin(P); box(P, -w / 2 + t, -d / 2 + t, w - 2 * t, d - 2 * t, 0); c.restore();
+    const hidden = g.cover !== 'open';          // закрытое сверху — линии штрихом
+    c.save(); if (hidden) c.setLineDash([6 * P.px, 4 * P.px]); thin(P);
+    if (g.flight && g.stair === 'stairs') {
+      c.fillStyle = P.C.itemFill; R(g.flight, true);
+      for (let i = 1; i < g.n; i++) {
+        const a = G.add(g.edge, G.mul(g.dir, i * g.tread)), hw = g.sw / 2;
+        line(P, [a.x - g.across.x * hw, a.y - g.across.y * hw, a.x + g.across.x * hw, a.y + g.across.y * hw]);
+      }
+    }
+    if (g.flight && g.stair === 'ladder') {
+      const hw = g.sw / 2 - 4, a = g.edge, b = G.add(g.edge, G.mul(g.dir, g.L));
+      for (const s2 of [-1, 1]) line(P, [a.x + g.across.x * hw * s2, a.y + g.across.y * hw * s2, b.x + g.across.x * hw * s2, b.y + g.across.y * hw * s2]);
+      for (let k = 8; k < g.L; k += 12) { const q = G.add(g.edge, G.mul(g.dir, k)); line(P, [q.x - g.across.x * hw, q.y - g.across.y * hw, q.x + g.across.x * hw, q.y + g.across.y * hw]); }
+    }
+    c.restore();
+    // стрелка «вниз» — от верха лестницы в глубь ямы
+    if (g.flight) {
+      const a = G.add(g.edge, G.mul(g.dir, 6)), b = G.add(g.edge, G.mul(g.dir, Math.max(g.L, 30) - 6)), n = { x: g.dir.y, y: -g.dir.x }, k = Math.min(12, g.sw * 0.2);
+      lw(P, 1.1); line(P, [a.x, a.y, b.x, b.y]); line(P, [b.x - g.dir.x * k + n.x * k * 0.6, b.y - g.dir.y * k + n.y * k * 0.6, b.x, b.y, b.x - g.dir.x * k - n.x * k * 0.6, b.y - g.dir.y * k - n.y * k * 0.6]);
+    }
+    // люк или погребница
+    if (g.cover === 'hatch') { c.fillStyle = 'rgba(160,120,70,.18)'; lw(P, 1.3); R(g.lid, true); thin(P); line(P, [g.lid.x0, g.lid.y0, g.lid.x1, g.lid.y1]); line(P, [g.lid.x1, g.lid.y0, g.lid.x0, g.lid.y1]); }
+    if (g.cover === 'house') { c.fillStyle = P.C.itemFill; lw(P, 2); R(g.house, true); thin(P); const hc = { x: (g.house.x0 + g.house.x1) / 2, y: (g.house.y0 + g.house.y1) / 2 }; if (g.dir.y) line(P, [g.house.x0, hc.y, g.house.x1, hc.y]); else line(P, [hc.x, g.house.y0, hc.x, g.house.y1]); }
+    // подпись: название и глубина — по центру, «вниз по экрану» при любом повороте
+    const nm = P.it.label || P.def.name.split(' (')[0];
+    // подпись — по ширине ямы «поперёк экрана»
+    const acrossW = Math.abs(Math.cos(P.rotRad)) > 0.7 ? w : d;
+    const sz = Math.min(20, acrossW * 1.6 / Math.max(6, nm.length), d / 5, w / 3);
+    const dn = { x: Math.sin(P.rotRad) * (P.flip ? -1 : 1), y: Math.cos(P.rotRad) };
+    text(P, nm, -dn.x * sz * 0.4, -dn.y * sz * 0.4, sz, { bold: true });
+    text(P, 'гл. ' + (g.depth / 100).toFixed(2).replace(/0$/, '') + ' м', dn.x * sz * 0.75, dn.y * sz * 0.75, sz * 0.75, { color: P.C.muted });
   };
   S.bbq = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 2); thin(P); for (let x = -w / 2 + 10; x < w / 2; x += 8) line(P, [x, -d / 2 + 5, x, d / 2 - 5]); };
   S.parking = (P, w, d) => {
