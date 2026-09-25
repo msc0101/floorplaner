@@ -461,7 +461,17 @@ const UI = {
     UI.renderFloorbar();
     if (View3D.active) { View3D.dirty = true; View3D.redraw(); }
     $('projectName').value = App.doc.name;
+    UI.syncTitle();
     $('welcome').hidden = !App.isEmpty() || UI._welcomeOff;
+  },
+  /** Заголовок вкладки: имя файла (или проекта) — удобно, когда открыто несколько вкладок */
+  syncTitle() {
+    if (UI._title0 === undefined) UI._title0 = document.title;
+    const file = App.fileName, name = (App.doc.name || '').trim();
+    let t = UI._title0;                                              // пустой новый проект — исходный заголовок сайта
+    if (file) t = file + (name && name !== 'Новый проект' && name !== file.replace(/\.json$/i, '') ? ' · ' + name : '') + ' — Floorplaner';
+    else if (!App.isEmpty() || (name && name !== 'Новый проект')) t = (name || 'Проект') + ' — Floorplaner';
+    if (document.title !== t) document.title = t;
   },
   syncUndo() { $('btnUndo').disabled = Model._undo.length < 2; $('btnRedo').disabled = !Model._redo.length; },
   syncToggles() {

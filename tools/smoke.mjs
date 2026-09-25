@@ -283,6 +283,10 @@ const gar = await page.evaluate(() => {
 });
 console.log('garage', JSON.stringify(gar));
 if (gar.walls !== 5 || gar.t !== 25 || gar.dw !== 300 || !gar.pick || !gar.floor || gar.inHole !== 0 || !gar.inside || !gar.gate || !gar.wall || gar.floorZ !== 10 || !gar.pitZ) errors.push('Гараж изнутри: ' + JSON.stringify(gar));
+// заголовок вкладки — имя открытого файла
+const ttl = await page.evaluate(() => { const f0 = App.fileName; IO.setFile('Дача.json'); const t = document.title; IO.setFile(f0); return t; });
+console.log('title', ttl);
+if (!ttl.startsWith('Дача.json')) errors.push('Заголовок вкладки: ' + ttl);
 // буфер между вкладками: копия пишется в общее хранилище и читается обратно
 const clip = await page.evaluate(() => {
   App.sel.clear(); for (const w of App.V.walls.slice(0, 2)) App.sel.add(w.id);

@@ -7962,7 +7962,17 @@ const UI = {
     UI.renderFloorbar();
     if (View3D.active) { View3D.dirty = true; View3D.redraw(); }
     $('projectName').value = App.doc.name;
+    UI.syncTitle();
     $('welcome').hidden = !App.isEmpty() || UI._welcomeOff;
+  },
+  /** Заголовок вкладки: имя файла (или проекта) — удобно, когда открыто несколько вкладок */
+  syncTitle() {
+    if (UI._title0 === undefined) UI._title0 = document.title;
+    const file = App.fileName, name = (App.doc.name || '').trim();
+    let t = UI._title0;                                              // пустой новый проект — исходный заголовок сайта
+    if (file) t = file + (name && name !== 'Новый проект' && name !== file.replace(/\.json$/i, '') ? ' · ' + name : '') + ' — Floorplaner';
+    else if (!App.isEmpty() || (name && name !== 'Новый проект')) t = (name || 'Проект') + ' — Floorplaner';
+    if (document.title !== t) document.title = t;
   },
   syncUndo() { $('btnUndo').disabled = Model._undo.length < 2; $('btnRedo').disabled = !Model._redo.length; },
   syncToggles() {
@@ -9896,9 +9906,17 @@ const Estimate = {
    ========================================================================== */
 
 const AUTOSAVE_KEY = 'floorplaner:autosave:v1';
+const FILE_KEY = 'floorplaner:file';
 
 const IO = {
+  /** Имя открытого/сохранённого файла — в заголовке вкладки (помнится вместе с автосохранением) */
+  setFile(name) {
+    App.fileName = name || null;
+    try { if (name) localStorage.setItem(FILE_KEY, name); else localStorage.removeItem(FILE_KEY); } catch (e) { /* хранилище недоступно */ }
+    UI.syncTitle();
+  },
   newProject() {
+    IO.setFile(null);
     const d = Model.newDoc();
     d.geo = { ...App.doc.geo };
     App.doc = d;
@@ -9917,6 +9935,7 @@ const IO = {
   serialize() { return JSON.stringify(App.doc); },
   saveJSON() {
     U.download(IO.fileName('json'), IO.serialize(), 'application/json');
+    IO.setFile(IO.fileName('json'));
     UI.toast('Проект сохранён в файл');
   },
   openFile(f) {
@@ -9926,6 +9945,7 @@ const IO = {
         const raw = JSON.parse(r.result);
         if (!raw || (raw.app !== 'floorplaner' && !raw.walls)) throw new Error('not a plan');
         IO.load(Model.normalize(raw), true);
+        IO.setFile(f.name);
         UI.toast('Открыт: ' + App.doc.name);
       } catch (e) {
         console.error(e);
@@ -9961,7 +9981,9 @@ const IO = {
     try {
       const s = localStorage.getItem(AUTOSAVE_KEY);
       if (!s) return null;
-      return Model.normalize(JSON.parse(s));
+      const d = Model.normalize(JSON.parse(s));
+      App.fileName = localStorage.getItem(FILE_KEY) || null;
+      return d;
     } catch (e) { return null; }
   },
 
@@ -10174,6 +10196,7 @@ const IO = {
 
   /* ------------------------------ демо-проект ---------------------------- */
   loadDemo() {
+    IO.setFile(null);
     const d = Model.newDoc();
     d.name = 'Пример: дом 10×9 м на участке 10 соток';
     d.north = -15;
