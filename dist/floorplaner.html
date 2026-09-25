@@ -796,6 +796,8 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
           <tr><td>Без привязки</td><td><kbd>Alt</kbd></td></tr>
           <tr><td>Сдвиг 1 / 10 см</td><td><kbd>←↑↓→</kbd> / <kbd>Shift</kbd></td></tr>
           <tr><td>Копировать / Вставить / Дублировать</td><td><kbd>Ctrl+C</kbd> <kbd>Ctrl+V</kbd> <kbd>Ctrl+D</kbd></td></tr>
+          <tr><td>Сгруппировать / разгруппировать</td><td><kbd>Ctrl+G</kbd> / <kbd>Ctrl+Shift+G</kbd></td></tr>
+          <tr><td>Один объект внутри группы</td><td><kbd>Alt</kbd>+клик</td></tr>
           <tr><td>Выделить всё</td><td><kbd>Ctrl+A</kbd></td></tr>
           <tr><td>Удалить</td><td><kbd>Del</kbd></td></tr>
           <tr><td>Отменить / Повторить</td><td><kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd></td></tr>
@@ -2456,6 +2458,7 @@ const Model = {
   resetHistory() { Model._undo = [Model.snapshot()]; Model._redo = []; },
   /** Зафиксировать изменение: снимок в историю + пересчёты */
   commit() {
+    Model.cleanGroups();
     const s = Model.snapshot();
     if (Model._undo[Model._undo.length - 1] !== s) {
       Model._undo.push(s);
@@ -2559,6 +2562,18 @@ const Model = {
     return b;
   },
   /** Все объекты: текущего этажа (по умолчанию) или всего проекта */
+  /** Все объекты той же группы, что и id (на текущем этаже); без группы — [id] */
+  groupOf(id) {
+    const o = Model.get(id);
+    if (!o || !o.grp) return [id];
+    return Model.allIds().filter(x => Model.get(x).grp === o.grp);
+  },
+  /** Группа из одного объекта — не группа: убираем метку */
+  cleanGroups() {
+    const n = new Map();
+    for (const c of COLLECTIONS) for (const o of App.doc[c]) if (o.grp) n.set(o.grp, (n.get(o.grp) || 0) + 1);
+    for (const c of COLLECTIONS) for (const o of App.doc[c]) if (o.grp && n.get(o.grp) < 2) delete o.grp;
+  },
   allIds(all = false) { const r = []; const src = all ? App.doc : App.V; for (const c of COLLECTIONS) for (const o of src[c]) if (c !== 'openings') r.push(o.id); return r; },
 
   /** Концы стен (кроме своих), совпадающие с точкой */
@@ -2695,7 +2710,7 @@ const Model = {
   splitWall(w, t) {
     const L = Model.wallLen(w);
     const p = G.add(w.a, G.mul(G.sub(w.b, w.a), t));
-    const w2 = Model.add('walls', { kind: w.kind, th: w.th, h: w.h, a: { ...p }, b: { ...w.b } });
+    const w2 = Model.add('walls', { kind: w.kind, th: w.th, h: w.h, mat: w.mat, ...(w.ins ? { ins: w.ins } : {}), ...(w.grp ? { grp: w.grp } : {}), a: { ...p }, b: { ...w.b } });
     w.b = { ...p };
     const cut = L * t;
     for (const op of App.doc.openings) if (op.wall === w.id && op.pos > cut) { op.wall = w2.id; op.pos -= cut; }
@@ -4640,8 +4655,17 @@ const Render = {
       else if (c === 'dims') { ctx.lineWidth = 5 * px; ctx.strokeStyle = C.accentSoft; ctx.setLineDash([]); const n = G.perp(G.unit(G.sub(o.b, o.a))); const A = G.add(o.a, G.mul(n, o.off || 0)), B = G.add(o.b, G.mul(n, o.off || 0)); ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke(); }
       else if (c === 'texts' || c === 'roomTags') { ctx.beginPath(); ctx.arc(o.x, o.y, 10 * px, 0, Math.PI * 2); ctx.stroke(); }
     };
-    if (App.hover && !App.sel.has(App.hover)) hl(App.hover, false);
+    if (App.hover && !App.sel.has(App.hover)) for (const m of Model.get(App.hover) ? Model.groupOf(App.hover) : [App.hover]) hl(m, false);
     for (const id of App.sel) hl(id, true);
+    // выделена группа — рамка вокруг неё с подписью
+    const gid = App.selGroup();
+    if (gid) {
+      const ids = App.selIds(), b = Model.bboxOf(ids), m = 14 * px;
+      ctx.setLineDash([8 * px, 5 * px]); ctx.strokeStyle = C.accent; ctx.lineWidth = 1.2 * px;
+      ctx.strokeRect(b.x0 - m, b.y0 - m, b.x1 - b.x0 + 2 * m, b.y1 - b.y0 + 2 * m); ctx.setLineDash([]);
+      const walls = ids.every(id => Model.coll(id) === 'walls');
+      Render.label(env, `Группа${walls ? ' стен' : ''} · ${ids.length}`, { x: (b.x0 + b.x1) / 2, y: b.y0 - m - 10 * px }, 0, { size: 11, bold: true, color: C.accent, bg: true, must: true, prio: 10 });
+    }
     // помещение
     for (const r of App.rooms) if (App.sel.has(r.id) || App.hover === r.id) {
       Render.polyPath(ctx, r.floor); ctx.setLineDash([6 * px, 4 * px]); ctx.strokeStyle = C.accent; ctx.lineWidth = 2 * px; ctx.stroke();
@@ -6331,10 +6355,12 @@ const Tools = {
       Tools.st = { mode: 'box', start: p, sp, id, shift: e.shiftKey, moved: false };
       return;
     }
+    // группа выделяется целиком; Alt+клик — один объект внутри группы
+    const members = e.altKey ? [id] : Model.groupOf(id);
     if (e.shiftKey || e.ctrlKey || e.metaKey) {
-      if (App.sel.has(id)) { Tools.st = { mode: 'toggle', id }; return; }
-      App.sel.add(id);
-    } else if (!App.sel.has(id)) { App.sel.clear(); App.sel.add(id); }
+      if (App.sel.has(id)) { Tools.st = { mode: 'toggle', id, members }; return; }
+      for (const m of members) App.sel.add(m);
+    } else if (!members.every(m => App.sel.has(m)) || (e.altKey && App.sel.size > 1)) { App.sel.clear(); for (const m of members) App.sel.add(m); }
     App.selChanged();
     const ids = [...App.sel].filter(x => (Model.get(x) && !Model.get(x).locked) || x === 'underlay');
     const c = Model.coll(id);
@@ -6415,7 +6441,7 @@ const Tools = {
     if (st.mode === 'box') {
       if (!st.moved) {
         App.sel.clear();
-        if (st.id) App.sel.add(st.id);
+        if (st.id) for (const m of Model.get(st.id) ? Model.groupOf(st.id) : [st.id]) App.sel.add(m);
         App.selChanged();
         return;
       }
@@ -6434,12 +6460,12 @@ const Tools = {
         const bb = G.bbox(pts);
         const inside = bb.x0 >= b.x0 && bb.x1 <= b.x1 && bb.y0 >= b.y0 && bb.y1 <= b.y1;
         const cross = !(bb.x1 < b.x0 || bb.x0 > b.x1 || bb.y1 < b.y0 || bb.y0 > b.y1);
-        if (inside || (crossing && cross)) App.sel.add(id);
+        if (inside || (crossing && cross)) for (const m of Model.groupOf(id)) App.sel.add(m);   // группа — целиком
       }
       App.selChanged();
       return;
     }
-    if (st.mode === 'toggle') { App.sel.delete(st.id); App.selChanged(); return; }
+    if (st.mode === 'toggle') { for (const m of st.members || [st.id]) App.sel.delete(m); App.selChanged(); return; }
     if (st.mode === 'handle' || st.mode === 'opening' || st.mode === 'move') {
       // подпись помещения перетащили руками — дальше она остаётся там, где её оставили
       if (st.moved && st.mode === 'move') Tools.fixTags(st.ids);
@@ -7367,6 +7393,8 @@ const UI = {
     UI._tipTimer = setTimeout(() => {
       const t = UI.tipFor(id);
       if (!t) { tip.hidden = true; return; }
+      const o = Model.get(id);
+      if (o && o.grp) t.lines = [...t.lines, `В группе: ${Model.groupOf(id).length} объектов (Alt+клик — только этот)`];
       tip.textContent = '';
       tip.append(U.el('b', {}, t.title), ...t.lines.map(l => U.el('div', {}, l)), t.hint ? U.el('em', {}, t.hint) : null);
       tip.hidden = false;
@@ -7686,6 +7714,11 @@ const UI = {
       const c = Model.coll(id), o = Model.get(id);
       const fn = { roofs: UI.propsRoof, roads: UI.propsRoad, walls: UI.propsWall, openings: UI.propsOpening, items: UI.propsItem, lines: UI.propsLine, areas: UI.propsArea, dims: UI.propsDim, texts: UI.propsText, notes: UI.propsNote, roomTags: UI.propsTag }[c];
       if (fn) fn(body, o);
+      if (o && o.grp) {
+        const n = Model.groupOf(id).length;
+        body.append(F.section('Группа', F.note(`Объект входит в группу из ${n}. Обычный клик выделяет всю группу, Alt+клик — один объект.`),
+          F.btns([['Выделить всю группу', () => { App.sel.clear(); for (const m of Model.groupOf(id)) App.sel.add(m); App.selChanged(); }], ['Убрать из группы', () => { delete o.grp; Model.commit(); App.selChanged(); }]])));
+      }
       if (c !== 'notes') body.append(UI.notesOf(id));
     } else UI.propsMulti(body, ids);
     const tr = ids.filter(id => Model.get(id) && Model.coll(id) !== 'openings');
@@ -7733,7 +7766,7 @@ const UI = {
     const locked = ids.every(id => Model.get(id).locked);
     return F.section('Поворот и действия',
       F.check('Закрепить (не сдвигать случайно)', locked, (v) => { for (const id of ids) { if (v) Model.get(id).locked = true; else delete Model.get(id).locked; } Model.commit(); }),
-      ids.length > 1 ? U.el('div', { class: 'fbtns align' }, [['⇤', 'left', 'По левому краю'], ['↔', 'cx', 'По центру по горизонтали'], ['⇥', 'right', 'По правому краю'], ['⤒', 'top', 'По верху'], ['↕', 'cy', 'По центру по вертикали'], ['⤓', 'bottom', 'По низу']]
+      ids.length > 1 && !App.selGroup() ? U.el('div', { class: 'fbtns align' }, [['⇤', 'left', 'По левому краю'], ['↔', 'cx', 'По центру по горизонтали'], ['⇥', 'right', 'По правому краю'], ['⤒', 'top', 'По верху'], ['↕', 'cy', 'По центру по вертикали'], ['⤓', 'bottom', 'По низу']]
         .map(([t, m, title]) => U.el('button', { type: 'button', title, onclick: () => App.align(m) }, t))) : null,
       UI.rotateRow((deg) => { Model.rotate(ids, c, deg); Model.commit(); }),
       F.btns([
@@ -8100,8 +8133,22 @@ const UI = {
     const byType = {};
     for (const id of ids) { const c = Tools.isRoom(id) ? 'rooms' : id === 'underlay' ? 'underlay' : Model.coll(id); byType[c] = (byType[c] || 0) + 1; }
     const names = { roofs: 'крыш', roads: 'дорог', walls: 'стен', openings: 'проёмов', items: 'объектов', lines: 'трасс', areas: 'зон', dims: 'размеров', texts: 'надписей', roomTags: 'меток', rooms: 'помещений', underlay: 'подложка' };
-    UI.head(body, `Выделено: ${ids.length}`, Object.entries(byType).map(([k, v]) => `${names[k] || k}: ${v}`).join(', '));
+    const gid = App.selGroup();
     const walls = ids.filter(id => Model.coll(id) === 'walls').map(Model.get);
+    const onlyWalls = walls.length === ids.length;
+    UI.head(body, gid ? (onlyWalls ? 'Группа стен' : 'Группа') : `Выделено: ${ids.length}`, Object.entries(byType).map(([k, v]) => `${names[k] || k}: ${v}`).join(', '));
+    if (gid) {
+      // сдвиг группы на точное расстояние: у стен — с подтягиванием примыкающих
+      let dx = 0, dy = 0;
+      body.append(F.section('Группа',
+        F.num('Сдвинуть по X (вправо +)', 0, (v) => { dx = v; }, { field: 'gdx' }),
+        F.num('Сдвинуть по Y (вниз +)', 0, (v) => { dy = v; }, { field: 'gdy' }),
+        F.btns([['Сдвинуть', () => { App.moveSel(dx, dy); UI.toast(`Группа сдвинута на ${U.fmtLen(Math.hypot(dx, dy))}`); }, 'primary'], ['Разгруппировать', () => App.ungroup(), '', 'Ctrl+Shift+G']]),
+        F.note('Группа выделяется и двигается как одно целое: перетащите её мышью или стрелками (Shift — по 10 см), поверните и отразите ниже. Alt+клик — выбрать одну стену внутри группы.')));
+    } else {
+      const hasGrp = ids.some(id => Model.get(id) && Model.get(id).grp);
+      body.append(F.btns([['Сгруппировать', () => App.group(), 'primary', 'Ctrl+G'], hasGrp ? ['Разгруппировать', () => App.ungroup(), '', 'Ctrl+Shift+G'] : null]));
+    }
     if (walls.length) {
       const same = (k) => walls.every(w => w[k] === walls[0][k]) ? walls[0][k] : null;
       body.append(F.section('Стены (все выделенные)',
@@ -8487,6 +8534,8 @@ const UI = {
       if (c === 'openings') { const op = Model.get(id); add('Петли на другую сторону', () => { op.hinge = op.hinge ? 0 : 1; Model.commit(); }); add('Открывание внутрь/наружу', () => { op.side = -(op.side || 1); Model.commit(); }); }
       if (c !== 'openings') { add('Повернуть на 90° ⟳', () => App.rotateSel(90)); add('Повернуть на 90° ⟲', () => App.rotateSel(-90)); add('Отразить ↔', () => App.mirrorSel('x')); }
       if (['walls', 'areas', 'roads', 'lines', 'items', 'roofs'].includes(c)) add('Сетку — по этому объекту', () => App.gridToSel(id));
+      if (App.selIds().length > 1 && !App.selGroup()) add('Сгруппировать (Ctrl+G)', () => App.group());
+      if (App.selIds().some(x => Model.get(x).grp)) add('Разгруппировать (Ctrl+Shift+G)', () => App.ungroup());
       add('Дублировать', () => App.duplicate());
       add('Копировать', () => App.copy());
       add('Удалить', () => App.deleteSel(), 'danger');
@@ -9952,12 +10001,13 @@ const App = {
     return out;
   },
   pasteData(data, dx, dy) {
-    const map = new Map();
+    const map = new Map(), gmap = new Map();
     const newIds = [];
     for (const c of COLLECTIONS) for (const o of data[c] || []) map.set(o.id, U.uid(c[0]));
     for (const c of COLLECTIONS) for (const src of data[c] || []) {
       const o = U.clone(src);
       o.id = map.get(src.id);
+      if (o.grp) { if (!gmap.has(o.grp)) gmap.set(o.grp, U.uid('g')); o.grp = gmap.get(o.grp); }   // копия группы — новая группа
       if (c === 'openings') { if (!map.has(src.wall)) continue; o.wall = map.get(src.wall); }
       else o.floor = App.floor;   // вставка — на текущий этаж
       if (c === 'notes' && o.target) { if (map.has(o.target)) o.target = map.get(o.target); else { const p = Model.notePos(src); delete o.target; o.x = p.x; o.y = p.y; } }
@@ -9970,6 +10020,41 @@ const App = {
     Model.commit();
     App.selChanged();
   },
+  /** Выделение целиком: если выделены все объекты одной группы — её id, иначе null */
+  selGroup() {
+    const ids = App.selIds();
+    if (ids.length < 2) return null;
+    const g = Model.get(ids[0]).grp;
+    if (!g || !ids.every(id => Model.get(id).grp === g)) return null;
+    return Model.groupOf(ids[0]).length === ids.length ? g : null;
+  },
+  /** Сгруппировать выделенное (Ctrl+G): дальше клик по любому объекту выделяет всю группу */
+  group() {
+    const ids = App.selIds().filter(id => Model.coll(id) !== 'openings');
+    if (ids.length < 2) { UI.toast('Выделите несколько объектов (Shift+клик или рамкой), затем «Сгруппировать»'); return; }
+    const g = U.uid('g');
+    for (const id of ids) Model.get(id).grp = g;
+    Model.commit(); App.selChanged();
+    const walls = ids.filter(id => Model.coll(id) === 'walls').length;
+    UI.toast(`Группа: ${walls === ids.length ? walls + ' стен' : ids.length + ' объектов'}. Клик — вся группа, Alt+клик — один объект. Ctrl+Shift+G — разгруппировать`);
+  },
+  ungroup() {
+    const ids = App.selIds();
+    const gs = new Set(ids.map(id => Model.get(id).grp).filter(Boolean));
+    if (!gs.size) { UI.toast('В выделении нет групп'); return; }
+    for (const c of COLLECTIONS) for (const o of App.doc[c]) if (o.grp && gs.has(o.grp)) delete o.grp;
+    Model.commit(); App.selChanged();
+    UI.toast(gs.size > 1 ? `Разгруппировано групп: ${gs.size}` : 'Группа разгруппирована, объекты остались выделенными');
+  },
+  /** Сдвиг выделения на (dx, dy): у стен — с сохранением стыков */
+  moveSel(dx, dy) {
+    const ids = App.selIds().filter(id => Model.coll(id) !== 'openings' && !Model.get(id).locked);
+    if (!ids.length || (!dx && !dy)) return;
+    if (ids.every(id => Model.coll(id) === 'walls')) Model.moveWalls(ids, dx, dy); else Model.translate(ids, dx, dy);
+    Model.commit();
+  },
+  /** Повернуть выделение на произвольный угол вокруг его центра */
+  rotateSelBy(deg) { if (deg) App.rotateSel(deg); },
   duplicate() {
     const ids = App.selIds();
     if (!ids.length) return;
@@ -10250,6 +10335,7 @@ const App = {
       if (code === 'KeyO') { e.preventDefault(); $('fileJson').click(); return; }
       if (code === 'KeyP') { e.preventDefault(); $('dlgPrint').showModal(); return; }
       if (code === 'KeyD') { e.preventDefault(); App.duplicate(); return; }
+      if (code === 'KeyG') { e.preventDefault(); if (e.shiftKey) App.ungroup(); else App.group(); return; }
       if (code === 'KeyC') { App.copy(); return; }
       if (code === 'KeyV') { e.preventDefault(); App.paste(); return; }
       if (code === 'KeyX') { App.copy(); App.deleteSel(); return; }

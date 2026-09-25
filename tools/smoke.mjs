@@ -204,6 +204,26 @@ const fz = await page.evaluate(() => {
 });
 console.log('fence', JSON.stringify(fz));
 if (fz.v !== 'fence' || fz.mat !== 'mesh' || fz.rail !== 'fence' || fz.back !== 'ext' || !(fz.found >= 9)) errors.push('Забор: ' + JSON.stringify(fz));
+// группы: Ctrl+G, выделение всей группы, сдвиг с сохранением стыков, копия — новая группа, разгруппировать
+const grp = await page.evaluate(() => {
+  const f = App.doc.floors[0].id, S = 40000, d = { kind: 'ext', th: 30, h: 300, mat: 'aerated', floor: f };
+  const box = [[S, S, S + 800, S], [S + 800, S, S + 800, S + 500], [S + 800, S + 500, S, S + 500], [S, S + 500, S, S]].map(([ax, ay, bx, by]) => Model.add('walls', { ...d, a: { x: ax, y: ay }, b: { x: bx, y: by } }));
+  const p1 = Model.add('walls', { ...d, kind: 'part', th: 10, a: { x: S + 400, y: S }, b: { x: S + 400, y: S + 300 } });
+  const p2 = Model.add('walls', { ...d, kind: 'part', th: 10, a: { x: S + 400, y: S + 300 }, b: { x: S + 800, y: S + 300 } });
+  Model.commit();
+  App.sel.clear(); App.sel.add(p1.id); App.sel.add(p2.id); App.group();
+  const r = { members: Model.groupOf(p1.id).length, isGroup: !!App.selGroup() };
+  App.sel.clear(); App.sel.add(p1.id); App.moveSel(100, 0);
+  App.sel.clear(); for (const m of Model.groupOf(p1.id)) App.sel.add(m); App.moveSel(100, 0);
+  r.p1x = Math.round(Model.get(p1.id).a.x - S); r.p2b = Math.round(Model.get(p2.id).b.x - S);
+  App.duplicate(); r.groups = new Set(App.doc.walls.filter(w => w.grp).map(w => w.grp)).size;
+  App.ungroup(); r.left = App.doc.walls.filter(w => w.grp).length;
+  for (let i = 0; i < 6; i++) Model.undo();
+  void box;
+  return r;
+});
+console.log('groups', JSON.stringify(grp));
+if (grp.members !== 2 || !grp.isGroup || grp.p1x !== 600 || grp.p2b !== 800 || grp.groups !== 2 || grp.left !== 2) errors.push('Группы: ' + JSON.stringify(grp));
 // прогулка в 3D: WASD, столкновения со стенами, подъём по лестнице на мансарду, Esc
 const wk = await page.evaluate(() => {
   IO.loadDemo(); View3D.toggle(true);

@@ -99,12 +99,13 @@ const App = {
     return out;
   },
   pasteData(data, dx, dy) {
-    const map = new Map();
+    const map = new Map(), gmap = new Map();
     const newIds = [];
     for (const c of COLLECTIONS) for (const o of data[c] || []) map.set(o.id, U.uid(c[0]));
     for (const c of COLLECTIONS) for (const src of data[c] || []) {
       const o = U.clone(src);
       o.id = map.get(src.id);
+      if (o.grp) { if (!gmap.has(o.grp)) gmap.set(o.grp, U.uid('g')); o.grp = gmap.get(o.grp); }   // копия группы — новая группа
       if (c === 'openings') { if (!map.has(src.wall)) continue; o.wall = map.get(src.wall); }
       else o.floor = App.floor;   // вставка — на текущий этаж
       if (c === 'notes' && o.target) { if (map.has(o.target)) o.target = map.get(o.target); else { const p = Model.notePos(src); delete o.target; o.x = p.x; o.y = p.y; } }
@@ -117,6 +118,41 @@ const App = {
     Model.commit();
     App.selChanged();
   },
+  /** Выделение целиком: если выделены все объекты одной группы — её id, иначе null */
+  selGroup() {
+    const ids = App.selIds();
+    if (ids.length < 2) return null;
+    const g = Model.get(ids[0]).grp;
+    if (!g || !ids.every(id => Model.get(id).grp === g)) return null;
+    return Model.groupOf(ids[0]).length === ids.length ? g : null;
+  },
+  /** Сгруппировать выделенное (Ctrl+G): дальше клик по любому объекту выделяет всю группу */
+  group() {
+    const ids = App.selIds().filter(id => Model.coll(id) !== 'openings');
+    if (ids.length < 2) { UI.toast('Выделите несколько объектов (Shift+клик или рамкой), затем «Сгруппировать»'); return; }
+    const g = U.uid('g');
+    for (const id of ids) Model.get(id).grp = g;
+    Model.commit(); App.selChanged();
+    const walls = ids.filter(id => Model.coll(id) === 'walls').length;
+    UI.toast(`Группа: ${walls === ids.length ? walls + ' стен' : ids.length + ' объектов'}. Клик — вся группа, Alt+клик — один объект. Ctrl+Shift+G — разгруппировать`);
+  },
+  ungroup() {
+    const ids = App.selIds();
+    const gs = new Set(ids.map(id => Model.get(id).grp).filter(Boolean));
+    if (!gs.size) { UI.toast('В выделении нет групп'); return; }
+    for (const c of COLLECTIONS) for (const o of App.doc[c]) if (o.grp && gs.has(o.grp)) delete o.grp;
+    Model.commit(); App.selChanged();
+    UI.toast(gs.size > 1 ? `Разгруппировано групп: ${gs.size}` : 'Группа разгруппирована, объекты остались выделенными');
+  },
+  /** Сдвиг выделения на (dx, dy): у стен — с сохранением стыков */
+  moveSel(dx, dy) {
+    const ids = App.selIds().filter(id => Model.coll(id) !== 'openings' && !Model.get(id).locked);
+    if (!ids.length || (!dx && !dy)) return;
+    if (ids.every(id => Model.coll(id) === 'walls')) Model.moveWalls(ids, dx, dy); else Model.translate(ids, dx, dy);
+    Model.commit();
+  },
+  /** Повернуть выделение на произвольный угол вокруг его центра */
+  rotateSelBy(deg) { if (deg) App.rotateSel(deg); },
   duplicate() {
     const ids = App.selIds();
     if (!ids.length) return;
@@ -397,6 +433,7 @@ const App = {
       if (code === 'KeyO') { e.preventDefault(); $('fileJson').click(); return; }
       if (code === 'KeyP') { e.preventDefault(); $('dlgPrint').showModal(); return; }
       if (code === 'KeyD') { e.preventDefault(); App.duplicate(); return; }
+      if (code === 'KeyG') { e.preventDefault(); if (e.shiftKey) App.ungroup(); else App.group(); return; }
       if (code === 'KeyC') { App.copy(); return; }
       if (code === 'KeyV') { e.preventDefault(); App.paste(); return; }
       if (code === 'KeyX') { App.copy(); App.deleteSel(); return; }

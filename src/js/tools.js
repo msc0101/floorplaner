@@ -399,10 +399,12 @@ const Tools = {
       Tools.st = { mode: 'box', start: p, sp, id, shift: e.shiftKey, moved: false };
       return;
     }
+    // группа выделяется целиком; Alt+клик — один объект внутри группы
+    const members = e.altKey ? [id] : Model.groupOf(id);
     if (e.shiftKey || e.ctrlKey || e.metaKey) {
-      if (App.sel.has(id)) { Tools.st = { mode: 'toggle', id }; return; }
-      App.sel.add(id);
-    } else if (!App.sel.has(id)) { App.sel.clear(); App.sel.add(id); }
+      if (App.sel.has(id)) { Tools.st = { mode: 'toggle', id, members }; return; }
+      for (const m of members) App.sel.add(m);
+    } else if (!members.every(m => App.sel.has(m)) || (e.altKey && App.sel.size > 1)) { App.sel.clear(); for (const m of members) App.sel.add(m); }
     App.selChanged();
     const ids = [...App.sel].filter(x => (Model.get(x) && !Model.get(x).locked) || x === 'underlay');
     const c = Model.coll(id);
@@ -483,7 +485,7 @@ const Tools = {
     if (st.mode === 'box') {
       if (!st.moved) {
         App.sel.clear();
-        if (st.id) App.sel.add(st.id);
+        if (st.id) for (const m of Model.get(st.id) ? Model.groupOf(st.id) : [st.id]) App.sel.add(m);
         App.selChanged();
         return;
       }
@@ -502,12 +504,12 @@ const Tools = {
         const bb = G.bbox(pts);
         const inside = bb.x0 >= b.x0 && bb.x1 <= b.x1 && bb.y0 >= b.y0 && bb.y1 <= b.y1;
         const cross = !(bb.x1 < b.x0 || bb.x0 > b.x1 || bb.y1 < b.y0 || bb.y0 > b.y1);
-        if (inside || (crossing && cross)) App.sel.add(id);
+        if (inside || (crossing && cross)) for (const m of Model.groupOf(id)) App.sel.add(m);   // группа — целиком
       }
       App.selChanged();
       return;
     }
-    if (st.mode === 'toggle') { App.sel.delete(st.id); App.selChanged(); return; }
+    if (st.mode === 'toggle') { for (const m of st.members || [st.id]) App.sel.delete(m); App.selChanged(); return; }
     if (st.mode === 'handle' || st.mode === 'opening' || st.mode === 'move') {
       // подпись помещения перетащили руками — дальше она остаётся там, где её оставили
       if (st.moved && st.mode === 'move') Tools.fixTags(st.ids);

@@ -218,6 +218,8 @@ const UI = {
     UI._tipTimer = setTimeout(() => {
       const t = UI.tipFor(id);
       if (!t) { tip.hidden = true; return; }
+      const o = Model.get(id);
+      if (o && o.grp) t.lines = [...t.lines, `В группе: ${Model.groupOf(id).length} объектов (Alt+клик — только этот)`];
       tip.textContent = '';
       tip.append(U.el('b', {}, t.title), ...t.lines.map(l => U.el('div', {}, l)), t.hint ? U.el('em', {}, t.hint) : null);
       tip.hidden = false;
@@ -537,6 +539,11 @@ const UI = {
       const c = Model.coll(id), o = Model.get(id);
       const fn = { roofs: UI.propsRoof, roads: UI.propsRoad, walls: UI.propsWall, openings: UI.propsOpening, items: UI.propsItem, lines: UI.propsLine, areas: UI.propsArea, dims: UI.propsDim, texts: UI.propsText, notes: UI.propsNote, roomTags: UI.propsTag }[c];
       if (fn) fn(body, o);
+      if (o && o.grp) {
+        const n = Model.groupOf(id).length;
+        body.append(F.section('Группа', F.note(`Объект входит в группу из ${n}. Обычный клик выделяет всю группу, Alt+клик — один объект.`),
+          F.btns([['Выделить всю группу', () => { App.sel.clear(); for (const m of Model.groupOf(id)) App.sel.add(m); App.selChanged(); }], ['Убрать из группы', () => { delete o.grp; Model.commit(); App.selChanged(); }]])));
+      }
       if (c !== 'notes') body.append(UI.notesOf(id));
     } else UI.propsMulti(body, ids);
     const tr = ids.filter(id => Model.get(id) && Model.coll(id) !== 'openings');
@@ -584,7 +591,7 @@ const UI = {
     const locked = ids.every(id => Model.get(id).locked);
     return F.section('Поворот и действия',
       F.check('Закрепить (не сдвигать случайно)', locked, (v) => { for (const id of ids) { if (v) Model.get(id).locked = true; else delete Model.get(id).locked; } Model.commit(); }),
-      ids.length > 1 ? U.el('div', { class: 'fbtns align' }, [['⇤', 'left', 'По левому краю'], ['↔', 'cx', 'По центру по горизонтали'], ['⇥', 'right', 'По правому краю'], ['⤒', 'top', 'По верху'], ['↕', 'cy', 'По центру по вертикали'], ['⤓', 'bottom', 'По низу']]
+      ids.length > 1 && !App.selGroup() ? U.el('div', { class: 'fbtns align' }, [['⇤', 'left', 'По левому краю'], ['↔', 'cx', 'По центру по горизонтали'], ['⇥', 'right', 'По правому краю'], ['⤒', 'top', 'По верху'], ['↕', 'cy', 'По центру по вертикали'], ['⤓', 'bottom', 'По низу']]
         .map(([t, m, title]) => U.el('button', { type: 'button', title, onclick: () => App.align(m) }, t))) : null,
       UI.rotateRow((deg) => { Model.rotate(ids, c, deg); Model.commit(); }),
       F.btns([
@@ -951,8 +958,22 @@ const UI = {
     const byType = {};
     for (const id of ids) { const c = Tools.isRoom(id) ? 'rooms' : id === 'underlay' ? 'underlay' : Model.coll(id); byType[c] = (byType[c] || 0) + 1; }
     const names = { roofs: 'крыш', roads: 'дорог', walls: 'стен', openings: 'проёмов', items: 'объектов', lines: 'трасс', areas: 'зон', dims: 'размеров', texts: 'надписей', roomTags: 'меток', rooms: 'помещений', underlay: 'подложка' };
-    UI.head(body, `Выделено: ${ids.length}`, Object.entries(byType).map(([k, v]) => `${names[k] || k}: ${v}`).join(', '));
+    const gid = App.selGroup();
     const walls = ids.filter(id => Model.coll(id) === 'walls').map(Model.get);
+    const onlyWalls = walls.length === ids.length;
+    UI.head(body, gid ? (onlyWalls ? 'Группа стен' : 'Группа') : `Выделено: ${ids.length}`, Object.entries(byType).map(([k, v]) => `${names[k] || k}: ${v}`).join(', '));
+    if (gid) {
+      // сдвиг группы на точное расстояние: у стен — с подтягиванием примыкающих
+      let dx = 0, dy = 0;
+      body.append(F.section('Группа',
+        F.num('Сдвинуть по X (вправо +)', 0, (v) => { dx = v; }, { field: 'gdx' }),
+        F.num('Сдвинуть по Y (вниз +)', 0, (v) => { dy = v; }, { field: 'gdy' }),
+        F.btns([['Сдвинуть', () => { App.moveSel(dx, dy); UI.toast(`Группа сдвинута на ${U.fmtLen(Math.hypot(dx, dy))}`); }, 'primary'], ['Разгруппировать', () => App.ungroup(), '', 'Ctrl+Shift+G']]),
+        F.note('Группа выделяется и двигается как одно целое: перетащите её мышью или стрелками (Shift — по 10 см), поверните и отразите ниже. Alt+клик — выбрать одну стену внутри группы.')));
+    } else {
+      const hasGrp = ids.some(id => Model.get(id) && Model.get(id).grp);
+      body.append(F.btns([['Сгруппировать', () => App.group(), 'primary', 'Ctrl+G'], hasGrp ? ['Разгруппировать', () => App.ungroup(), '', 'Ctrl+Shift+G'] : null]));
+    }
     if (walls.length) {
       const same = (k) => walls.every(w => w[k] === walls[0][k]) ? walls[0][k] : null;
       body.append(F.section('Стены (все выделенные)',
@@ -1338,6 +1359,8 @@ const UI = {
       if (c === 'openings') { const op = Model.get(id); add('Петли на другую сторону', () => { op.hinge = op.hinge ? 0 : 1; Model.commit(); }); add('Открывание внутрь/наружу', () => { op.side = -(op.side || 1); Model.commit(); }); }
       if (c !== 'openings') { add('Повернуть на 90° ⟳', () => App.rotateSel(90)); add('Повернуть на 90° ⟲', () => App.rotateSel(-90)); add('Отразить ↔', () => App.mirrorSel('x')); }
       if (['walls', 'areas', 'roads', 'lines', 'items', 'roofs'].includes(c)) add('Сетку — по этому объекту', () => App.gridToSel(id));
+      if (App.selIds().length > 1 && !App.selGroup()) add('Сгруппировать (Ctrl+G)', () => App.group());
+      if (App.selIds().some(x => Model.get(x).grp)) add('Разгруппировать (Ctrl+Shift+G)', () => App.ungroup());
       add('Дублировать', () => App.duplicate());
       add('Копировать', () => App.copy());
       add('Удалить', () => App.deleteSel(), 'danger');

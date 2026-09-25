@@ -950,8 +950,17 @@ const Render = {
       else if (c === 'dims') { ctx.lineWidth = 5 * px; ctx.strokeStyle = C.accentSoft; ctx.setLineDash([]); const n = G.perp(G.unit(G.sub(o.b, o.a))); const A = G.add(o.a, G.mul(n, o.off || 0)), B = G.add(o.b, G.mul(n, o.off || 0)); ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke(); }
       else if (c === 'texts' || c === 'roomTags') { ctx.beginPath(); ctx.arc(o.x, o.y, 10 * px, 0, Math.PI * 2); ctx.stroke(); }
     };
-    if (App.hover && !App.sel.has(App.hover)) hl(App.hover, false);
+    if (App.hover && !App.sel.has(App.hover)) for (const m of Model.get(App.hover) ? Model.groupOf(App.hover) : [App.hover]) hl(m, false);
     for (const id of App.sel) hl(id, true);
+    // выделена группа — рамка вокруг неё с подписью
+    const gid = App.selGroup();
+    if (gid) {
+      const ids = App.selIds(), b = Model.bboxOf(ids), m = 14 * px;
+      ctx.setLineDash([8 * px, 5 * px]); ctx.strokeStyle = C.accent; ctx.lineWidth = 1.2 * px;
+      ctx.strokeRect(b.x0 - m, b.y0 - m, b.x1 - b.x0 + 2 * m, b.y1 - b.y0 + 2 * m); ctx.setLineDash([]);
+      const walls = ids.every(id => Model.coll(id) === 'walls');
+      Render.label(env, `Группа${walls ? ' стен' : ''} · ${ids.length}`, { x: (b.x0 + b.x1) / 2, y: b.y0 - m - 10 * px }, 0, { size: 11, bold: true, color: C.accent, bg: true, must: true, prio: 10 });
+    }
     // помещение
     for (const r of App.rooms) if (App.sel.has(r.id) || App.hover === r.id) {
       Render.polyPath(ctx, r.floor); ctx.setLineDash([6 * px, 4 * px]); ctx.strokeStyle = C.accent; ctx.lineWidth = 2 * px; ctx.stroke();

@@ -165,6 +165,7 @@ const Model = {
   resetHistory() { Model._undo = [Model.snapshot()]; Model._redo = []; },
   /** Зафиксировать изменение: снимок в историю + пересчёты */
   commit() {
+    Model.cleanGroups();
     const s = Model.snapshot();
     if (Model._undo[Model._undo.length - 1] !== s) {
       Model._undo.push(s);
@@ -268,6 +269,18 @@ const Model = {
     return b;
   },
   /** Все объекты: текущего этажа (по умолчанию) или всего проекта */
+  /** Все объекты той же группы, что и id (на текущем этаже); без группы — [id] */
+  groupOf(id) {
+    const o = Model.get(id);
+    if (!o || !o.grp) return [id];
+    return Model.allIds().filter(x => Model.get(x).grp === o.grp);
+  },
+  /** Группа из одного объекта — не группа: убираем метку */
+  cleanGroups() {
+    const n = new Map();
+    for (const c of COLLECTIONS) for (const o of App.doc[c]) if (o.grp) n.set(o.grp, (n.get(o.grp) || 0) + 1);
+    for (const c of COLLECTIONS) for (const o of App.doc[c]) if (o.grp && n.get(o.grp) < 2) delete o.grp;
+  },
   allIds(all = false) { const r = []; const src = all ? App.doc : App.V; for (const c of COLLECTIONS) for (const o of src[c]) if (c !== 'openings') r.push(o.id); return r; },
 
   /** Концы стен (кроме своих), совпадающие с точкой */
@@ -404,7 +417,7 @@ const Model = {
   splitWall(w, t) {
     const L = Model.wallLen(w);
     const p = G.add(w.a, G.mul(G.sub(w.b, w.a), t));
-    const w2 = Model.add('walls', { kind: w.kind, th: w.th, h: w.h, a: { ...p }, b: { ...w.b } });
+    const w2 = Model.add('walls', { kind: w.kind, th: w.th, h: w.h, mat: w.mat, ...(w.ins ? { ins: w.ins } : {}), ...(w.grp ? { grp: w.grp } : {}), a: { ...p }, b: { ...w.b } });
     w.b = { ...p };
     const cut = L * t;
     for (const op of App.doc.openings) if (op.wall === w.id && op.pos > cut) { op.wall = w2.id; op.pos -= cut; }
