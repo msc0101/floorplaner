@@ -735,7 +735,12 @@ const Render = {
       const k = LINE_KINDS[l.kind];
       if (L[k.layer] === false) continue;
       const color = l.color || k.color;
-      ctx.strokeStyle = color; ctx.lineWidth = 2.4 * px; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      // ЛЭП: охранная зона (по умолчанию 2 м в каждую сторону — ВЛ 0,4 кВ) — строить под проводами нельзя
+      if (l.kind === 'overhead' && (l.zone ?? 200) > 0) {
+        ctx.save(); ctx.globalAlpha = 0.09; ctx.strokeStyle = color; ctx.lineWidth = (l.zone ?? 200) * 2; ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
+        Render.polyPath(ctx, l.pts, false); ctx.stroke(); ctx.restore();
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = (l.kind === 'overhead' ? 3 : 2.4) * px; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       ctx.setLineDash(k.dash.map(v => v * px));
       Render.polyPath(ctx, l.pts, false); ctx.stroke();
       ctx.setLineDash([]); ctx.lineCap = 'butt';
@@ -757,6 +762,18 @@ const Render = {
         }
         const du = G.mul(G.unit(G.sub(b, a)), Math.min(G.dist(a, b) * 0.3, 50 * px));
         Render.label(env, l.label || k.code, m, 0, { size: 10, bold: true, color, bg: true, pad: 2, border: color, prio: 2, alts: [G.add(m, du), G.sub(m, du)] });
+      }
+      if (l.kind === 'overhead') {
+        // опоры: свои (кружок с точкой), столбы из библиотеки рисуются сами; у дома — крюк ввода (треугольник)
+        const C = env.C, r = Math.max(12, 4.5 * px);
+        for (const q of overheadPoles(l, App.V.items, App.V.walls)) {
+          if (q.item) continue;
+          ctx.fillStyle = C.itemFill; ctx.strokeStyle = color; ctx.lineWidth = 1.6 * px;
+          if (q.wall) { ctx.beginPath(); ctx.moveTo(q.p.x, q.p.y - r); ctx.lineTo(q.p.x + r, q.p.y + r * 0.8); ctx.lineTo(q.p.x - r, q.p.y + r * 0.8); ctx.closePath(); ctx.fill(); ctx.stroke(); continue; }
+          ctx.beginPath(); ctx.arc(q.p.x, q.p.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.beginPath(); ctx.arc(q.p.x, q.p.y, r * 0.35, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+        }
+        continue;
       }
       for (const p of l.pts) { ctx.beginPath(); ctx.arc(p.x, p.y, 2.2 * px, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); }
     }

@@ -42,6 +42,23 @@ const LINE_KINDS = {
   ground:   { name: 'Заземление', code: 'З', color: '#16a34a', dash: [2, 4], layer: 'electric', dia: 0, depth: 50, section: 'Полоса 40×4' },
 };
 
+/** Опоры воздушной линии: столб из библиотеки (item), крепление на стене дома (wall — ввод) или столб,
+ *  который рисуем сами; промежуточные опоры — чтобы пролёт был не длиннее ~40 м */
+function overheadPoles(l, items, walls) {
+  const out = [], span = 4000;
+  const poleAt = (p) => items.find(it => ['pole', 'lightpole'].includes(catItem(it.key).shape) && G.dist(it, p) < 80) || null;
+  const wallAt = (p) => walls.find(w => w.kind !== 'fence' && G.distSeg(p, w.a, w.b) <= w.th / 2 + 40) || null;
+  for (let i = 0; i < l.pts.length; i++) {
+    const a = l.pts[i], end = i === 0 || i === l.pts.length - 1;
+    const item = poleAt(a), wall = !item && end ? wallAt(a) : null;
+    out.push({ p: a, item, wall });
+    if (i === l.pts.length - 1) break;
+    const b = l.pts[i + 1], n = Math.ceil(G.dist(a, b) / span);
+    for (let k = 1; k < n; k++) { const q = G.add(a, G.mul(G.sub(b, a), k / n)); out.push({ p: q, item: poleAt(q), wall: null }); }
+  }
+  return out;
+}
+
 /* Дороги, улицы, тропинки: ширина в см */
 /** Бордюр у дороги: по умолчанию — у улиц и проездов; можно выключить в свойствах */
 function roadCurb(r) { return r.curb ?? (r.kind === 'street' || r.kind === 'road'); }
@@ -276,7 +293,7 @@ const CATALOG = [
     { key: 'panel', name: 'Электрощит', shape: 'panel', w: 40, d: 15, h: 60, sym: 30 },
     { key: 'meter', name: 'Счётчик / ВРУ', shape: 'labelbox', w: 30, d: 20, h: 50, label: 'Wh', sym: 28 },
     { key: 'fan', name: 'Вытяжной вентилятор', shape: 'fan', w: 20, d: 20, h: 250, sym: 20 },
-    { key: 'pole', name: 'Столб ЛЭП', shape: 'pole', w: 25, d: 25, h: 1000, sym: 40, layer: 'electric', shadow: true },
+    { key: 'pole', name: 'Столб ЛЭП', kw: 'опора лэп вл электричество', shape: 'pole', w: 25, d: 25, h: 1000, sym: 40, layer: 'electric', shadow: true },
     { key: 'lightPole', name: 'Фонарь уличный', shape: 'lightpole', w: 20, d: 20, h: 350, sym: 36, shadow: true },
     { key: 'groundRod', name: 'Контур заземления', shape: 'ground', w: 100, d: 100, h: 0 },
     { key: 'generator', name: 'Генератор', shape: 'labelbox', w: 70, d: 55, h: 55, label: 'ГЕН' },
@@ -357,6 +374,13 @@ const CATALOG = [
     { key: 'gate', name: 'Ворота откатные', kw: 'въезд забор ограда', shape: 'gateSlide', w: 400, d: 20, h: 200, shadow: true },
     { key: 'wicket', name: 'Калитка', kw: 'вход дверь забор ограда', shape: 'wicket', w: 100, d: 10, h: 200, shadow: true },
   ]},
+  // трассы: клик — инструмент «Сети» с этим видом (рисуется по точкам)
+  { id: 'networks', name: 'Сети и коммуникации', layer: 'electric', items: Object.entries({
+    water: 'вода водопровод трубы скважина хвс', hotwater: 'вода гвс горячая трубы', sewer: 'канализация септик стоки трубы',
+    drain: 'ливнёвка ливневка дренаж водоотвод', heating: 'отопление трубы тепло', warmfloor: 'тёплый теплый пол отопление',
+    gas: 'газ газопровод', power: 'электричество кабель электрика ввод', overhead: 'лэп вл провод столб опора электричество воздушная линия сип',
+    lowvolt: 'интернет сеть тв кабель слаботочка', ground: 'заземление контур',
+  }).map(([k, kw]) => ({ key: 'net_' + k, name: LINE_KINDS[k].name, shape: 'netIcon', kw: 'сети трасса коммуникации ' + kw, tool: 'line', lineKind: k, w: 100, d: 100, h: 0 })) },
   { id: 'porch', name: 'Крыльцо, веранда, терраса', layer: 'siteobj', items: [
     { key: 'porch', name: 'Крыльцо с козырьком', shape: 'veranda', w: 200, d: 150, h: 300, ph: 60, encl: 'rail', roofed: true, attached: true, stepW: 120, shadow: true },
     { key: 'porchOpen', name: 'Крыльцо открытое (площадка + ступени)', shape: 'veranda', w: 160, d: 120, h: 60, ph: 45, encl: 'open', roofed: false, attached: true, stepW: 120 },
@@ -1040,6 +1064,17 @@ const Painters = (() => {
     P.ctx.fillStyle = P.C.ink; circle(P, 0, 0, w / 4);
     line(P, [-w * 0.9, 0, w * 0.9, 0]);
     text(P, 'ЛЭП', 0, w * 1.05, w * 0.6, { bold: true });
+  };
+  /** Значок трассы в библиотеке: ломаная цветом и штрихом вида сети + обозначение */
+  S.netIcon = (P, w, d) => {
+    const k = LINE_KINDS[P.it.lineKind] || LINE_KINDS.water, c = P.ctx;
+    c.save(); c.strokeStyle = k.color; lw(P, 3.2); c.lineCap = 'round'; c.lineJoin = 'round';
+    c.setLineDash(k.dash.map(v => v * P.px * 0.8));
+    line(P, [-w * 0.42, d * 0.3, -w * 0.1, d * 0.3, -w * 0.1, -d * 0.1, w * 0.42, -d * 0.1]);
+    c.setLineDash([]);
+    if (P.it.lineKind === 'overhead') { c.fillStyle = P.C.itemFill; c.strokeStyle = k.color; lw(P, 1.6); for (const [x, y] of [[-w * 0.42, d * 0.3], [-w * 0.1, -d * 0.1], [w * 0.42, -d * 0.1]]) circle(P, x, y, w * 0.07); }
+    c.restore();
+    text(P, k.code, w * 0.12, d * 0.3, d * 0.3, { bold: true, color: k.color });
   };
   S.lightpole = (P, w) => {
     circle(P, 0, 0, w / 2);

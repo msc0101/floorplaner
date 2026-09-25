@@ -334,13 +334,14 @@ const UI = {
       det.append(U.el('summary', {}, cat.name, U.el('span', { class: 'count' }, String(items.length))));
       const grid = U.el('div', { class: 'lib-grid' });
       for (const it of items) {
-        const tip = it.tool ? `${it.name}\nРисуется по точкам, как стена; высота ${it.h} см` : it.action ? `${it.name}\nЗабор по всем сторонам границы участка` : `${it.name}\n${it.w}×${it.d} см, высота ${it.h} см`;
+        const tip = it.tool === 'line' ? `${it.name}\nТрасса: кликайте точки, двойной клик или Enter — готово` : it.tool ? `${it.name}\nРисуется по точкам, как стена; высота ${it.h} см` : it.action ? `${it.name}\nЗабор по всем сторонам границы участка` : `${it.name}\n${it.w}×${it.d} см, высота ${it.h} см`;
         const b = U.el('button', { class: 'lib-item' + (Tools.cur === 'place' && Tools.opts.placeKey === it.key ? ' active' : ''), title: tip, 'data-key': it.key, type: 'button' },
           U.el('img', { src: UI.thumb(it), alt: '' }),
           U.el('span', { class: 'lib-name' }, it.name),
-          U.el('span', { class: 'lib-size' }, it.tool ? `выс. ${it.h}` : it.action ? 'по участку' : `${it.w}×${it.d}`));
+          U.el('span', { class: 'lib-size' }, it.tool === 'line' ? LINE_KINDS[it.lineKind].code : it.tool ? `выс. ${it.h}` : it.action ? 'по участку' : `${it.w}×${it.d}`));
         b.addEventListener('click', () => {
-          if (it.tool) { Tools.set(it.tool, { mat: it.mat, h: it.h }); UI.toast(`${it.name}: кликайте точки забора, Esc — готово`); }
+          if (it.tool === 'line') { Tools.opts.lineKind = it.lineKind; Tools.set('line', { force: true }); UI.toast(`${it.name}: кликайте точки трассы, двойной клик или Enter — готово`); }
+          else if (it.tool) { Tools.set(it.tool, { mat: it.mat, h: it.h }); UI.toast(`${it.name}: кликайте точки забора, Esc — готово`); }
           else if (it.action === 'fenceAround') App.fenceAroundPlot();
           else Tools.set('place', { key: it.key });
           UI.closeDrawers();

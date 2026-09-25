@@ -80,6 +80,16 @@ const Roof = {
       [P(W, -D, 0), P(-W, -D, 0), P(0, -b, rise)],
     ];
   },
+  /** Высота низа кровли над точкой плана p (см) или null, если точка не под крышей */
+  zAt(r, p) {
+    const q = G.toLocal(p, r.x, r.y, r.rot || 0), W = r.w / 2, D = r.d / 2;
+    if (Math.abs(q.x) > W + 0.01 || Math.abs(q.y) > D + 0.01) return null;
+    const b = r.base || 0, t = Math.tan(U.rad(U.clamp(r.pitch || 0, 0, 75)));
+    if (r.type === 'flat') return b;
+    if (r.type === 'gable') return b + t * Math.max(0, D - Math.abs(q.y));
+    if (r.type === 'shed') return b + t * Math.max(0, D - q.y);
+    return b + t * Math.max(0, Math.min(W - Math.abs(q.x), D - Math.abs(q.y)));
+  },
   toWorld(r, q) { const p = G.toWorld({ x: q.u, y: q.v }, r.x, r.y, r.rot || 0); return { x: p.x, y: p.y, z: (r.base || 0) + q.z }; },
   faces(r) { return Roof.facesLocal(r).map(f => f.map(q => Roof.toWorld(r, q))); },
   /** Линии на плане: контур, коньки, рёбра */

@@ -337,6 +337,25 @@ const gd = await page.evaluate(() => {
 });
 console.log('guides', JSON.stringify(gd));
 if (gd.len !== 140 || gd.x !== 140105) errors.push('Подсказки расстояний: ' + JSON.stringify(gd));
+// сети в библиотеке; ЛЭП — опоры и ввод на стену; стены мансарды не выше ската крыши
+const net = await page.evaluate(() => {
+  const cat = CATALOG.find(c => c.id === 'networks'), r = { n: cat ? cat.items.length : 0 };
+  IO.loadDemo();
+  const ov = App.doc.lines.find(l => l.kind === 'overhead');
+  const poles = overheadPoles(ov, App.doc.items, App.doc.walls);
+  r.poles = poles.length; r.item = !!poles[0].item; r.wall = !!poles[poles.length - 1].wall;
+  const rf = App.doc.roofs[0];
+  r.zRidge = Math.round(Roof.zAt(rf, { x: rf.x, y: rf.y })); r.zOut = Roof.zAt(rf, { x: rf.x + rf.w, y: rf.y });
+  // без предметов и проводов выше конька может быть только сама кровля
+  const lines = App.doc.lines, o = { ...View3D.opts }; App.doc.lines = []; View3D.opts.items = false; View3D.opts.site = false; View3D.opts.roof = false;
+  const P = View3D.build().P; App.doc.lines = lines; Object.assign(View3D.opts, o); View3D.dirty = true;
+  let bad = 0;
+  for (let i = 0; i < P.length; i += 3) { const z = P[i + 1] * 100, h = Roof.zAt(rf, { x: P[i] * 100, y: P[i + 2] * 100 }); if (h !== null && z > h + 1) bad++; }
+  r.belowRoof = bad === 0; r.bad = bad;
+  return r;
+});
+console.log('networks', JSON.stringify(net));
+if (net.n !== 11 || net.poles !== 2 || !net.item || !net.wall || net.zRidge !== Math.round(440 + 510 * Math.tan(38 * Math.PI / 180)) || net.zOut !== null || !net.belowRoof) errors.push('Сети / ЛЭП / стены под крышей: ' + JSON.stringify(net));
 // заголовок вкладки — имя открытого файла
 const ttl = await page.evaluate(() => { const f0 = App.fileName; IO.setFile('Дача.json'); const t = document.title; IO.setFile(f0); return t; });
 console.log('title', ttl);
