@@ -340,7 +340,7 @@ const UI = {
           U.el('span', { class: 'lib-name' }, it.name),
           U.el('span', { class: 'lib-size' }, it.tool === 'line' ? LINE_KINDS[it.lineKind].code : it.tool ? `выс. ${it.h}` : it.action ? 'по участку' : `${it.w}×${it.d}`));
         b.addEventListener('click', () => {
-          if (it.tool === 'line') { Tools.opts.lineKind = it.lineKind; Tools.set('line', { force: true }); UI.toast(`${it.name}: кликайте точки трассы, двойной клик или Enter — готово`); }
+          if (it.tool === 'line') { if (Tools.cur === 'line' && Tools.st.pts && Tools.st.pts.length >= 2) Tools.finishLine(); Tools.opts.lineKind = it.lineKind; Tools.set('line', { force: true }); UI.toast(`${it.name}: кликайте точки трассы, двойной клик или Enter — готово`); }
           else if (it.tool) { Tools.set(it.tool, { mat: it.mat, h: it.h }); UI.toast(`${it.name}: кликайте точки забора, Esc — готово`); }
           else if (it.action === 'fenceAround') App.fenceAroundPlot();
           else Tools.set('place', { key: it.key });
@@ -830,7 +830,9 @@ const UI = {
       F.info('Точек', String(l.pts.length)),
       k.dia || l.dia ? F.num('Диаметр', l.dia, (v) => UI.set(l, 'dia', v), { unit: 'мм' }) : null,
       k.section !== undefined ? F.text('Сечение / марка', l.section || '', (v) => UI.set(l, 'section', v), { placeholder: k.section }) : null,
-      F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
+      l.kind === 'overhead' ? null : F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
+      l.kind === 'overhead' ? F.num('Охранная зона (в каждую сторону)', (l.zone ?? 200) / 100, (v) => UI.set(l, 'zone', Math.round(v * 100)), { unit: 'м', min: 0, max: 50, step: 0.5 }) : null,
+      l.kind === 'overhead' ? F.note('Опоры рисуются в вершинах и через ~40 м; столб из библиотеки в вершине заменяет нарисованный. Конец у стены дома — ввод (крюк на фасаде). Охранная зона ВЛ 0,4 кВ — 2 м, 10 кВ — 10 м: строить под проводами нельзя.') : null,
       F.text('Обозначение', l.label || '', (v) => UI.set(l, 'label', v.trim() || undefined), { placeholder: k.code }),
       F.text('Примечание', l.note || '', (v) => UI.set(l, 'note', v), { multiline: true }),
     ));

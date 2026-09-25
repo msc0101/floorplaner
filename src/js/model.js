@@ -189,11 +189,12 @@ const Model = {
     const same = (o, w) => o && G.dist(o.a, w.a) < 0.01 && G.dist(o.b, w.b) < 0.01;
     const seeds = App.doc.walls.filter(w => { const o = base.get(w.id); return w.kind === 'ext' && o && o.kind === 'ext' && Math.abs(o.th - w.th) > 0.01 && same(o, w); });
     if (!seeds.length) return;
-    const done = new Set();
+    // 1) цепочки и направления — по исходной геометрии; 2) сдвиги (сдвиг одной цепочки двигает углы соседних)
+    const done = new Set(), plan = [];
     for (const w of seeds) {
       if (done.has(w.id)) continue;
       const o = base.get(w.id), u = G.unit(G.sub(w.b, w.a)), n = G.perp(u), m = G.mid(w.a, w.b);
-      // прямая стена целиком: соседи на той же линии с тем же прежним сечением и нетронутые
+      // прямая стена целиком: соседи на той же линии с тем же прежним сечением (нетронутые или изменённые так же)
       const chain = [w]; done.add(w.id);
       for (let k = 0; k < chain.length; k++) {
         const c = chain[k];
@@ -205,6 +206,7 @@ const Model = {
           if (!['a', 'b'].some(e => G.distSeg(x[e], c.a, c.b) < 1 || G.distSeg(c[e], x.a, x.b) < 1)) continue;
           if (G.proj(x.a, w.a, w.b).perp > 0.5 || G.proj(x.b, w.a, w.b).perp > 0.5) continue;
           const changed = Math.abs(x.th - ox.th) > 0.01;
+          if (changed && Math.abs(x.th - w.th) > 0.01) continue;
           if (!changed) { x.th = w.th; if (w.ins) x.ins = w.ins; else delete x.ins; x.mat = w.mat; }
           chain.push(x); done.add(x.id);
         }
@@ -221,10 +223,12 @@ const Model = {
         out = G.dot(G.sub(c, m), n) > 0 ? -1 : 1;
       }
       const d = (w.th - o.th) / 2 * out;
-      const saveV = App.V;
-      App.V = Model.viewOf(fl(w));
-      try { Model.moveWalls(chain.map(x => x.id), n.x * d, n.y * d); } finally { App.V = saveV; }
+      plan.push({ ids: chain.map(x => x.id), dx: n.x * d, dy: n.y * d, floor: fl(w) });
     }
+    const saveV = App.V;
+    try {
+      for (const q of plan) { App.V = Model.viewOf(q.floor); Model.moveWalls(q.ids, q.dx, q.dy); }
+    } finally { App.V = saveV; }
   },
   undo() {
     if (Model._undo.length < 2) return false;

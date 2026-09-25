@@ -2738,11 +2738,12 @@ const Model = {
     const same = (o, w) => o && G.dist(o.a, w.a) < 0.01 && G.dist(o.b, w.b) < 0.01;
     const seeds = App.doc.walls.filter(w => { const o = base.get(w.id); return w.kind === 'ext' && o && o.kind === 'ext' && Math.abs(o.th - w.th) > 0.01 && same(o, w); });
     if (!seeds.length) return;
-    const done = new Set();
+    // 1) цепочки и направления — по исходной геометрии; 2) сдвиги (сдвиг одной цепочки двигает углы соседних)
+    const done = new Set(), plan = [];
     for (const w of seeds) {
       if (done.has(w.id)) continue;
       const o = base.get(w.id), u = G.unit(G.sub(w.b, w.a)), n = G.perp(u), m = G.mid(w.a, w.b);
-      // прямая стена целиком: соседи на той же линии с тем же прежним сечением и нетронутые
+      // прямая стена целиком: соседи на той же линии с тем же прежним сечением (нетронутые или изменённые так же)
       const chain = [w]; done.add(w.id);
       for (let k = 0; k < chain.length; k++) {
         const c = chain[k];
@@ -2754,6 +2755,7 @@ const Model = {
           if (!['a', 'b'].some(e => G.distSeg(x[e], c.a, c.b) < 1 || G.distSeg(c[e], x.a, x.b) < 1)) continue;
           if (G.proj(x.a, w.a, w.b).perp > 0.5 || G.proj(x.b, w.a, w.b).perp > 0.5) continue;
           const changed = Math.abs(x.th - ox.th) > 0.01;
+          if (changed && Math.abs(x.th - w.th) > 0.01) continue;
           if (!changed) { x.th = w.th; if (w.ins) x.ins = w.ins; else delete x.ins; x.mat = w.mat; }
           chain.push(x); done.add(x.id);
         }
@@ -2770,10 +2772,12 @@ const Model = {
         out = G.dot(G.sub(c, m), n) > 0 ? -1 : 1;
       }
       const d = (w.th - o.th) / 2 * out;
-      const saveV = App.V;
-      App.V = Model.viewOf(fl(w));
-      try { Model.moveWalls(chain.map(x => x.id), n.x * d, n.y * d); } finally { App.V = saveV; }
+      plan.push({ ids: chain.map(x => x.id), dx: n.x * d, dy: n.y * d, floor: fl(w) });
     }
+    const saveV = App.V;
+    try {
+      for (const q of plan) { App.V = Model.viewOf(q.floor); Model.moveWalls(q.ids, q.dx, q.dy); }
+    } finally { App.V = saveV; }
   },
   undo() {
     if (Model._undo.length < 2) return false;
@@ -8184,7 +8188,7 @@ const UI = {
           U.el('span', { class: 'lib-name' }, it.name),
           U.el('span', { class: 'lib-size' }, it.tool === 'line' ? LINE_KINDS[it.lineKind].code : it.tool ? `выс. ${it.h}` : it.action ? 'по участку' : `${it.w}×${it.d}`));
         b.addEventListener('click', () => {
-          if (it.tool === 'line') { Tools.opts.lineKind = it.lineKind; Tools.set('line', { force: true }); UI.toast(`${it.name}: кликайте точки трассы, двойной клик или Enter — готово`); }
+          if (it.tool === 'line') { if (Tools.cur === 'line' && Tools.st.pts && Tools.st.pts.length >= 2) Tools.finishLine(); Tools.opts.lineKind = it.lineKind; Tools.set('line', { force: true }); UI.toast(`${it.name}: кликайте точки трассы, двойной клик или Enter — готово`); }
           else if (it.tool) { Tools.set(it.tool, { mat: it.mat, h: it.h }); UI.toast(`${it.name}: кликайте точки забора, Esc — готово`); }
           else if (it.action === 'fenceAround') App.fenceAroundPlot();
           else Tools.set('place', { key: it.key });
@@ -8674,7 +8678,9 @@ const UI = {
       F.info('Точек', String(l.pts.length)),
       k.dia || l.dia ? F.num('Диаметр', l.dia, (v) => UI.set(l, 'dia', v), { unit: 'мм' }) : null,
       k.section !== undefined ? F.text('Сечение / марка', l.section || '', (v) => UI.set(l, 'section', v), { placeholder: k.section }) : null,
-      F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
+      l.kind === 'overhead' ? null : F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
+      l.kind === 'overhead' ? F.num('Охранная зона (в каждую сторону)', (l.zone ?? 200) / 100, (v) => UI.set(l, 'zone', Math.round(v * 100)), { unit: 'м', min: 0, max: 50, step: 0.5 }) : null,
+      l.kind === 'overhead' ? F.note('Опоры рисуются в вершинах и через ~40 м; столб из библиотеки в вершине заменяет нарисованный. Конец у стены дома — ввод (крюк на фасаде). Охранная зона ВЛ 0,4 кВ — 2 м, 10 кВ — 10 м: строить под проводами нельзя.') : null,
       F.text('Обозначение', l.label || '', (v) => UI.set(l, 'label', v.trim() || undefined), { placeholder: k.code }),
       F.text('Примечание', l.note || '', (v) => UI.set(l, 'note', v), { multiline: true }),
     ));
