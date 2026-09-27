@@ -1451,6 +1451,7 @@ const CATALOG = [
     { key: 'radiatorLong', name: 'Радиатор длинный', shape: 'radiator', w: 140, d: 10, h: 50 },
     { key: 'manifold', name: 'Коллектор', shape: 'labelbox', w: 50, d: 12, h: 40, label: 'Кол' },
     { key: 'pump', name: 'Циркуляционный насос', shape: 'pump', w: 18, d: 18, h: 15 },
+    { key: 'expansionTank', name: 'Расширительный бак (мембранный)', kw: 'бак отопление котельная', shape: 'boiler', w: 36, d: 36, h: 50 },
   ]},
   { id: 'vent', name: 'Вентиляция', layer: 'heating', items: [
     // вытяжка — через вентканалы выше крыши (высота «по норме» считается сама), приток — клапаны в стенах жилых комнат
@@ -1488,7 +1489,9 @@ const CATALOG = [
     { key: 'meter', name: 'Счётчик / ВРУ', shape: 'labelbox', w: 30, d: 20, h: 50, label: 'Wh', sym: 28 },
     { key: 'fan', name: 'Вытяжной вентилятор', shape: 'fan', w: 20, d: 20, h: 250, sym: 20 },
     { key: 'pole', name: 'Столб ЛЭП', kw: 'опора лэп вл электричество', shape: 'pole', w: 25, d: 25, h: 1000, sym: 40, layer: 'electric', shadow: true },
-    { key: 'lightPole', name: 'Фонарь уличный', shape: 'lightpole', w: 20, d: 20, h: 350, sym: 36, shadow: true },
+    { key: 'lightPole', name: 'Фонарь уличный', kw: 'освещение фонарь столб улица', shape: 'lightpole', w: 20, d: 20, h: 350, sym: 36, shadow: true },
+    { key: 'bollardLight', name: 'Светильник-столбик садовый', kw: 'освещение дорожка сад столбик', shape: 'bollard', w: 14, d: 14, h: 80, sym: 24 },
+    { key: 'facadeLight', name: 'Светильник фасадный (уличный)', kw: 'освещение фасад крыльцо улица бра', shape: 'facadeLight', w: 16, d: 14, h: 210, sym: 22 },
     { key: 'groundRod', name: 'Контур заземления', shape: 'ground', w: 100, d: 100, h: 0 },
     { key: 'generator', name: 'Генератор', shape: 'labelbox', w: 70, d: 55, h: 55, label: 'ГЕН' },
   ]},
@@ -1504,9 +1507,12 @@ const CATALOG = [
     { key: 'drainWell', name: 'Дренажный колодец', shape: 'ring', w: 100, d: 100, h: 10, label: 'ДК' },
     { key: 'filterField', name: 'Поле фильтрации', shape: 'filterfield', w: 300, d: 400, h: 0 },
     { key: 'riser', name: 'Стояк канализации Ø110', shape: 'riser', w: 12, d: 12, h: 300, sym: 16 },
+    { key: 'faucetOut', name: 'Кран уличный незамерзающий (на фасаде)', kw: 'кран полив вода улица незамерзающий', shape: 'faucetOut', w: 8, d: 15, h: 50, sym: 22 },
+    { key: 'gardenHydrant', name: 'Колонка садовая незамерзающая (гидрант)', kw: 'кран полив вода огород колонка гидрант', shape: 'hydrant', w: 20, d: 20, h: 90, sym: 24 },
     { key: 'waterIn', name: 'Ввод воды', shape: 'labelbox', w: 20, d: 20, h: 50, label: 'В1', sym: 24 },
     { key: 'pumpStation', name: 'Насосная станция', shape: 'pump', w: 50, d: 30, h: 60 },
-    { key: 'filter', name: 'Фильтр / водоподготовка', shape: 'boiler', w: 40, d: 40, h: 150 },
+    { key: 'filter', name: 'Фильтр / водоподготовка (колонна)', kw: 'обезжелезивание умягчение скважина вода', shape: 'boiler', w: 40, d: 40, h: 150 },
+    { key: 'hydroTank', name: 'Гидроаккумулятор 100 л с автоматикой', kw: 'насос скважина бак вода котельная', shape: 'boiler', w: 50, d: 50, h: 85 },
     { key: 'tap', name: 'Кран поливочный', shape: 'tap', w: 10, d: 10, h: 60, sym: 18 },
     { key: 'rainBarrel', name: 'Бочка / ёмкость', shape: 'round', w: 80, d: 80, h: 100, shadow: true },
   ]},
@@ -1540,6 +1546,10 @@ const CATALOG = [
     { key: 'compost', name: 'Компостер', shape: 'labelbox', w: 100, d: 100, h: 90, label: 'Компост' },
     { key: 'parking', name: 'Парковочное место', shape: 'parking', w: 250, d: 530, h: 0 },
     { key: 'car', name: 'Автомобиль', shape: 'car', w: 185, d: 460, h: 150, shadow: true },
+  ]},
+  { id: 'sport', name: 'Спорт и отдых', layer: 'furniture', items: [
+    { key: 'pingpong', name: 'Стол для настольного тенниса', kw: 'пинг-понг теннис спорт', shape: 'pingpong', w: 274, d: 153, h: 76 },
+    { key: 'trampoline', name: 'Батут с сеткой Ø3 м', kw: 'батут дети спорт', shape: 'trampoline', w: 305, d: 305, h: 250, shadow: true },
   ]},
   { id: 'pits', name: 'Погреба и ямы', layer: 'siteobj', items: [
     { key: 'cellar', name: 'Погреб с лестницей', kw: 'подвал кессон яма', shape: 'pit', w: 200, d: 250, h: 0, pitDepth: 250, stair: 'stairs', stairSide: 'back', stairW: 70, cover: 'hatch' },
@@ -2185,7 +2195,8 @@ const Painters = (() => {
   S.boiler = (P, w, d) => {
     ell(P, 0, 0, w / 2, d / 2); thin(P);
     ell(P, 0, 0, w / 2 - 5, d / 2 - 5, false);
-    text(P, P.def.key === 'filter' ? 'Ф' : 'Б', 0, 0, Math.min(w, d) * 0.4, { bold: true });
+    const lb = { filter: 'Ф', expansionTank: 'РБ', hydroTank: 'ГА', indirect: 'БКН' }[P.def.key] || 'Б';
+    text(P, lb, 0, 0, Math.min(w, d) * (lb.length > 1 ? 0.28 : 0.4), { bold: true });
   };
   S.radiator = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 1); thin(P);
@@ -2239,6 +2250,23 @@ const Painters = (() => {
   S.ventGrille = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); for (let x = -w / 2 + w / 5; x < w / 2 - 1; x += w / 5) line(P, [x, -d / 2, x, d / 2]); lw(P, 1.2); ventArrow(P, w, d * 2, false); };
   S.ventSupply = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); circle(P, 0, 0, Math.min(w, d) * 0.35, false); lw(P, 1.2); ventArrow(P, w, d * 2, true); };
   S.ventTransfer = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); for (let x = -w / 2 + w / 6; x < w / 2 - 1; x += w / 6) line(P, [x, -d / 2, x, d / 2]); };
+  S.pingpong = (P, w, d) => {
+    P.ctx.fillStyle = '#2f5d8a'; box(P, -w / 2, -d / 2, w, d, 1);
+    P.ctx.strokeStyle = '#ffffff'; thin(P); box(P, -w / 2 + 2, -d / 2 + 2, w - 4, d - 4, 0, false); line(P, [-w / 2 + 2, 0, w / 2 - 2, 0]);
+    P.ctx.strokeStyle = P.C.ink; lw(P, 2); line(P, [0, -d / 2 - 15, 0, d / 2 + 15]);
+  };
+  S.trampoline = (P, w, d) => { circle(P, 0, 0, Math.min(w, d) / 2); thin(P); circle(P, 0, 0, Math.min(w, d) / 2 - 25, false); for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2, r = Math.min(w, d) / 2; circle(P, Math.cos(a) * r, Math.sin(a) * r, 3); } };
+  // кран на фасаде: пластина у стены и излив наружу
+  S.faucetOut = (P, w, d) => { box(P, -w / 2, -d / 2, w, d * 0.35, 0); thin(P); line(P, [0, -d / 2 + d * 0.35, 0, d / 2]); circle(P, 0, d / 2 - 2, w * 0.35); };
+  S.hydrant = (P, w, d) => { circle(P, 0, 0, Math.min(w, d) * 0.3); thin(P); line(P, [0, 0, 0, d / 2]); line(P, [-w / 2, -d * 0.25, w / 2, -d * 0.25]); };
+  // светильники: круг с крестом (условный знак)
+  S.bollard = (P, w, d) => { const r = Math.min(w, d) / 2; circle(P, 0, 0, r); thin(P); line(P, [-r * 0.7, -r * 0.7, r * 0.7, r * 0.7]); line(P, [r * 0.7, -r * 0.7, -r * 0.7, r * 0.7]); };
+  S.facadeLight = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d * 0.3, 0); thin(P);
+    const c = P.ctx, r = Math.min(w / 2, d * 0.7);
+    c.beginPath(); c.arc(0, -d / 2 + d * 0.3, r, 0, Math.PI); c.stroke();
+    line(P, [-r * 0.6, -d / 2 + d * 0.3, r * 0.6, -d / 2 + d * 0.3 + r * 0.8]); line(P, [r * 0.6, -d / 2 + d * 0.3, -r * 0.6, -d / 2 + d * 0.3 + r * 0.8]);
+  };
   S.chimney = (P, w, d) => { P.ctx.fillStyle = P.C.inkSoft; box(P, -w / 2, -d / 2, w, d, 0); thin(P); P.ctx.fillStyle = P.C.itemFill; box(P, -w / 2 + 5, -d / 2 + 5, w - 10, d - 10, 0); };
   S.column = (P, w, d) => { P.ctx.fillStyle = P.C.wallExt; box(P, -w / 2, -d / 2, w, d, 0); };
   S.columnRound = (P, w, d) => { P.ctx.fillStyle = P.C.wallExt; ell(P, 0, 0, w / 2, d / 2); };
@@ -6058,25 +6086,53 @@ const View3D = {
             const z0 = e, z1 = e + oh;
             prism(rect(0, 5, -t, t), z0, z1, white); prism(rect(g.width - 5, g.width, -t, t), z0, z1, white); prism(rect(0, g.width, -t, t), z1 - 5, z1, white);
             const leafCol = op.type === 'gate' ? View3D.hex('#9aa3ab') : w.kind === 'ext' ? View3D.hex('#6b4a33') : View3D.hex('#b08a64');
-            prism(rect(5, g.width - 5, -2, 2), z0, z1 - 5, leafCol);
-            // ручки с обеих сторон полотна (у двустворчатых — у притвора)
-            if (op.type !== 'gate' && op.type !== 'slide') {
-              const W2 = g.width, hs = op.type === 'door2' ? [W2 / 2 - 9, W2 / 2 + 9] : op.type === 'door15' ? [op.hinge ? W2 / 3 - 9 : W2 * 2 / 3 - 9] : [op.hinge ? 14 : W2 - 14];
-              const chrome = [0.78, 0.8, 0.82];
-              for (const sh of hs) for (const k of [-1, 1]) {
-                prism(rect(sh - 1.5, sh + 1.5, k * 2, k * 4.5), z0 + 98, z0 + 104, chrome);                          // шток
-                const dir = sh > W2 / 2 ? -1 : 1;
-                prism(rect(Math.min(sh, sh + dir * 13), Math.max(sh, sh + dir * 13), k * 4.5, k * 6.5), z0 + 99, z0 + 103, chrome);   // рычаг
+            const W2 = g.width, chrome = [0.78, 0.8, 0.82];
+            if (op.type === 'gate') {
+              prism(rect(5, W2 - 5, -2, 2), z0, z1 - 5, leafCol);
+              for (let z = z0 + 45; z < z1 - 10; z += 45) prism(rect(5, W2 - 5, -2.5, 2.5), z, z + 1.5, View3D.hex('#7d858d'));
+            } else {
+              // наличники с обеих сторон стены
+              const cas = [0.93, 0.92, 0.9];
+              for (const k of [-1, 1]) {
+                const k0 = k * t, k1 = k * (t + 1.2);
+                prism(rect(-7, 0, Math.min(k0, k1), Math.max(k0, k1)), z0, z1 + 7, cas);
+                prism(rect(W2, W2 + 7, Math.min(k0, k1), Math.max(k0, k1)), z0, z1 + 7, cas);
+                prism(rect(-7, W2 + 7, Math.min(k0, k1), Math.max(k0, k1)), z1, z1 + 7, cas);
               }
-            } else if (op.type === 'slide') prism(rect(g.width - 16, g.width - 12, -3.5, 3.5), z0 + 80, z0 + 120, [0.78, 0.8, 0.82]);
-            if (op.type === 'gate') for (let z = z0 + 45; z < z1 - 10; z += 45) prism(rect(5, g.width - 5, -2.5, 2.5), z, z + 1.5, View3D.hex('#7d858d'));
+              // створки: двустворчатая — две равные, полуторная — широкая + узкая; между ними притвор
+              const seam = op.type === 'door2' ? W2 / 2 : op.type === 'door15' ? (op.hinge ? W2 / 3 : W2 * 2 / 3) : null;
+              const leaves = seam == null ? [[5, W2 - 5]] : [[5, seam - 0.4], [seam + 0.4, W2 - 5]];
+              const panel = leafCol.map(x => Math.min(1, x * 1.12)), frost = [0.82, 0.87, 0.9];
+              const glassy = op.type === 'door2' && w.kind !== 'ext';                  // межкомнатная двустворчатая — со стеклом
+              for (const [s0, s1] of leaves) {
+                prism(rect(s0, s1, -2, 2), z0 + 1, z1 - 5, leafCol);
+                if (op.type === 'slide') continue;
+                // филёнки с обеих сторон: нижняя и верхняя (у стеклянной — матовое стекло)
+                const m = Math.min(9, (s1 - s0) * 0.18), hLeaf = z1 - 5 - z0;
+                const pz = [[z0 + 12, z0 + hLeaf * 0.42], [z0 + hLeaf * 0.5, z1 - 17]];
+                for (const [pa, pb] of pz) for (const k of [-1, 1]) {
+                  const up = pa > z0 + hLeaf * 0.45;
+                  prism(rect(s0 + m, s1 - m, Math.min(k * 2, k * 2.6), Math.max(k * 2, k * 2.6)), pa, pb, glassy && up ? frost : panel);
+                }
+              }
+              if (seam != null) prism(rect(seam - 0.4, seam + 0.4, -1.5, 1.5), z0 + 1, z1 - 5, leafCol.map(x => x * 0.55));   // притвор
+              // ручки с обеих сторон: у двустворчатой — на обеих створках у притвора, у полуторной — на широкой
+              if (op.type !== 'slide') {
+                const hs = op.type === 'door2' ? [[seam - 9, -1], [seam + 9, 1]] : op.type === 'door15' ? [[op.hinge ? seam + 9 : seam - 9, op.hinge ? 1 : -1]] : [op.hinge ? [14, 1] : [W2 - 14, -1]];
+                for (const [hp, dir] of hs) for (const k of [-1, 1]) {
+                  prism(rect(hp - 1.5, hp + 1.5, Math.min(k * 2, k * 4.5), Math.max(k * 2, k * 4.5)), z0 + 98, z0 + 104, chrome);                     // шток
+                  prism(rect(Math.min(hp, hp + dir * 13), Math.max(hp, hp + dir * 13), Math.min(k * 4.5, k * 6.5), Math.max(k * 4.5, k * 6.5)), z0 + 99, z0 + 103, chrome);   // рычаг
+                  prism(rect(hp - 2.5, hp + 2.5, Math.min(k * 2, k * 2.8), Math.max(k * 2, k * 2.8)), z0 + 85, z0 + 91, chrome);                       // накладка замка
+                }
+              } else prism(rect(W2 - 16, W2 - 12, -3.5, 3.5), z0 + 80, z0 + 120, chrome);
+            }
           }
         }
       }
       if (View3D.opts.items) for (const it of App.V.items) {
         const def = catItem(it.key);
         if (def.shape === 'rug') continue;
-        View3D.item(it, def, e, top => top);
+        View3D.item(it, def, e + View3D.deckZ(it), top => top);
       }
       // надземный газопровод: жёлтая труба на высоте, стойки на участке (у стен — кронштейны)
       for (const l of App.V.lines) {
@@ -6183,6 +6239,7 @@ const View3D = {
     const wood = C('#b88a5a'), white = C('#f1f2f3'), fabric = C('#8a98ad'), metal = C('#9aa3ab'), dark = C('#3a3d42');
     // --- символы (электрика и т.п.): маленькие объекты на своей высоте ---
     if (def.sym) {
+      if (View3D.fixture(it, def, e, e, e + H)) return;
       if (sh === 'pole') {
         cyl(it.x, it.y, 13, e, e + H, C('#8a7a66'), 10);
         box(it.x, it.y, 180, 12, rot, e + H - 60, e + H - 48, C('#6f6254'));
@@ -6208,6 +6265,11 @@ const View3D = {
       const hh = sh === 'panel' ? 60 : sh === 'labelbox' ? 40 : 8;
       box(it.x, it.y, sz, dd, rot, mountZ - hh / 2, mountZ + hh / 2, sh === 'panel' ? C('#cfd3d8') : white);
       return;
+    }
+    // --- детальные модели сантехники, мебели, оборудования (см. fixture) ---
+    {
+      const uz = sh === 'upper' ? 140 : sh === 'hood' ? 155 : 0;
+      if (View3D.fixture(it, def, e, e + uz, e + uz + Math.max(2, H))) return;
     }
     // --- озеленение ---
     if (sh === 'tree' || sh === 'conifer' || sh === 'bush') {
@@ -6279,7 +6341,6 @@ const View3D = {
       sink: white, vanity: C('#e8e2d8'), radiator: white, stoveHeat: C('#b5654a'), fireplace: C('#9c8f86'), fireplaceCorner: C('#9c8f86'), stoveMetal: dark,
       chimney: C('#8f5a45'), column: C('#d6d2ca'), septic: C('#5e7d4f'), capsule: C('#dfe3e6'), bbq: dark, gateSlide: metal, wicket: metal, labelbox: C('#d0ccc4'),
     }[sh] || (def.layer === 'furniture' ? wood : C('#d0ccc4'));
-    if (View3D.fixture(it, def, e, z0, z1)) return;
     if (sh === 'bed') {
       box(it.x, it.y, it.w, it.d, rot, z0, z0 + 28, C('#9a7550'));
       box(it.x, it.y, it.w - 6, it.d - 10, rot, z0 + 28, z0 + Math.max(45, H), colorOf);
@@ -6489,6 +6550,65 @@ const View3D = {
       const [ax, ay] = at(16); bx(Math.min(rx, ax) - 1, Math.min(ry, ay) - 1, Math.max(rx, ax) + 1, Math.max(ry, ay) + 1, hz - 1.5, hz, chrome);
       const [hx2, hy2] = at(26); cy(hx2, hy2, 12, hz - 2.5, hz - 0.5, chrome, 16);
       const [sx, sy] = at(8); cy(sx, sy, 3, z + 125, z + 145, chrome, 8);                                     // ручная лейка на держателе
+      return true;
+    }
+    // --- стол для настольного тенниса: синяя столешница с белой разметкой, сетка со стойками, складное основание на колёсах ---
+    if (sh === 'pingpong') {
+      const top = e + (H || 76), blue = [0.12, 0.3, 0.52], wh = [0.97, 0.97, 0.97], frame = [0.2, 0.21, 0.23];
+      bx(-W, -D, W, D, top - 2.5, top, blue);
+      for (const [x0, y0, x1, y1] of [[-W, -D, W, -D + 2], [-W, D - 2, W, D], [-W, -D, -W + 2, D], [W - 2, -D, W, D], [-W, -0.3, W, 0.3]]) bx(x0, y0, x1, y1, top, top + 0.1, wh);
+      for (const s2 of [-1, 1]) { bx(-1, s2 * (D + 15) - 1.5, 1, s2 * (D + 15) + 1.5, top - 4, top + 15.25, frame); bx(-1.5, Math.min(s2 * D, s2 * (D + 16)), 1.5, Math.max(s2 * D, s2 * (D + 16)), top - 4, top - 1, frame); }   // стойки и кронштейны сетки
+      bx(-0.3, -D - 15, 0.3, D + 15, top, top + 13.5, [0.12, 0.12, 0.14], { glass: true });                       // сетка
+      bx(-0.5, -D - 15, 0.5, D + 15, top + 13.5, top + 15.25, wh);                                                   // белая лента
+      for (const s1 of [-1, 1]) {
+        const x = s1 * (W - 35);
+        for (const s2 of [-1, 1]) { cy(x, s2 * (D - 20), 2, e + 8, top - 2.5, frame, 8); cy(x, s2 * (D - 20), 4, e, e + 8, [0.1, 0.1, 0.1], 10); }
+        bx(x - 1.5, -D + 20, x + 1.5, D - 20, e + 20, e + 23, frame);
+        bx(x - 1.5, -D + 20, x + 1.5, D - 20, top - 8, top - 5, frame);
+      }
+      bx(-W + 35, -1.5, W - 35, 1.5, e + 40, e + 43, frame);                                                        // продольная связь
+      return true;
+    }
+    if (sh === 'trampoline') {
+      const zm = e + 75, R = Math.min(W, D), n = 8;
+      for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2, px = Math.cos(a) * R, py = Math.sin(a) * R; cy(px, py, 2, e, e + (H || 250), [0.25, 0.27, 0.3], 8); }
+      View3D._g.prism(Array.from({ length: 24 }, (_, k) => { const a = k / 24 * Math.PI * 2; return L(Math.cos(a) * R, Math.sin(a) * R); }), zm - 3, zm, [0.25, 0.45, 0.75]);   // защитный мат
+      View3D._g.prism(Array.from({ length: 24 }, (_, k) => { const a = k / 24 * Math.PI * 2; return L(Math.cos(a) * (R - 25), Math.sin(a) * (R - 25)); }), zm, zm + 0.5, [0.08, 0.08, 0.09]);   // полотно
+      for (let k = 0; k < 24; k++) { const a0 = k / 24 * Math.PI * 2, a1 = (k + 1) / 24 * Math.PI * 2; face([V(Math.cos(a0) * R, Math.sin(a0) * R, zm), V(Math.cos(a1) * R, Math.sin(a1) * R, zm), V(Math.cos(a1) * R, Math.sin(a1) * R, e + (H || 250)), V(Math.cos(a0) * R, Math.sin(a0) * R, e + (H || 250))], [0.2, 0.2, 0.22], V(0, 0, zm + 50), true); }   // сетка
+      return true;
+    }
+    // --- уличный кран на фасаде: пластина, корпус, маховик и излив вниз ---
+    if (sh === 'faucetOut') {
+      const z = e + (H || 50), br = [0.72, 0.62, 0.38];
+      bx(-4, -D, 4, -D + 1.5, z - 5, z + 5, br);
+      bx(-2, -D + 1.5, 2, -D + 10, z - 2, z + 2, br);
+      bx(-1.5, -D + 8, 1.5, -D + 11, z - 7, z - 2, br);                                                             // излив
+      cy(0, -D + 5, 3, z + 2, z + 3, [0.75, 0.15, 0.12], 10);                                                       // маховик
+      return true;
+    }
+    if (sh === 'hydrant') {
+      const top = e + (H || 90), gr = [0.25, 0.42, 0.3];
+      bx(-12, -12, 12, 12, e, e + 1, [0.55, 0.53, 0.5]);                                                            // площадка
+      cy(0, 0, 3, e, top - 8, gr, 10);
+      bx(-4, -4, 4, 4, top - 8, top, gr);
+      bx(-1, -4, 1, 14, top, top + 2, [0.2, 0.2, 0.22]);                                                            // рычаг
+      bx(-1.5, 3, 1.5, 12, top - 25, top - 22, gr); bx(-1.5, 9, 1.5, 12, top - 32, top - 22, gr);                   // излив
+      return true;
+    }
+    // --- уличные светильники: столбик и фасадный ---
+    if (sh === 'bollard') {
+      const top = e + (H || 80), dk = [0.18, 0.19, 0.2];
+      cy(0, 0, W * 0.9, e, e + 3, dk, 12);
+      cy(0, 0, W * 0.5, e + 3, top - 16, dk, 12);
+      cy(0, 0, W * 0.55, top - 16, top - 3, [1, 0.93, 0.72], 12);                                                     // плафон
+      cy(0, 0, W * 0.75, top - 3, top, dk, 12);
+      return true;
+    }
+    if (sh === 'facadeLight') {
+      const z = e + (H || 210), dk = [0.18, 0.19, 0.2];
+      bx(-W * 0.5, -D, W * 0.5, -D + 2, z - 12, z + 12, dk);
+      bx(-W * 0.4, -D + 2, W * 0.4, -D + D * 1.2, z - 8, z + 6, [1, 0.93, 0.72]);
+      bx(-W * 0.5, -D + 2, W * 0.5, -D + D * 1.4, z + 6, z + 9, dk);
       return true;
     }
     // --- офисное кресло: пятилучье на роликах, газлифт, сиденье, спинка, подлокотники ---
@@ -6708,6 +6828,113 @@ const View3D = {
       sheet(70);
       return true;
     }
+    // --- котельная: котлы, баки, водоподготовка, газовый счётчик и кран, коллектор, щит ---
+    const red = [0.78, 0.18, 0.14], blue = [0.2, 0.4, 0.75], yellow = [0.93, 0.75, 0.1], grey = [0.62, 0.64, 0.67];
+    if (it.key === 'gasBoilerWall' || it.key === 'elBoiler') {
+      const gas = it.key === 'gasBoilerWall', hb = gas ? Math.max(60, H || 72) : Math.max(45, H || 60), zb = e + (gas ? 95 : 110), zt = zb + hb;
+      bx(-W, -D, W, D, zb, zt, [0.95, 0.95, 0.94]);
+      bx(-W + 3, D, W - 3, D + 0.4, zb + 6, zb + hb * 0.28, [0.84, 0.85, 0.87]);                                    // панель управления
+      bx(-6, D + 0.4, 6, D + 0.7, zb + hb * 0.14, zb + hb * 0.24, [0.08, 0.14, 0.2]);                             // дисплей
+      const cols = gas ? [red, blue, yellow, blue, red] : [red, red.map(x => x * 0.8), blue];
+      cols.forEach((c2, i) => { const x = -W * 0.6 + i * (W * 1.2 / Math.max(1, cols.length - 1)); cy(x, -D + 9, 1.1, zb - 30, zb, c2, 8); bx(x - 2, -D + 7, x + 2, -D + 11, zb - 16, zb - 12, c2.map(v => v * 0.8)); });
+      if (gas) { cy(0, -D + 10, 5, zt, zt + 18, [0.92, 0.92, 0.92], 14); bx(-5, -D, 5, -D + 15, zt + 10, zt + 20, [0.92, 0.92, 0.92]); }   // коаксиальный дымоход в стену / канал
+      else bx(W - 6, -D, W - 2, -D + 3, zb - 40, zb, [0.15, 0.15, 0.16]);                                          // кабель
+      return true;
+    }
+    if (it.key === 'boilerFloor') {
+      const top = e + (H || 85);
+      bx(-W, -D, W, D, e, top, [0.93, 0.93, 0.92]);
+      bx(-W + 3, D, W - 3, D + 0.4, top - 18, top - 4, [0.84, 0.85, 0.87]); bx(-7, D + 0.4, 7, D + 0.7, top - 14, top - 8, [0.08, 0.14, 0.2]);
+      cy(0, -D + 12, 7, top, top + 30, grey, 14);
+      for (const [x, c2] of [[-W + 8, red], [W - 8, blue]]) cy(x, -D + 5, 1.5, top, top + 25, c2, 8);
+      return true;
+    }
+    if (sh === 'boiler') {
+      const k = it.key, R = Math.min(W, D) - 1, white = [0.94, 0.94, 0.93];
+      if (k === 'expansionTank') {
+        const zb = e + 60, zt = zb + (H || 50);
+        cy(0, 0, R, zb, zt, red, 18); cy(0, 0, R * 0.3, zt, zt + 3, grey, 8);
+        cy(0, 0, 1.2, zb - 25, zb, grey, 8); bx(-3, -D, 3, -D + 2, zb + 10, zt - 10, grey);                           // подводка и кронштейн
+        return true;
+      }
+      if (k === 'hydroTank') {
+        for (const [px, py] of [[-R * 0.6, -R * 0.6], [R * 0.6, -R * 0.6], [0, R * 0.7]]) cy(px, py, 1.5, e, e + 10, grey, 6);
+        cy(0, 0, R, e + 10, e + (H || 85) - 8, blue, 20); cy(0, 0, R * 0.8, e + (H || 85) - 8, e + (H || 85) - 4, blue.map(x => x * 0.85), 18);
+        const zt = e + (H || 85) - 4;
+        cy(0, 0, 2, zt, zt + 10, grey, 8); bx(-6, -3, 6, 3, zt + 10, zt + 13, grey);                               // штуцер и коллектор
+        bx(-9, -3, -5, 3, zt + 13, zt + 20, [0.2, 0.2, 0.22]); cy(6, 0, 3, zt + 13, zt + 14, white, 12);         // реле давления и манометр
+        return true;
+      }
+      if (k === 'filter') {
+        cy(0, 0, R * 0.62, e, e + (H || 150) - 22, [0.22, 0.32, 0.55], 18);
+        bx(-9, -9, 9, 9, e + (H || 150) - 22, e + (H || 150), [0.14, 0.14, 0.16]);                                   // блок управления
+        bx(-3, D - 10, 3, D - 2, e + (H || 150) - 10, e + (H || 150) - 4, [0.3, 0.6, 0.9]);
+        for (const x of [-12, 12]) cy(x, 0, 1.2, e + (H || 150) - 16, e + 200, grey, 8);
+        return true;
+      }
+      if (k === 'indirect') {
+        for (const [px, py] of [[-R * 0.6, -R * 0.6], [R * 0.6, -R * 0.6], [0, R * 0.7]]) cy(px, py, 2, e, e + 6, grey, 6);
+        cy(0, 0, R, e + 6, e + (H || 120) - 6, white, 22); cy(0, 0, R * 0.85, e + (H || 120) - 6, e + (H || 120), white.map(x => x * 0.95), 20);
+        for (const [z, c2] of [[0.25, blue], [0.45, red], [0.62, blue], [0.8, red]]) bx(-3, R - 2, 3, R + 6, e + (H || 120) * z - 1.5, e + (H || 120) * z + 1.5, c2);
+        cy(0, 0, 1.5, e + (H || 120), e + (H || 120) + 12, grey, 8);
+        return true;
+      }
+      // водонагреватель — на стене
+      const zb = e + 110, zt = zb + (H || 60);
+      cy(0, 0, R, zb, zt, white, 20); cy(0, 0, R * 0.3, zb - 3, zb, grey, 10);
+      for (const [x, c2] of [[-8, blue], [8, red]]) cy(x, 0, 1.1, zb - 35, zb - 3, c2, 8);
+      return true;
+    }
+    if (it.key === 'pumpStation') {
+      const top = e + (H || 60);
+      cy(0, 0, Math.min(W, D) - 2, e + 5, top - 22, blue, 18);                                                       // бак
+      bx(-12, -8, 12, 8, top - 22, top - 8, [0.3, 0.32, 0.36]); cy(0, 0, 7, top - 8, top, [0.3, 0.32, 0.36], 12);   // насос
+      bx(8, -3, 14, 3, top - 20, top - 12, [0.2, 0.2, 0.22]);
+      return true;
+    }
+    if (it.key === 'pump') {
+      const z = e + 45;
+      cy(0, 0, 1.6, z - 20, z + 25, grey, 8);
+      bx(-5, -6, 5, 6, z - 4, z + 4, [0.8, 0.2, 0.15]); cy(0, 0, 5.5, z + 4, z + 11, [0.8, 0.2, 0.15], 12);
+      return true;
+    }
+    if (it.key === 'manifold') {
+      const zb = e + 50;
+      for (const [z, c2] of [[zb + 30, red], [zb + 8, blue]]) {
+        bx(-W, -D + 4, W, -D + 8, z - 2, z + 2, c2.map(x => x * 0.9));
+        for (let x = -W + 8; x <= W - 8; x += Math.max(8, (w - 16) / 5)) cy(x, -D + 6, 1, z - 18, z - 2, grey, 6);
+      }
+      bx(-W - 3, -D, -W - 1, -D + 6, zb, zb + 40, grey); bx(W + 1, -D, W + 3, -D + 6, zb, zb + 40, grey);           // кронштейны
+      return true;
+    }
+    if (it.key === 'gasMeter') {
+      const zc = e + ((H || 0) < 100 ? 160 : H);
+      bx(-W, -D, W, D, zc - 17, zc + 17, [0.78, 0.8, 0.8]);
+      bx(-W + 5, D, W - 5, D + 0.4, zc + 2, zc + 10, [0.12, 0.13, 0.15]);                                         // окошко с цифрами
+      for (const x of [-W + 6, W - 6]) cy(x, 0, 1.6, zc + 17, e + 225, yellow, 8);                                  // газ вход / выход
+      return true;
+    }
+    if (it.key === 'gasValve') {
+      const z = e + (H || 150);
+      cy(0, 0, 1.6, z - 30, z + 30, yellow, 8);
+      bx(-2.5, -2.5, 2.5, 2.5, z - 3, z + 3, yellow.map(x => x * 0.8));
+      bx(-1, 0, 1, 12, z + 3, z + 5, [0.85, 0.15, 0.1]);                                                            // рычаг
+      return true;
+    }
+    if (it.key === 'waterIn') {
+      cy(0, 0, 1.8, e, e + 110, blue, 8);
+      bx(-3, -3, 3, 3, e + 40, e + 46, [0.72, 0.62, 0.38]); bx(-1, 0, 1, 10, e + 46, e + 48, [0.85, 0.15, 0.1]);   // кран
+      cy(0, 5, 3.5, e + 70, e + 71, [0.96, 0.96, 0.96], 12);                                                        // манометр
+      return true;
+    }
+    if (sh === 'panel') {
+      const zb = e + 120, zt = zb + Math.max(40, it.h || 60);
+      bx(-W, -D, W, D, zb, zt, [0.88, 0.89, 0.9]);
+      bx(-W + 2, D, W - 2, D + 0.4, zb + 2, zt - 2, [0.84, 0.85, 0.87]);
+      bx(-W + 6, D + 0.4, W - 6, D + 0.6, zt - 22, zt - 8, [0.3, 0.35, 0.4]);                                      // окошко автоматов
+      bx(W - 5, D + 0.4, W - 3, D + 2, zb + 20, zb + 30, [0.2, 0.2, 0.22]);
+      return true;
+    }
     void z0; void z1;
     return false;
   },
@@ -6844,6 +7071,20 @@ const View3D = {
     View3D.itemRoof(it, g, { gableGlass: gh, endGlass: gh, endCol: gh ? [0.8, 0.9, 0.95] : null });
   },
   /** Крыльцо / веранда / терраса: цоколь, настил, ступени, ограждение или остекление, крыша */
+  /** Предмет на веранде, крыльце или настиле — стоит на их полу, а не на земле */
+  deckZ(it) {
+    const sh = catItem(it.key).shape;
+    if (sh === 'veranda' || sh === 'deck' || sh === 'pit' || BLD_ROOF_SHAPES.has(sh)) return 0;
+    const f1 = App.doc.floors[0].id;
+    for (const v of App.V.items) {
+      if (v === it || (v.floor || f1) !== (it.floor || f1)) continue;
+      const vs = catItem(v.key).shape;
+      if (vs !== 'veranda' && vs !== 'deck') continue;
+      if (!G.pointInPoly(it, Model.itemPts(v))) continue;
+      return vs === 'deck' ? 25 : Math.max(porchGeom(v, v.w, v.d).o.ph, 10) + 0.3;
+    }
+    return 0;
+  },
   veranda(it, e) {
     const { box } = View3D._g, C = View3D.hex, rot = it.rot || 0;
     const w = it.w, d = it.d, g = porchGeom(it, w, d), o = g.o;
@@ -7304,6 +7545,8 @@ const View3D = {
    Space — прыжок, C — присесть, PgUp/PgDn — этаж выше/ниже, N — сквозь стены.
    Стены, окна, заборы и высокая мебель не пускают; двери, арки, калитки — проходы.
    По ступеням крыльца и лестнице можно подняться. Единицы — см (план), высоты — см.
+   Режим «призрак» (F), как наблюдатель в CS: свободный полёт куда смотришь, сквозь стены,
+   без тяжести; Space — вверх, C — вниз. Повторное F — снова ногами на землю.
    ========================================================================== */
 
 const Walk = {
@@ -7314,6 +7557,7 @@ const Walk = {
   yaw: 0, pitch: 0,    // yaw — как у орбитальной камеры: взгляд (−sin, −cos) в плоскости плана
   level: 0,            // индекс этажа, по стенам которого считаются столкновения
   noclip: false,
+  ghost: false,        // свободный полёт (наблюдатель)
   crouch: false,
   keys: new Set(),
   R: 22,               // «радиус» человека
@@ -7323,8 +7567,9 @@ const Walk = {
   MOVE_CODES: new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight', 'Space', 'KeyC']),
 
   /* ------------------------------ вход / выход ----------------------------- */
-  start() {
-    if (Walk.on) return;
+  start(ghost) {
+    if (Walk.on) { if (ghost !== undefined && !!ghost !== Walk.ghost) Walk.setGhost(!!ghost); return; }
+    Walk.ghost = !!ghost;
     const c = View3D.cam;
     // «спускаемся» из орбитальной камеры туда, где она была, смотрим в ту же сторону
     const ex = (c.tx + c.dist * Math.cos(c.pitch) * Math.sin(c.yaw)) * 100, ez = (c.tz + c.dist * Math.cos(c.pitch) * Math.cos(c.yaw)) * 100;
@@ -7335,6 +7580,8 @@ const Walk = {
     Walk._saved = { ...c };
     Walk._blk = null;
     Walk.foot = Walk.top(Walk.x, Walk.y) ?? Walk.elev(Walk.level);
+    // призрак стартует там, где висела орбитальная камера (но не ниже роста человека)
+    if (Walk.ghost) { Walk.foot = Math.max(Walk.foot, (c.ty + c.dist * Math.sin(c.pitch)) * 100 - Walk.EYE); Walk.pitch = -c.pitch; }
     Walk.vy = 0; Walk.crouch = false;
     Walk.on = true;
     // фокус с кнопок — иначе пробел «нажмёт» кнопку
@@ -7352,11 +7599,21 @@ const Walk = {
     UI.render3dPanel();
     View3D.redraw();
   },
+  /** Переключение «ногами / призраком»; из полёта — падаем на то, что под ногами */
+  setGhost(on) {
+    Walk.ghost = on; Walk.vy = 0; Walk.crouch = false; Walk._blk = null;
+    if (!on) {
+      const top = Walk.top(Walk.x, Walk.y);
+      if (top === null || top > Walk.foot + Walk.STEP) Walk.noclip = true;           // оказались внутри стены — выпускаем
+    }
+    Walk.hud(); UI.render3dPanel(); Walk.loop();
+  },
   hud() {
     const h = $('walkHud');
     if (!h) return;
     const f = App.doc.floors[Walk.level];
-    h.textContent = `${f ? f.name : ''}${Walk.noclip ? ' · сквозь стены' : ''}${Walk.crouch ? ' · присел' : ''}  —  WASD ходить · ←→ поворот · мышь осмотреться · Shift бегом · Space прыжок · C присесть · PgUp/PgDn этаж · N сквозь стены · Esc выход`;
+    if (Walk.ghost) { h.textContent = `Призрак · высота ${(Math.max(0, Walk.foot + Walk.EYE) / 100).toFixed(1)} м  —  WASD лететь куда смотришь · мышь осмотреться · Space вверх · C вниз · Shift быстрее · F пешком · Esc выход`; return; }
+    h.textContent = `${f ? f.name : ''}${Walk.noclip ? ' · сквозь стены' : ''}${Walk.crouch ? ' · присел' : ''}  —  WASD ходить · ←→ поворот · мышь осмотреться · Shift бегом · Space прыжок · C присесть · PgUp/PgDn этаж · N сквозь стены · F призрак · Esc выход`;
   },
 
   /* ------------------------------- клавиши -------------------------------- */
@@ -7364,14 +7621,16 @@ const Walk = {
   key(e, down) {
     if (!View3D.active) return false;
     const code = e.code;
+    if (down && !Walk.on && code === 'KeyF' && !e.ctrlKey && !e.metaKey) { Walk.start(true); return true; }
     if (down && !Walk.on && Walk.MOVE_CODES.has(code) && !['ShiftLeft', 'ShiftRight', 'Space', 'KeyC'].includes(code)) Walk.start();
     if (!Walk.on) return false;
     if (down) {
       if (code === 'Escape') { Walk.stop(); return true; }
       if (code === 'KeyN') { Walk.noclip = !Walk.noclip; Walk.hud(); return true; }
+      if (code === 'KeyF') { Walk.setGhost(!Walk.ghost); return true; }
       if (code === 'PageUp' || code === 'PageDown') { Walk.setLevel(Walk.level + (code === 'PageUp' ? 1 : -1)); return true; }
-      if (code === 'Space' && Walk.onGround()) Walk.vy = 360;
-      if (code === 'KeyC') { Walk.crouch = !Walk.crouch; Walk.hud(); }
+      if (code === 'Space' && !Walk.ghost && Walk.onGround()) Walk.vy = 360;
+      if (code === 'KeyC' && !Walk.ghost) { Walk.crouch = !Walk.crouch; Walk.hud(); }
     }
     if (!Walk.MOVE_CODES.has(code)) return false;
     if (down) Walk.keys.add(code); else Walk.keys.delete(code);
@@ -7523,6 +7782,7 @@ const Walk = {
   /** Шаг симуляции; true — есть движение (нужен следующий кадр) */
   update(dt) {
     const k = Walk.keys, has = (c) => k.has(c);
+    if (Walk.ghost) return Walk.fly(dt);
     // поворот
     const turn = (has('ArrowLeft') || has('KeyQ') ? 1 : 0) - (has('ArrowRight') || has('KeyE') ? 1 : 0);
     Walk.yaw += turn * 1.9 * dt;
@@ -7552,9 +7812,33 @@ const Walk = {
     else if (i > 0 && Walk.foot < Walk.elev(i) - 20) { Walk.level = i - 1; Walk._blk = null; Walk.hud(); }
     return !!(turn || fwd || side || Walk.vy !== 0 || Walk.foot > ground + 0.5);
   },
+  /** Полёт призрака: вперёд — по взгляду (с наклоном), вбок, Space/C — вверх/вниз; без стен и тяжести */
+  fly(dt) {
+    const k = Walk.keys, has = (c) => k.has(c);
+    const turn = (has('ArrowLeft') || has('KeyQ') ? 1 : 0) - (has('ArrowRight') || has('KeyE') ? 1 : 0);
+    Walk.yaw += turn * 1.9 * dt;
+    const fwd = (has('KeyW') || has('ArrowUp') ? 1 : 0) - (has('KeyS') || has('ArrowDown') ? 1 : 0);
+    const side = (has('KeyD') ? 1 : 0) - (has('KeyA') ? 1 : 0);
+    const up = (has('Space') ? 1 : 0) - (has('KeyC') ? 1 : 0);
+    const speed = has('ShiftLeft') || has('ShiftRight') ? 1200 : 450;
+    const s = Math.sin(Walk.yaw), c = Math.cos(Walk.yaw), cp = Math.cos(Walk.pitch), sp = Math.sin(Walk.pitch);
+    const dir = [-s * cp * fwd + c * side, sp * fwd + up, -c * cp * fwd - s * side], L = Math.hypot(...dir);
+    if (L > 1e-6) {
+      Walk.x += dir[0] / L * speed * dt; Walk.foot += dir[1] / L * speed * dt; Walk.y += dir[2] / L * speed * dt;
+      const b = View3D.bounds || { x0: -1000, y0: -1000, x1: 1000, y1: 1000 };
+      Walk.x = U.clamp(Walk.x, b.x0 - 3000, b.x1 + 3000); Walk.y = U.clamp(Walk.y, b.y0 - 3000, b.y1 + 3000);
+      Walk.foot = U.clamp(Walk.foot, 15 - Walk.EYE - 400, 6000);             // можно спуститься в погреб, но не под землю глубоко
+      // этаж для HUD и столкновений после приземления — по высоте глаз
+      const fl = App.doc.floors, eye = Walk.foot + Walk.EYE;
+      let lv = 0; fl.forEach((f, i) => { if (eye >= f.elev) lv = i; });
+      if (lv !== Walk.level) { Walk.level = lv; Walk._blk = null; }
+      Walk.hud();
+    }
+    return !!(turn || L > 1e-6);
+  },
   /** Камера: глаз и точка взгляда (м), для View3D.draw */
   camera() {
-    const eyeH = Walk.crouch ? 105 : Walk.EYE;
+    const eyeH = Walk.crouch && !Walk.ghost ? 105 : Walk.EYE;
     const e = [Walk.x / 100, (Walk.foot + eyeH) / 100, Walk.y / 100];
     const cp = Math.cos(Walk.pitch);
     return { eye: e, at: [e[0] - Math.sin(Walk.yaw) * cp, e[1] + Math.sin(Walk.pitch), e[2] - Math.cos(Walk.yaw) * cp], fov: 1.15 };
@@ -9166,9 +9450,13 @@ const UI = {
         U.el('button', { type: 'button', onclick: () => View3D.snapshot() }, 'PNG'),
         U.el('button', { type: 'button', onclick: () => View3D.exportOBJ(), title: '3D-модель для Blender, SketchUp, Twinmotion' }, 'OBJ'),
         U.el('button', { type: 'button', onclick: () => IFC.export(), title: 'BIM-модель для Revit, ArchiCAD, Renga' }, 'IFC')),
-      U.el('button', { type: 'button', class: Walk.on ? 'primary' : '', title: 'Прогулка от первого лица: WASD — ходить, ←→ — поворот, мышь — осмотреться', onclick: () => { if (Walk.on) Walk.stop(); else Walk.start(); $('canvas3d').focus && $('canvas3d').focus(); } }, Walk.on ? '← Обзор сверху' : '🚶 Прогулка (WASD)'),
+      U.el('div', { class: 'fbtns' },
+        U.el('button', { type: 'button', class: Walk.on && !Walk.ghost ? 'primary' : '', title: 'Прогулка от первого лица: ходите по земле, лестницам и крыльцу, стены не пускают', onclick: () => { if (Walk.on && !Walk.ghost) Walk.stop(); else Walk.start(false); } }, '🚶 Пешком'),
+        U.el('button', { type: 'button', class: Walk.on && Walk.ghost ? 'primary' : '', title: 'Свободный полёт, как наблюдатель в CS: куда смотришь — туда летишь, сквозь стены и крыши (клавиша F)', onclick: () => { if (Walk.on && Walk.ghost) Walk.stop(); else Walk.start(true); } }, '👻 Призрак (полёт)'),
+        Walk.on ? U.el('button', { type: 'button', onclick: () => Walk.stop() }, '← Обзор') : null),
       U.el('p', { class: 'fnote' }, Walk.on
-        ? 'WASD — ходить, ↑↓ — вперёд/назад, ←→ — поворот, ЛКМ + мышь — осмотреться, Shift — бегом, Space — прыжок, C — присесть, PgUp/PgDn — этаж, N — сквозь стены, Esc — выйти.'
+        ? (Walk.ghost ? 'Призрак: WASD — лететь куда смотришь, ЛКМ + мышь — осмотреться, Space — вверх, C — вниз, Shift — быстрее, F — пешком, Esc — выйти.'
+          : 'WASD — ходить, ↑↓ — вперёд/назад, ←→ — поворот, ЛКМ + мышь — осмотреться, Shift — бегом, Space — прыжок, C — присесть, PgUp/PgDn — этаж, N — сквозь стены, F — призрак, Esc — выйти.')
         : 'ЛКМ — вращать, ПКМ / Shift — сдвиг, колесо — масштаб. WASD или стрелки — прогулка. Esc — к плану.'),
       U.el('button', { type: 'button', class: 'primary', onclick: () => View3D.toggle(false) }, '← К плану'));
   },

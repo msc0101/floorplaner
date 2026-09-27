@@ -275,6 +275,7 @@ const CATALOG = [
     { key: 'radiatorLong', name: 'Радиатор длинный', shape: 'radiator', w: 140, d: 10, h: 50 },
     { key: 'manifold', name: 'Коллектор', shape: 'labelbox', w: 50, d: 12, h: 40, label: 'Кол' },
     { key: 'pump', name: 'Циркуляционный насос', shape: 'pump', w: 18, d: 18, h: 15 },
+    { key: 'expansionTank', name: 'Расширительный бак (мембранный)', kw: 'бак отопление котельная', shape: 'boiler', w: 36, d: 36, h: 50 },
   ]},
   { id: 'vent', name: 'Вентиляция', layer: 'heating', items: [
     // вытяжка — через вентканалы выше крыши (высота «по норме» считается сама), приток — клапаны в стенах жилых комнат
@@ -312,7 +313,9 @@ const CATALOG = [
     { key: 'meter', name: 'Счётчик / ВРУ', shape: 'labelbox', w: 30, d: 20, h: 50, label: 'Wh', sym: 28 },
     { key: 'fan', name: 'Вытяжной вентилятор', shape: 'fan', w: 20, d: 20, h: 250, sym: 20 },
     { key: 'pole', name: 'Столб ЛЭП', kw: 'опора лэп вл электричество', shape: 'pole', w: 25, d: 25, h: 1000, sym: 40, layer: 'electric', shadow: true },
-    { key: 'lightPole', name: 'Фонарь уличный', shape: 'lightpole', w: 20, d: 20, h: 350, sym: 36, shadow: true },
+    { key: 'lightPole', name: 'Фонарь уличный', kw: 'освещение фонарь столб улица', shape: 'lightpole', w: 20, d: 20, h: 350, sym: 36, shadow: true },
+    { key: 'bollardLight', name: 'Светильник-столбик садовый', kw: 'освещение дорожка сад столбик', shape: 'bollard', w: 14, d: 14, h: 80, sym: 24 },
+    { key: 'facadeLight', name: 'Светильник фасадный (уличный)', kw: 'освещение фасад крыльцо улица бра', shape: 'facadeLight', w: 16, d: 14, h: 210, sym: 22 },
     { key: 'groundRod', name: 'Контур заземления', shape: 'ground', w: 100, d: 100, h: 0 },
     { key: 'generator', name: 'Генератор', shape: 'labelbox', w: 70, d: 55, h: 55, label: 'ГЕН' },
   ]},
@@ -328,9 +331,12 @@ const CATALOG = [
     { key: 'drainWell', name: 'Дренажный колодец', shape: 'ring', w: 100, d: 100, h: 10, label: 'ДК' },
     { key: 'filterField', name: 'Поле фильтрации', shape: 'filterfield', w: 300, d: 400, h: 0 },
     { key: 'riser', name: 'Стояк канализации Ø110', shape: 'riser', w: 12, d: 12, h: 300, sym: 16 },
+    { key: 'faucetOut', name: 'Кран уличный незамерзающий (на фасаде)', kw: 'кран полив вода улица незамерзающий', shape: 'faucetOut', w: 8, d: 15, h: 50, sym: 22 },
+    { key: 'gardenHydrant', name: 'Колонка садовая незамерзающая (гидрант)', kw: 'кран полив вода огород колонка гидрант', shape: 'hydrant', w: 20, d: 20, h: 90, sym: 24 },
     { key: 'waterIn', name: 'Ввод воды', shape: 'labelbox', w: 20, d: 20, h: 50, label: 'В1', sym: 24 },
     { key: 'pumpStation', name: 'Насосная станция', shape: 'pump', w: 50, d: 30, h: 60 },
-    { key: 'filter', name: 'Фильтр / водоподготовка', shape: 'boiler', w: 40, d: 40, h: 150 },
+    { key: 'filter', name: 'Фильтр / водоподготовка (колонна)', kw: 'обезжелезивание умягчение скважина вода', shape: 'boiler', w: 40, d: 40, h: 150 },
+    { key: 'hydroTank', name: 'Гидроаккумулятор 100 л с автоматикой', kw: 'насос скважина бак вода котельная', shape: 'boiler', w: 50, d: 50, h: 85 },
     { key: 'tap', name: 'Кран поливочный', shape: 'tap', w: 10, d: 10, h: 60, sym: 18 },
     { key: 'rainBarrel', name: 'Бочка / ёмкость', shape: 'round', w: 80, d: 80, h: 100, shadow: true },
   ]},
@@ -364,6 +370,10 @@ const CATALOG = [
     { key: 'compost', name: 'Компостер', shape: 'labelbox', w: 100, d: 100, h: 90, label: 'Компост' },
     { key: 'parking', name: 'Парковочное место', shape: 'parking', w: 250, d: 530, h: 0 },
     { key: 'car', name: 'Автомобиль', shape: 'car', w: 185, d: 460, h: 150, shadow: true },
+  ]},
+  { id: 'sport', name: 'Спорт и отдых', layer: 'furniture', items: [
+    { key: 'pingpong', name: 'Стол для настольного тенниса', kw: 'пинг-понг теннис спорт', shape: 'pingpong', w: 274, d: 153, h: 76 },
+    { key: 'trampoline', name: 'Батут с сеткой Ø3 м', kw: 'батут дети спорт', shape: 'trampoline', w: 305, d: 305, h: 250, shadow: true },
   ]},
   { id: 'pits', name: 'Погреба и ямы', layer: 'siteobj', items: [
     { key: 'cellar', name: 'Погреб с лестницей', kw: 'подвал кессон яма', shape: 'pit', w: 200, d: 250, h: 0, pitDepth: 250, stair: 'stairs', stairSide: 'back', stairW: 70, cover: 'hatch' },
@@ -1009,7 +1019,8 @@ const Painters = (() => {
   S.boiler = (P, w, d) => {
     ell(P, 0, 0, w / 2, d / 2); thin(P);
     ell(P, 0, 0, w / 2 - 5, d / 2 - 5, false);
-    text(P, P.def.key === 'filter' ? 'Ф' : 'Б', 0, 0, Math.min(w, d) * 0.4, { bold: true });
+    const lb = { filter: 'Ф', expansionTank: 'РБ', hydroTank: 'ГА', indirect: 'БКН' }[P.def.key] || 'Б';
+    text(P, lb, 0, 0, Math.min(w, d) * (lb.length > 1 ? 0.28 : 0.4), { bold: true });
   };
   S.radiator = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 1); thin(P);
@@ -1063,6 +1074,23 @@ const Painters = (() => {
   S.ventGrille = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); for (let x = -w / 2 + w / 5; x < w / 2 - 1; x += w / 5) line(P, [x, -d / 2, x, d / 2]); lw(P, 1.2); ventArrow(P, w, d * 2, false); };
   S.ventSupply = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); circle(P, 0, 0, Math.min(w, d) * 0.35, false); lw(P, 1.2); ventArrow(P, w, d * 2, true); };
   S.ventTransfer = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); for (let x = -w / 2 + w / 6; x < w / 2 - 1; x += w / 6) line(P, [x, -d / 2, x, d / 2]); };
+  S.pingpong = (P, w, d) => {
+    P.ctx.fillStyle = '#2f5d8a'; box(P, -w / 2, -d / 2, w, d, 1);
+    P.ctx.strokeStyle = '#ffffff'; thin(P); box(P, -w / 2 + 2, -d / 2 + 2, w - 4, d - 4, 0, false); line(P, [-w / 2 + 2, 0, w / 2 - 2, 0]);
+    P.ctx.strokeStyle = P.C.ink; lw(P, 2); line(P, [0, -d / 2 - 15, 0, d / 2 + 15]);
+  };
+  S.trampoline = (P, w, d) => { circle(P, 0, 0, Math.min(w, d) / 2); thin(P); circle(P, 0, 0, Math.min(w, d) / 2 - 25, false); for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2, r = Math.min(w, d) / 2; circle(P, Math.cos(a) * r, Math.sin(a) * r, 3); } };
+  // кран на фасаде: пластина у стены и излив наружу
+  S.faucetOut = (P, w, d) => { box(P, -w / 2, -d / 2, w, d * 0.35, 0); thin(P); line(P, [0, -d / 2 + d * 0.35, 0, d / 2]); circle(P, 0, d / 2 - 2, w * 0.35); };
+  S.hydrant = (P, w, d) => { circle(P, 0, 0, Math.min(w, d) * 0.3); thin(P); line(P, [0, 0, 0, d / 2]); line(P, [-w / 2, -d * 0.25, w / 2, -d * 0.25]); };
+  // светильники: круг с крестом (условный знак)
+  S.bollard = (P, w, d) => { const r = Math.min(w, d) / 2; circle(P, 0, 0, r); thin(P); line(P, [-r * 0.7, -r * 0.7, r * 0.7, r * 0.7]); line(P, [r * 0.7, -r * 0.7, -r * 0.7, r * 0.7]); };
+  S.facadeLight = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d * 0.3, 0); thin(P);
+    const c = P.ctx, r = Math.min(w / 2, d * 0.7);
+    c.beginPath(); c.arc(0, -d / 2 + d * 0.3, r, 0, Math.PI); c.stroke();
+    line(P, [-r * 0.6, -d / 2 + d * 0.3, r * 0.6, -d / 2 + d * 0.3 + r * 0.8]); line(P, [r * 0.6, -d / 2 + d * 0.3, -r * 0.6, -d / 2 + d * 0.3 + r * 0.8]);
+  };
   S.chimney = (P, w, d) => { P.ctx.fillStyle = P.C.inkSoft; box(P, -w / 2, -d / 2, w, d, 0); thin(P); P.ctx.fillStyle = P.C.itemFill; box(P, -w / 2 + 5, -d / 2 + 5, w - 10, d - 10, 0); };
   S.column = (P, w, d) => { P.ctx.fillStyle = P.C.wallExt; box(P, -w / 2, -d / 2, w, d, 0); };
   S.columnRound = (P, w, d) => { P.ctx.fillStyle = P.C.wallExt; ell(P, 0, 0, w / 2, d / 2); };

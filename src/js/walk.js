@@ -5,6 +5,8 @@
    Space — прыжок, C — присесть, PgUp/PgDn — этаж выше/ниже, N — сквозь стены.
    Стены, окна, заборы и высокая мебель не пускают; двери, арки, калитки — проходы.
    По ступеням крыльца и лестнице можно подняться. Единицы — см (план), высоты — см.
+   Режим «призрак» (F), как наблюдатель в CS: свободный полёт куда смотришь, сквозь стены,
+   без тяжести; Space — вверх, C — вниз. Повторное F — снова ногами на землю.
    ========================================================================== */
 
 const Walk = {
@@ -15,6 +17,7 @@ const Walk = {
   yaw: 0, pitch: 0,    // yaw — как у орбитальной камеры: взгляд (−sin, −cos) в плоскости плана
   level: 0,            // индекс этажа, по стенам которого считаются столкновения
   noclip: false,
+  ghost: false,        // свободный полёт (наблюдатель)
   crouch: false,
   keys: new Set(),
   R: 22,               // «радиус» человека
@@ -24,8 +27,9 @@ const Walk = {
   MOVE_CODES: new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight', 'Space', 'KeyC']),
 
   /* ------------------------------ вход / выход ----------------------------- */
-  start() {
-    if (Walk.on) return;
+  start(ghost) {
+    if (Walk.on) { if (ghost !== undefined && !!ghost !== Walk.ghost) Walk.setGhost(!!ghost); return; }
+    Walk.ghost = !!ghost;
     const c = View3D.cam;
     // «спускаемся» из орбитальной камеры туда, где она была, смотрим в ту же сторону
     const ex = (c.tx + c.dist * Math.cos(c.pitch) * Math.sin(c.yaw)) * 100, ez = (c.tz + c.dist * Math.cos(c.pitch) * Math.cos(c.yaw)) * 100;
@@ -36,6 +40,8 @@ const Walk = {
     Walk._saved = { ...c };
     Walk._blk = null;
     Walk.foot = Walk.top(Walk.x, Walk.y) ?? Walk.elev(Walk.level);
+    // призрак стартует там, где висела орбитальная камера (но не ниже роста человека)
+    if (Walk.ghost) { Walk.foot = Math.max(Walk.foot, (c.ty + c.dist * Math.sin(c.pitch)) * 100 - Walk.EYE); Walk.pitch = -c.pitch; }
     Walk.vy = 0; Walk.crouch = false;
     Walk.on = true;
     // фокус с кнопок — иначе пробел «нажмёт» кнопку
@@ -53,11 +59,21 @@ const Walk = {
     UI.render3dPanel();
     View3D.redraw();
   },
+  /** Переключение «ногами / призраком»; из полёта — падаем на то, что под ногами */
+  setGhost(on) {
+    Walk.ghost = on; Walk.vy = 0; Walk.crouch = false; Walk._blk = null;
+    if (!on) {
+      const top = Walk.top(Walk.x, Walk.y);
+      if (top === null || top > Walk.foot + Walk.STEP) Walk.noclip = true;           // оказались внутри стены — выпускаем
+    }
+    Walk.hud(); UI.render3dPanel(); Walk.loop();
+  },
   hud() {
     const h = $('walkHud');
     if (!h) return;
     const f = App.doc.floors[Walk.level];
-    h.textContent = `${f ? f.name : ''}${Walk.noclip ? ' · сквозь стены' : ''}${Walk.crouch ? ' · присел' : ''}  —  WASD ходить · ←→ поворот · мышь осмотреться · Shift бегом · Space прыжок · C присесть · PgUp/PgDn этаж · N сквозь стены · Esc выход`;
+    if (Walk.ghost) { h.textContent = `Призрак · высота ${(Math.max(0, Walk.foot + Walk.EYE) / 100).toFixed(1)} м  —  WASD лететь куда смотришь · мышь осмотреться · Space вверх · C вниз · Shift быстрее · F пешком · Esc выход`; return; }
+    h.textContent = `${f ? f.name : ''}${Walk.noclip ? ' · сквозь стены' : ''}${Walk.crouch ? ' · присел' : ''}  —  WASD ходить · ←→ поворот · мышь осмотреться · Shift бегом · Space прыжок · C присесть · PgUp/PgDn этаж · N сквозь стены · F призрак · Esc выход`;
   },
 
   /* ------------------------------- клавиши -------------------------------- */
@@ -65,14 +81,16 @@ const Walk = {
   key(e, down) {
     if (!View3D.active) return false;
     const code = e.code;
+    if (down && !Walk.on && code === 'KeyF' && !e.ctrlKey && !e.metaKey) { Walk.start(true); return true; }
     if (down && !Walk.on && Walk.MOVE_CODES.has(code) && !['ShiftLeft', 'ShiftRight', 'Space', 'KeyC'].includes(code)) Walk.start();
     if (!Walk.on) return false;
     if (down) {
       if (code === 'Escape') { Walk.stop(); return true; }
       if (code === 'KeyN') { Walk.noclip = !Walk.noclip; Walk.hud(); return true; }
+      if (code === 'KeyF') { Walk.setGhost(!Walk.ghost); return true; }
       if (code === 'PageUp' || code === 'PageDown') { Walk.setLevel(Walk.level + (code === 'PageUp' ? 1 : -1)); return true; }
-      if (code === 'Space' && Walk.onGround()) Walk.vy = 360;
-      if (code === 'KeyC') { Walk.crouch = !Walk.crouch; Walk.hud(); }
+      if (code === 'Space' && !Walk.ghost && Walk.onGround()) Walk.vy = 360;
+      if (code === 'KeyC' && !Walk.ghost) { Walk.crouch = !Walk.crouch; Walk.hud(); }
     }
     if (!Walk.MOVE_CODES.has(code)) return false;
     if (down) Walk.keys.add(code); else Walk.keys.delete(code);
@@ -224,6 +242,7 @@ const Walk = {
   /** Шаг симуляции; true — есть движение (нужен следующий кадр) */
   update(dt) {
     const k = Walk.keys, has = (c) => k.has(c);
+    if (Walk.ghost) return Walk.fly(dt);
     // поворот
     const turn = (has('ArrowLeft') || has('KeyQ') ? 1 : 0) - (has('ArrowRight') || has('KeyE') ? 1 : 0);
     Walk.yaw += turn * 1.9 * dt;
@@ -253,9 +272,33 @@ const Walk = {
     else if (i > 0 && Walk.foot < Walk.elev(i) - 20) { Walk.level = i - 1; Walk._blk = null; Walk.hud(); }
     return !!(turn || fwd || side || Walk.vy !== 0 || Walk.foot > ground + 0.5);
   },
+  /** Полёт призрака: вперёд — по взгляду (с наклоном), вбок, Space/C — вверх/вниз; без стен и тяжести */
+  fly(dt) {
+    const k = Walk.keys, has = (c) => k.has(c);
+    const turn = (has('ArrowLeft') || has('KeyQ') ? 1 : 0) - (has('ArrowRight') || has('KeyE') ? 1 : 0);
+    Walk.yaw += turn * 1.9 * dt;
+    const fwd = (has('KeyW') || has('ArrowUp') ? 1 : 0) - (has('KeyS') || has('ArrowDown') ? 1 : 0);
+    const side = (has('KeyD') ? 1 : 0) - (has('KeyA') ? 1 : 0);
+    const up = (has('Space') ? 1 : 0) - (has('KeyC') ? 1 : 0);
+    const speed = has('ShiftLeft') || has('ShiftRight') ? 1200 : 450;
+    const s = Math.sin(Walk.yaw), c = Math.cos(Walk.yaw), cp = Math.cos(Walk.pitch), sp = Math.sin(Walk.pitch);
+    const dir = [-s * cp * fwd + c * side, sp * fwd + up, -c * cp * fwd - s * side], L = Math.hypot(...dir);
+    if (L > 1e-6) {
+      Walk.x += dir[0] / L * speed * dt; Walk.foot += dir[1] / L * speed * dt; Walk.y += dir[2] / L * speed * dt;
+      const b = View3D.bounds || { x0: -1000, y0: -1000, x1: 1000, y1: 1000 };
+      Walk.x = U.clamp(Walk.x, b.x0 - 3000, b.x1 + 3000); Walk.y = U.clamp(Walk.y, b.y0 - 3000, b.y1 + 3000);
+      Walk.foot = U.clamp(Walk.foot, 15 - Walk.EYE - 400, 6000);             // можно спуститься в погреб, но не под землю глубоко
+      // этаж для HUD и столкновений после приземления — по высоте глаз
+      const fl = App.doc.floors, eye = Walk.foot + Walk.EYE;
+      let lv = 0; fl.forEach((f, i) => { if (eye >= f.elev) lv = i; });
+      if (lv !== Walk.level) { Walk.level = lv; Walk._blk = null; }
+      Walk.hud();
+    }
+    return !!(turn || L > 1e-6);
+  },
   /** Камера: глаз и точка взгляда (м), для View3D.draw */
   camera() {
-    const eyeH = Walk.crouch ? 105 : Walk.EYE;
+    const eyeH = Walk.crouch && !Walk.ghost ? 105 : Walk.EYE;
     const e = [Walk.x / 100, (Walk.foot + eyeH) / 100, Walk.y / 100];
     const cp = Math.cos(Walk.pitch);
     return { eye: e, at: [e[0] - Math.sin(Walk.yaw) * cp, e[1] + Math.sin(Walk.pitch), e[2] - Math.cos(Walk.yaw) * cp], fov: 1.15 };

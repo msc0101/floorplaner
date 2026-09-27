@@ -264,9 +264,13 @@ const UI = {
         U.el('button', { type: 'button', onclick: () => View3D.snapshot() }, 'PNG'),
         U.el('button', { type: 'button', onclick: () => View3D.exportOBJ(), title: '3D-модель для Blender, SketchUp, Twinmotion' }, 'OBJ'),
         U.el('button', { type: 'button', onclick: () => IFC.export(), title: 'BIM-модель для Revit, ArchiCAD, Renga' }, 'IFC')),
-      U.el('button', { type: 'button', class: Walk.on ? 'primary' : '', title: 'Прогулка от первого лица: WASD — ходить, ←→ — поворот, мышь — осмотреться', onclick: () => { if (Walk.on) Walk.stop(); else Walk.start(); $('canvas3d').focus && $('canvas3d').focus(); } }, Walk.on ? '← Обзор сверху' : '🚶 Прогулка (WASD)'),
+      U.el('div', { class: 'fbtns' },
+        U.el('button', { type: 'button', class: Walk.on && !Walk.ghost ? 'primary' : '', title: 'Прогулка от первого лица: ходите по земле, лестницам и крыльцу, стены не пускают', onclick: () => { if (Walk.on && !Walk.ghost) Walk.stop(); else Walk.start(false); } }, '🚶 Пешком'),
+        U.el('button', { type: 'button', class: Walk.on && Walk.ghost ? 'primary' : '', title: 'Свободный полёт, как наблюдатель в CS: куда смотришь — туда летишь, сквозь стены и крыши (клавиша F)', onclick: () => { if (Walk.on && Walk.ghost) Walk.stop(); else Walk.start(true); } }, '👻 Призрак (полёт)'),
+        Walk.on ? U.el('button', { type: 'button', onclick: () => Walk.stop() }, '← Обзор') : null),
       U.el('p', { class: 'fnote' }, Walk.on
-        ? 'WASD — ходить, ↑↓ — вперёд/назад, ←→ — поворот, ЛКМ + мышь — осмотреться, Shift — бегом, Space — прыжок, C — присесть, PgUp/PgDn — этаж, N — сквозь стены, Esc — выйти.'
+        ? (Walk.ghost ? 'Призрак: WASD — лететь куда смотришь, ЛКМ + мышь — осмотреться, Space — вверх, C — вниз, Shift — быстрее, F — пешком, Esc — выйти.'
+          : 'WASD — ходить, ↑↓ — вперёд/назад, ←→ — поворот, ЛКМ + мышь — осмотреться, Shift — бегом, Space — прыжок, C — присесть, PgUp/PgDn — этаж, N — сквозь стены, F — призрак, Esc — выйти.')
         : 'ЛКМ — вращать, ПКМ / Shift — сдвиг, колесо — масштаб. WASD или стрелки — прогулка. Esc — к плану.'),
       U.el('button', { type: 'button', class: 'primary', onclick: () => View3D.toggle(false) }, '← К плану'));
   },
