@@ -1180,7 +1180,8 @@ const LINE_KINDS = {
   drain:    { name: 'Ливнёвка / дренаж', code: 'К2', color: '#0f9b9b', dash: [10, 5, 2, 5], layer: 'plumbing', dia: 110, depth: 60 },
   heating:  { name: 'Отопление (подача/обратка)', code: 'Т1', color: '#c2257e', dash: [], layer: 'heating', dia: 20, depth: 0 },
   warmfloor:{ name: 'Тёплый пол', code: 'ТП', color: '#e07b2f', dash: [4, 4], layer: 'heating', dia: 16, depth: 0 },
-  gas:      { name: 'Газопровод', code: 'Г', color: '#d89b00', dash: [16, 5, 3, 5], layer: 'gas', dia: 32, depth: 100 },
+  gas:      { name: 'Газопровод подземный', code: 'Г', color: '#d89b00', dash: [16, 5, 3, 5], layer: 'gas', dia: 32, depth: 100 },
+  gasAir:   { name: 'Газопровод надземный (на опорах / по фасаду)', code: 'Г', color: '#e3a400', dash: [], layer: 'gas', dia: 32, depth: 0, height: 220 },
   power:    { name: 'Электрокабель', code: 'Э', color: '#d21f3c', dash: [], layer: 'electric', dia: 0, depth: 70, section: 'ВВГнг 3×2.5' },
   overhead: { name: 'Воздушная ЛЭП', code: 'ВЛ', color: '#555e6b', dash: [18, 5, 3, 5, 3, 5], layer: 'electric', dia: 0, depth: 0, section: 'СИП 4×16' },
   lowvolt:  { name: 'Слаботочка (сеть, ТВ)', code: 'СС', color: '#7c3aed', dash: [6, 4], layer: 'electric', dia: 0, depth: 0, section: 'UTP cat.5e' },
@@ -1202,6 +1203,13 @@ function overheadPoles(l, items, walls) {
     for (let k = 1; k < n; k++) { const q = G.add(a, G.mul(G.sub(b, a), k / n)); out.push({ p: q, item: poleAt(q), wall: null }); }
   }
   return out;
+}
+
+/** Зона отката откатных ворот вдоль забора (локальные координаты ворот): полотно ≈ 1,5 проёма уезжает в сторону dir */
+function gateZone(it, w) {
+  const dir = it.slide === 'left' ? -1 : 1, len = w * 1.5 + 20;
+  const x0 = dir * w / 2, x1 = dir * (w / 2 + len);
+  return { dir, len, x0, x1 };
 }
 
 /* Дороги, улицы, тропинки: ширина в см */
@@ -1462,6 +1470,7 @@ const CATALOG = [
   ]},
   { id: 'gas', name: 'Газ', layer: 'gas', items: [
     { key: 'gasholder', name: 'Газгольдер', shape: 'capsule', w: 250, d: 120, h: 20 },
+    { key: 'gasInlet', name: 'Точка подключения газа (врезка)', kw: 'газ ввод подключение врезка', shape: 'labelbox', w: 40, d: 40, h: 120, label: 'Г⊕', sym: 30 },
     { key: 'gasMeter', name: 'Газовый счётчик', shape: 'labelbox', w: 30, d: 20, h: 40, label: 'ГС', sym: 26 },
     { key: 'gasValve', name: 'Кран газовый', shape: 'valve', w: 10, d: 10, h: 150, sym: 18 },
     { key: 'gasCabinet', name: 'Шкаф ГРПШ / баллоны', shape: 'labelbox', w: 100, d: 50, h: 150, label: 'Г', shadow: true },
@@ -1518,14 +1527,17 @@ const CATALOG = [
     { key: 'fenceBrick', name: 'Забор кирпичный', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'brickF', w: 300, d: 10, h: 200 },
     { key: 'fenceConcrete', name: 'Еврозабор (бетонный)', shape: 'fenceIcon', kw: 'забор ограда ограждение изгородь', tool: 'fence', mat: 'concreteF', w: 300, d: 10, h: 200 },
     { key: 'fenceAround', name: 'Забор по границе участка', shape: 'fenceAroundIcon', kw: 'забор ограда ограждение периметр', action: 'fenceAround', w: 300, d: 300, h: 180 },
-    { key: 'gate', name: 'Ворота откатные', kw: 'въезд забор ограда', shape: 'gateSlide', w: 400, d: 20, h: 200, shadow: true },
+    { key: 'gate', name: 'Ворота откатные', kw: 'въезд забор ограда сдвижные автоматические', shape: 'gateSlide', w: 400, d: 20, h: 200, shadow: true },
+    { key: 'gateSwing', name: 'Ворота распашные (2 створки)', kw: 'въезд забор ограда створчатые', shape: 'gateSwing', w: 350, d: 10, h: 200, shadow: true },
+    { key: 'gateSwing1', name: 'Ворота распашные одностворчатые', kw: 'въезд забор ограда створка', shape: 'gateSwing', leaves: 1, w: 300, d: 10, h: 200, shadow: true },
+    { key: 'gateWicket', name: 'Ворота распашные с калиткой', kw: 'въезд вход забор ограда калитка', shape: 'gateSwing', wicket: true, w: 460, d: 10, h: 200, shadow: true },
     { key: 'wicket', name: 'Калитка', kw: 'вход дверь забор ограда', shape: 'wicket', w: 100, d: 10, h: 200, shadow: true },
   ]},
   // трассы: клик — инструмент «Сети» с этим видом (рисуется по точкам)
   { id: 'networks', name: 'Сети и коммуникации', layer: 'electric', items: Object.entries({
     water: 'вода водопровод трубы скважина хвс', hotwater: 'вода гвс горячая трубы', sewer: 'канализация септик стоки трубы',
     drain: 'ливнёвка ливневка дренаж водоотвод', heating: 'отопление трубы тепло', warmfloor: 'тёплый теплый пол отопление',
-    gas: 'газ газопровод', power: 'электричество кабель электрика ввод', overhead: 'лэп вл провод столб опора электричество воздушная линия сип',
+    gas: 'газ газопровод подземный', gasAir: 'газ газопровод надземный опоры фасад ввод', power: 'электричество кабель электрика ввод', overhead: 'лэп вл провод столб опора электричество воздушная линия сип',
     lowvolt: 'интернет сеть тв кабель слаботочка', ground: 'заземление контур',
   }).map(([k, kw]) => ({ key: 'net_' + k, name: LINE_KINDS[k].name, shape: 'netIcon', kw: 'сети трасса коммуникации ' + kw, tool: 'line', lineKind: k, w: 100, d: 100, h: 0 })) },
   { id: 'porch', name: 'Крыльцо, веранда, терраса', layer: 'siteobj', items: [
@@ -2521,18 +2533,81 @@ const Painters = (() => {
     P.ctx.setLineDash([10 * P.px, 6 * P.px]); box(P, -w / 2, -d / 2, w, d, 0, false); P.ctx.setLineDash([]);
     text(P, 'P', 0, 0, Math.min(w, d) * 0.4, { bold: true, color: P.C.accent });
   };
+  /** Автомобиль сверху: перед — сторона −d/2. Кузов с плавными обводами, стёкла, крыша, зеркала, фары, колёса */
   S.car = (P, w, d) => {
-    box(P, -w / 2, -d / 2, w, d, w * 0.25);
-    thin(P);
-    box(P, -w / 2 + 14, -d / 2 + d * 0.27, w - 28, d * 0.18, 10, false);   // лобовое
-    box(P, -w / 2 + 16, d / 2 - d * 0.22, w - 32, d * 0.1, 8, false);      // заднее
-    line(P, [-w / 2 + 14, -d / 2 + d * 0.45, -w / 2 + 16, d / 2 - d * 0.22]);
-    line(P, [w / 2 - 14, -d / 2 + d * 0.45, w / 2 - 16, d / 2 - d * 0.22]);
+    const c = P.ctx, dark = Theme.isDark && Theme.isDark(), y0 = -d / 2, W = w / 2;
+    const bodyC = P.it.color || (dark ? '#4a5870' : '#d6dee9'), glass = dark ? 'rgba(20,28,40,.85)' : 'rgba(52,70,96,.78)', roofC = dark ? '#56657d' : '#e8eef5';
+    c.save();
+    // колёса (чуть выступают из-под кузова)
+    c.fillStyle = '#23262b'; c.strokeStyle = '#23262b';
+    for (const yy of [y0 + d * 0.19, d / 2 - d * 0.2]) for (const sx of [-1, 1]) box(P, sx * (W + 1) - 11, yy - d * 0.07, 22, d * 0.14, 5);
+    // зеркала
+    c.fillStyle = bodyC; c.strokeStyle = P.C.ink; thin(P);
+    for (const sx of [-1, 1]) ell(P, sx * (W + 7), y0 + d * 0.33, 9, 5);
+    // кузов: скруглённый нос, чуть уже в талии, прямоугольная корма со скруглением
+    lw(P, 1.2); c.fillStyle = bodyC;
+    c.beginPath();
+    c.moveTo(-W * 0.72, y0);
+    c.bezierCurveTo(-W * 0.25, y0 - 4, W * 0.25, y0 - 4, W * 0.72, y0);
+    c.bezierCurveTo(W * 0.97, y0 + 3, W, y0 + d * 0.06, W, y0 + d * 0.14);
+    c.bezierCurveTo(W * 0.97, y0 + d * 0.45, W * 0.97, y0 + d * 0.6, W, d / 2 - d * 0.1);
+    c.bezierCurveTo(W, d / 2 - d * 0.02, W * 0.9, d / 2, W * 0.7, d / 2);
+    c.lineTo(-W * 0.7, d / 2);
+    c.bezierCurveTo(-W * 0.9, d / 2, -W, d / 2 - d * 0.02, -W, d / 2 - d * 0.1);
+    c.bezierCurveTo(-W * 0.97, y0 + d * 0.6, -W * 0.97, y0 + d * 0.45, -W, y0 + d * 0.14);
+    c.bezierCurveTo(-W, y0 + d * 0.06, -W * 0.97, y0 + 3, -W * 0.72, y0);
+    c.closePath(); c.fill(); c.stroke();
+    // капот: две линии
+    thin(P); c.strokeStyle = 'rgba(0,0,0,.18)';
+    line(P, [-W * 0.45, y0 + d * 0.04, -W * 0.55, y0 + d * 0.27]); line(P, [W * 0.45, y0 + d * 0.04, W * 0.55, y0 + d * 0.27]);
+    // лобовое стекло, крыша, заднее стекло, боковые окна
+    const yW0 = y0 + d * 0.29, yW1 = y0 + d * 0.41, yR1 = d / 2 - d * 0.26, yB1 = d / 2 - d * 0.14;
+    c.fillStyle = glass; c.strokeStyle = 'rgba(0,0,0,.25)';
+    c.beginPath(); c.moveTo(-W * 0.84, yW0); c.quadraticCurveTo(0, yW0 - d * 0.035, W * 0.84, yW0); c.lineTo(W * 0.7, yW1); c.lineTo(-W * 0.7, yW1); c.closePath(); c.fill();
+    c.beginPath(); c.moveTo(-W * 0.7, yR1); c.lineTo(W * 0.7, yR1); c.lineTo(W * 0.8, yB1); c.quadraticCurveTo(0, yB1 + d * 0.02, -W * 0.8, yB1); c.closePath(); c.fill();
+    for (const sx of [-1, 1]) { c.beginPath(); c.moveTo(sx * W * 0.86, yW0 + d * 0.02); c.lineTo(sx * W * 0.93, yW0 + d * 0.06); c.lineTo(sx * W * 0.93, yR1); c.lineTo(sx * W * 0.84, yB1 - d * 0.01); c.lineTo(sx * W * 0.72, yR1); c.lineTo(sx * W * 0.72, yW1); c.closePath(); c.fill(); }
+    c.fillStyle = roofC; box(P, -W * 0.7, yW1, W * 1.4, yR1 - yW1, 10);
+    // фары и фонари
+    c.fillStyle = '#fff6d0'; c.strokeStyle = 'rgba(0,0,0,.3)';
+    for (const sx of [-1, 1]) ell(P, sx * W * 0.66, y0 + d * 0.025, W * 0.16, d * 0.012);
+    c.fillStyle = '#d0453a';
+    for (const sx of [-1, 1]) box(P, sx * W * 0.78 - W * 0.14, d / 2 - d * 0.025, W * 0.28, d * 0.018, 2);
+    c.restore();
   };
+  /** Откатные ворота: полотно в проёме, противовес и зона отката вдоль забора (пунктир) */
   S.gateSlide = (P, w, d) => {
-    lw(P, 2); box(P, -w / 2, -d / 2, w, d, 0, false); thin(P);
+    const z = gateZone(P.it, w), c = P.ctx, s = z.dir;
+    c.save();
+    // зона отката: куда уезжает полотно (длина ≈ 1,5 проёма)
+    c.setLineDash([8 * P.px, 5 * P.px]); thin(P); c.strokeStyle = P.C.accent;
+    box(P, Math.min(z.x0, z.x1), -d / 2 - 14, Math.abs(z.x1 - z.x0), d + 28, 0, false);
+    c.setLineDash([]);
+    text(P, `откат ${(z.len / 100).toFixed(1)} м`, (z.x0 + z.x1) / 2, d / 2 + 26, Math.min(22, w * 0.08), { color: P.C.accent });
+    // полотно с противовесом
+    c.strokeStyle = P.C.ink; lw(P, 2); box(P, -w / 2, -d / 2, w, d, 0, false); thin(P);
     for (let x = -w / 2; x < w / 2; x += 25) line(P, [x, -d / 2, x + 25, d / 2]);
-    lw(P, 1.2); line(P, [-w / 2 + 30, d / 2 + 20, w / 2 - 30, d / 2 + 20]); line(P, [-w / 2 + 50, d / 2 + 10, -w / 2 + 30, d / 2 + 20, -w / 2 + 50, d / 2 + 30]);
+    const tail = w * 0.45;
+    c.setLineDash([4 * P.px, 3 * P.px]); box(P, s > 0 ? w / 2 : -w / 2 - tail, -d / 4, tail, d / 2, 0, false); c.setLineDash([]);
+    lw(P, 1.2); const ay = d / 2 + 10; line(P, [-s * w * 0.3, ay, s * w * 0.3, ay]); line(P, [s * w * 0.3 - s * 18, ay - 8, s * w * 0.3, ay, s * w * 0.3 - s * 18, ay + 8]);
+    c.restore();
+  };
+  /** Распашные ворота: створки с дугами открывания (внутрь — сторона +d), у варианта с калиткой — калитка справа */
+  S.gateSwing = (P, w, d) => {
+    const def = P.def, c = P.ctx, out = P.it.swingOut ? -1 : 1;
+    const wk = def.wicket ? Math.min(100, w * 0.25) : 0, gw = w - wk, x0 = -w / 2;
+    const leaves = def.leaves === 1 ? [[x0, gw, 1]] : [[x0, gw / 2, 1], [x0 + gw, gw / 2, -1]];
+    if (wk) leaves.push([w / 2, wk, -1]);
+    c.save(); lw(P, 1.6);
+    c.fillStyle = P.C.ink;
+    for (const x of [x0, x0 + gw, ...(wk ? [w / 2] : [])]) box(P, x - 6, -6, 12, 12, 0);        // столбы
+    for (const [hx, len, dir] of leaves) {
+      lw(P, 2); line(P, [hx, 0, hx + dir * len, 0]);
+      thin(P); c.setLineDash([5 * P.px, 4 * P.px]);
+      line(P, [hx, 0, hx, out * len]);
+      c.beginPath(); c.arc(hx, 0, len, out > 0 ? (dir > 0 ? 0 : Math.PI / 2) : (dir > 0 ? -Math.PI / 2 : Math.PI), out > 0 ? (dir > 0 ? Math.PI / 2 : Math.PI) : (dir > 0 ? 0 : -Math.PI / 2)); c.stroke();
+      c.setLineDash([]);
+    }
+    c.restore();
   };
   /** Значки заборов для библиотеки: полотно цвета материала и столбы */
   S.fenceIcon = (P, w) => {
@@ -2827,6 +2902,28 @@ const Model = {
     const outer = G.offsetPoly(inner, w), n = inner.length;
     const quads = inner.map((p, i) => [p, inner[(i + 1) % n], outer[(i + 1) % n], outer[i]]);
     return { id, name, w, inner, outer, quads, area: Math.abs(G.polyArea(outer)) - Math.abs(G.polyArea(inner)), over };
+  },
+  /** Разрывы забора: проёмы в нём и ворота / калитки из библиотеки, стоящие на его линии → [[s0, s1]] вдоль стены */
+  fenceGaps(w) {
+    const L = Model.wallLen(w), u = Model.wallDir(w), gaps = [];
+    for (const op of App.V.openings) if (op.wall === w.id) { const g = Model.opGeom(op); if (g) gaps.push([g.pos - g.width / 2, g.pos + g.width / 2]); }
+    for (const it of App.V.items) {
+      const sh = catItem(it.key).shape;
+      if (sh !== 'gateSlide' && sh !== 'gateSwing' && sh !== 'wicket') continue;
+      const ax = G.toWorld({ x: 1, y: 0 }, 0, 0, it.rot || 0), pr = G.proj(it, w.a, w.b);
+      if (pr.perp > w.th / 2 + 20 || Math.abs(G.dot(ax, u)) < 0.95) continue;
+      const c = pr.t * L, s0 = Math.max(0, c - it.w / 2), s1 = Math.min(L, c + it.w / 2);
+      if (s1 - s0 > 1) gaps.push([s0, s1]);
+    }
+    return gaps.sort((a, b) => a[0] - b[0]);
+  },
+  /** Куски забора между разрывами */
+  fenceSpans(w) {
+    const L = Model.wallLen(w), spans = [];
+    let s = 0;
+    for (const [g0, g1] of Model.fenceGaps(w)) { if (g0 - s > 1) spans.push([s, g0]); s = Math.max(s, g1); }
+    if (L - s > 1) spans.push([s, L]);
+    return spans;
   },
   wallMap(walls) { return new Map(walls.map(w => [w.id, { th: w.th, ins: w.ins || 0, mat: w.mat, kind: w.kind, floor: w.floor, a: { ...w.a }, b: { ...w.b } }])); },
   /** Наружные стены утолщаются наружу: если у стены изменилась только толщина (материал, утеплитель, тип размера),
@@ -4210,18 +4307,31 @@ const Checks = {
       if (l.kind === 'sewer') {
         // выпуск до колодца: Ø до 110 — не длиннее 12 м, Ø150 — 15 м; на поворотах трассы — колодец
         const maxRun = (l.dia || 110) <= 110 ? 1200 : 1500;
+        // выпуск считается от стены дома: участок под полом (внутренняя канализация) в длину выпуска не входит
+        const inHouse = (p) => outlines.some(o => G.pointInPoly(p, o));
+        const outLen = (a, b) => { const n = Math.max(1, Math.ceil(G.dist(a, b) / 10)); let s2 = 0; for (let k = 0; k < n; k++) { const p = G.add(a, G.mul(G.sub(b, a), (k + 0.5) / n)); if (!inHouse(p)) s2 += G.dist(a, b) / n; } return s2; };
         let run = 0, worst = 0, at = null;
         for (let i = 0; i + 1 < l.pts.length; i++) {
-          run += G.dist(l.pts[i], l.pts[i + 1]);
+          run += outLen(l.pts[i], l.pts[i + 1]);
           if (nearWell(l.pts[i + 1]) || i + 1 === l.pts.length - 1) { if (run > worst) { worst = run; at = G.mid(l.pts[i], l.pts[i + 1]); } run = 0; }
         }
         out.push({ line: l, kind: l.kind, title, text: worst > maxRun ? `участок без колодца ${m(worst)} > ${m(maxRun)} — нужен ревизионный колодец` : `участки между колодцами ≤ ${m(maxRun)}`, ok: worst <= maxRun, at, src: 'СП 30.13330: выпуск Ø100 — до 12 м, Ø150 — до 15 м' });
         const bends = [];
         for (let i = 1; i + 1 < l.pts.length; i++) {
           const u1 = G.unit(G.sub(l.pts[i], l.pts[i - 1])), u2 = G.unit(G.sub(l.pts[i + 1], l.pts[i]));
-          if (G.dot(u1, u2) < Math.cos(U.rad(30)) && !nearWell(l.pts[i])) bends.push(l.pts[i]);
+          if (G.dot(u1, u2) < Math.cos(U.rad(30)) && !nearWell(l.pts[i]) && !outlines.some(o => G.pointInPoly(l.pts[i], o))) bends.push(l.pts[i]);   // под полом — отводы с ревизией
         }
         if (bends.length) out.push({ line: l, kind: l.kind, title, text: `поворотов без колодца: ${bends.length} — на поворотах ставят поворотный / ревизионный колодец`, ok: false, at: bends[0], src: 'СП 32.13330' });
+      }
+      if (l.kind === 'gasAir') {
+        const h = l.height ?? LINE_KINDS.gasAir.height;
+        // над проездами (асфальт, бетон, дороги) — не ниже 5 м, в местах прохода людей — 2,2 м
+        const drive = App.doc.areas.filter(a => ['asphalt', 'concrete', 'road'].includes(a.kind)).map(a => a.pts)
+          .concat(App.doc.roads.filter(r => ['street', 'road', 'driveway'].includes(r.kind)).flatMap(r => r.pts.slice(1).map((b, i) => { const a = r.pts[i], n = G.mul(G.perp(G.unit(G.sub(b, a))), r.width / 2); return [G.add(a, n), G.add(b, n), G.sub(b, n), G.sub(a, n)]; })));
+        let over = null;
+        for (let i = 0; i + 1 < l.pts.length && !over; i++) for (let k = 0; k <= 20; k++) { const p = G.add(l.pts[i], G.mul(G.sub(l.pts[i + 1], l.pts[i]), k / 20)); if (drive.some(poly => G.pointInPoly(p, poly))) { over = p; break; } }
+        if (over && h < 500) out.push({ line: l, kind: l.kind, title, text: `проходит над проездом на ${m(h)} (норма ≥ 5 м) — поднимите или обойдите`, ok: false, at: over, src: 'СП 62.13330, прил. Б' });
+        else out.push({ line: l, kind: l.kind, title, text: `высота прокладки ${m(h)} (норма ≥ 2,2 м${over ? ', над проездом ≥ 5 м' : ''})`, ok: h >= 219, at: mid, src: 'СП 62.13330' });
       }
       if (l.kind === 'gas' && (l.depth || 0) > 0) {
         const c = clearance(l, 250);
@@ -4872,23 +4982,21 @@ const Render = {
     const M = FENCE_MATERIALS[w.mat] || FENCE_MATERIALS.profile;
     ctx.strokeStyle = M.color; ctx.lineWidth = Math.max(1.8 * px, w.th); ctx.lineCap = M.dash.length ? 'butt' : 'round';
     ctx.setLineDash(M.dash.map(v => v * px * 2));
-    ctx.beginPath(); ctx.moveTo(w.a.x, w.a.y); ctx.lineTo(w.b.x, w.b.y); ctx.stroke();
+    // забор — кусками между проёмами, воротами и калитками
+    const spans = Model.fenceSpans(w);
+    ctx.beginPath();
+    for (const [s0, s1] of spans) { const a = G.add(w.a, G.mul(u, s0)), b = G.add(w.a, G.mul(u, s1)); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); }
+    ctx.stroke();
     ctx.setLineDash([]);
     ctx.lineCap = 'butt';
     const step = w.mat === 'brickF' ? 300 : 250;
     ctx.fillStyle = M.color;
-    const cnt = Math.max(1, Math.round(L / step));
     const s = Math.max(8, w.th * 2);
-    for (let i = 0; i <= cnt; i++) {
-      const p = G.add(w.a, G.mul(u, L * i / cnt));
-      ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+    for (const [s0, s1] of spans) {
+      const cnt = Math.max(1, Math.round((s1 - s0) / step));
+      for (let i = 0; i <= cnt; i++) { const p = G.add(w.a, G.mul(u, s0 + (s1 - s0) * i / cnt)); ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s); }
     }
-    // проёмы (калитки/ворота) в заборе
-    for (const op of App.V.openings) if (op.wall === w.id) {
-      const g = Model.opGeom(op);
-      ctx.strokeStyle = env.exporting ? '#fff' : env.C.bg; ctx.lineWidth = w.th + 4 * px;
-      ctx.beginPath(); ctx.moveTo(g.a.x, g.a.y); ctx.lineTo(g.b.x, g.b.y); ctx.stroke();
-    }
+    void L;
   },
   opening(env, op) {
     const g = Model.opGeom(op);
@@ -5827,6 +5935,24 @@ const View3D = {
         if (def.shape === 'rug') continue;
         View3D.item(it, def, e, top => top);
       }
+      // надземный газопровод: жёлтая труба на высоте, стойки на участке (у стен — кронштейны)
+      for (const l of App.V.lines) {
+        if (l.kind !== 'gasAir') continue;
+        const z = e + (l.height ?? LINE_KINDS.gasAir.height), yel = View3D.hex('#e3b000'), post = View3D.hex('#8a8f94');
+        const nearWall = (p) => App.V.walls.some(w => w.kind !== 'fence' && G.distSeg(p, w.a, w.b) <= w.th / 2 + 40);
+        for (let i = 0; i + 1 < l.pts.length; i++) {
+          const a = l.pts[i], b2 = l.pts[i + 1];
+          wire([a.x, a.y, z], [b2.x, b2.y, z], 2.8, yel);
+          const L = G.dist(a, b2), n = Math.max(1, Math.ceil(L / 350));
+          for (let k = 0; k <= n; k++) {
+            const p = G.add(a, G.mul(G.sub(b2, a), k / n));
+            if (nearWall(p)) { cyl(p.x, p.y, 2, z - 8, z + 2, post, 6); continue; }
+            cyl(p.x, p.y, 4, e, z - 2, post, 8);
+          }
+        }
+        // спуск к точке подключения и ввод — вертикальные участки на концах
+        for (const p of [l.pts[0], l.pts[l.pts.length - 1]]) wire([p.x, p.y, e + 40], [p.x, p.y, z], 2.8, yel);
+      }
       // воздушные линии: опоры (свои — если нет столба из библиотеки), крюк ввода на стене, СИП с провисом
       for (const l of App.V.lines) {
         if (l.kind !== 'overhead') continue;
@@ -5891,11 +6017,8 @@ const View3D = {
     const col = View3D.hex(M.color);
     const L = Model.wallLen(w), u = Model.wallDir(w), n = G.perp(u);
     const th = Math.max(w.th, 3);
-    const gaps = App.V.openings.filter(o => o.wall === w.id).map(o => Model.opGeom(o)).filter(Boolean).sort((a, b) => a.pos - b.pos);
-    const spans = [];
-    let s = 0;
-    for (const g of gaps) { if (g.pos - g.width / 2 - s > 1) spans.push([s, g.pos - g.width / 2]); s = g.pos + g.width / 2; }
-    if (L - s > 1) spans.push([s, L]);
+    const spans = Model.fenceSpans(w);          // без проёмов, ворот и калиток
+    void L;
     const see = w.mat === 'mesh' || w.mat === 'forged' || w.mat === 'picket' || w.mat === 'euro';
     for (const [s0, s1] of spans) {
       const A = G.add(w.a, G.mul(u, s0)), B = G.add(w.a, G.mul(u, s1));
@@ -5982,14 +6105,8 @@ const View3D = {
     if (sh === 'parking') { box(it.x, it.y, it.w, it.d, rot, e, e + 3, C('#a9abb0')); return; }
     if (sh === 'gardenbed' || sh === 'flowerbed') { box(it.x, it.y, it.w, it.d, rot, e, e + Math.max(20, H), C('#7a5a3a')); return; }
     if (sh === 'filterfield' || sh === 'ground') return;
-    if (sh === 'car') {
-      const body = C('#6f7f95');
-      box(it.x, it.y, it.w, it.d, rot, e + 25, e + 85, body);
-      const q = G.toWorld({ x: 0, y: it.d * 0.05 }, it.x, it.y, rot);
-      box(q.x, q.y, it.w - 20, it.d * 0.5, rot, e + 85, e + H, C('#32393f'));
-      for (const [sx, sy] of [[-1, -0.3], [1, -0.3], [-1, 0.32], [1, 0.32]]) { const w = G.toWorld({ x: sx * (it.w / 2 - 8), y: sy * it.d }, it.x, it.y, rot); box(w.x, w.y, 22, 64, rot, e, e + 60, dark); }
-      return;
-    }
+    if (sh === 'car') { View3D.car(it, e); return; }
+    if (sh === 'gateSlide' || sh === 'gateSwing' || sh === 'wicket') { View3D.gate(it, def, e); return; }
     if (sh === 'stairs' || sh === 'stairsL') {
       const steps = Math.max(3, Math.round(it.d / 28));
       const rise = H / steps;
@@ -6097,6 +6214,72 @@ const View3D = {
     };
     const s = (p) => G.dot(G.sub(p, o), u);
     return clip(clip(poly, p => s(p) - a), p => b - s(p));
+  },
+  /** Ворота и калитка: столбы, рама, полотно с рёбрами; у откатных — противовес и рельс */
+  gate(it, def, e) {
+    const { box } = View3D._g, C = View3D.hex, rot = it.rot || 0, w = it.w, H = it.h || 200, sh = def.shape;
+    const L = (x, y) => G.toWorld({ x: it.flip ? -x : x, y }, it.x, it.y, rot);
+    const bx = (x, y, bw, bd, z0, z1, col) => { const q = L(x, y); box(q.x, q.y, bw, bd, rot, z0, z1, col); };
+    const metal = C('#6f7880'), frame = C('#474d53'), post = C('#3d4247');
+    const leaf = (x0, x1) => {
+      const cx = (x0 + x1) / 2, lw = Math.abs(x1 - x0) - 2;
+      bx(cx, 0, lw, 3, e + 8, e + H - 4, metal);
+      for (const z of [e + 8, e + H / 2, e + H - 10]) bx(cx, 0, lw, 5, z, z + 6, frame);
+      for (const x of [x0, x1]) bx(x + Math.sign(x1 - x0) * 3 * (x === x0 ? 1 : -1), 0, 6, 5, e + 8, e + H - 4, frame);
+    };
+    if (sh === 'wicket') { for (const x of [-w / 2, w / 2]) bx(x, 0, 8, 8, e, e + H + 10, post); leaf(-w / 2 + 4, w / 2 - 4); return; }
+    if (sh === 'gateSlide') {
+      const z = gateZone(it, w), tail = w * 0.45;
+      for (const x of [-w / 2, w / 2]) bx(x, 0, 12, 12, e, e + H + 10, post);
+      leaf(-w / 2 + 6, w / 2 - 6);
+      const t0 = z.dir > 0 ? w / 2 : -w / 2 - tail;
+      bx(t0 + tail / 2, 0, tail, 4, e + 8, e + 16, frame);                 // противовес
+      bx((z.x0 + z.x1) / 2, 0, z.len, 6, e, e + 2, C('#8b8f93'));          // линия отката (фундамент под балку)
+      return;
+    }
+    const wk = def.wicket ? Math.min(100, w * 0.25) : 0, gw = w - wk, x0 = -w / 2;
+    for (const x of [x0, x0 + gw, ...(wk ? [w / 2] : [])]) bx(x, 0, 12, 12, e, e + H + 10, post);
+    if (def.leaves === 1) leaf(x0 + 6, x0 + gw - 6);
+    else { leaf(x0 + 6, x0 + gw / 2 - 1); leaf(x0 + gw / 2 + 1, x0 + gw - 6); }
+    if (wk) leaf(x0 + gw + 6, w / 2 - 6);
+  },
+  /** Автомобиль: кузов со скруглёнными углами, салон-трапеция со стёклами, круглые колёса, фары и фонари */
+  car(it, e) {
+    const { prism, face, box } = View3D._g, C = View3D.hex, rot = it.rot || 0, w = it.w, d = it.d, H = it.h || 150;
+    const L = (x, y) => G.toWorld({ x, y }, it.x, it.y, rot), V = (x, y, z) => { const q = L(x, y); return [q.x / 100, z / 100, q.y / 100]; };
+    const body = it.color ? C(it.color) : C('#5d7898'), glass = [0.16, 0.2, 0.26], trim = C('#2b2e33');
+    // кузов: скруглённый прямоугольник в плане
+    const rr = (hw, hd, r, n = 5) => { const pts = []; for (const [cx, cy, a0] of [[hw - r, hd - r, 0], [-hw + r, hd - r, 90], [-hw + r, -hd + r, 180], [hw - r, -hd + r, 270]]) for (let i = 0; i <= n; i++) { const a = U.rad(a0 + 90 * i / n); pts.push(L(cx + Math.cos(a) * r, cy + Math.sin(a) * r)); } return pts; };
+    prism(rr(w / 2, d / 2, Math.min(40, w * 0.22)), e + 24, e + 70, body, { topK: 1.08 });
+    prism(rr(w / 2 - 2, d / 2 - 2, Math.min(38, w * 0.2)), e + 18, e + 24, trim);      // пороги / бамперы снизу
+    // салон: низ шире, верх уже; перед −d/2 — лобовое наклонное
+    const zb = e + 70, zt = e + H;
+    const b = [[-w / 2 + 8, -d * 0.2], [w / 2 - 8, -d * 0.2], [w / 2 - 8, d * 0.3], [-w / 2 + 8, d * 0.3]];
+    const t = [[-w / 2 + 22, -d * 0.06], [w / 2 - 22, -d * 0.06], [w / 2 - 22, d * 0.22], [-w / 2 + 22, d * 0.22]];
+    const ref = V(0, d * 0.05, (zb + zt) / 2);
+    for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; face([V(...b[i], zb), V(...b[j], zb), V(...t[j], zt), V(...t[i], zt)], glass, ref); }
+    face(t.map(p => V(...p, zt)), body.map(x => Math.min(1, x * 1.1)), V(0, d * 0.08, zt - 50));
+    // стойки между стёклами (светлее кузова по краям крыши)
+    for (const sx of [-1, 1]) face([V(sx * (w / 2 - 8), -d * 0.2 + 1, zb), V(sx * (w / 2 - 8), -d * 0.2 + 12, zb), V(sx * (w / 2 - 22), -d * 0.06 + 8, zt), V(sx * (w / 2 - 22), -d * 0.06, zt)], body, V(0, 0, zb));
+    // колёса — цилиндры поперёк машины
+    const wheel = (cx, cy) => {
+      const R = 32, n = 12, zc = e + R, sx = Math.sign(cx), tyre = C('#1c1d20');
+      const ring = (r, m) => Array.from({ length: m }, (_, k) => { const a = k / m * Math.PI * 2; return [cy + Math.cos(a) * r, zc + Math.sin(a) * r]; });
+      for (const xs of [cx - 11, cx + 11]) face(ring(R, n).map(([y, z]) => V(xs, y, z)), tyre, V(cx, cy, zc));
+      const rg = ring(R, n);
+      for (let k = 0; k < n; k++) { const [y0, z0] = rg[k], [y1, z1] = rg[(k + 1) % n]; face([V(cx - 11, y0, z0), V(cx + 11, y0, z0), V(cx + 11, y1, z1), V(cx - 11, y1, z1)], tyre, V(cx, cy, zc)); }
+      face(ring(17, 10).map(([y, z]) => V(cx + sx * 11.4, y, z)), C('#a9aeb5'), V(cx, cy, zc));    // диск
+    };
+    for (const cy of [-d * 0.31, d * 0.3]) for (const sx of [-1, 1]) wheel(sx * (w / 2 - 12), cy);
+    // фары, фонари, решётка, номера
+    for (const sx of [-1, 1]) {
+      const f = L(sx * w * 0.33, -d / 2 + 2), r = L(sx * w * 0.36, d / 2 - 2);
+      box(f.x, f.y, w * 0.2, 4, rot, e + 52, e + 62, [1, 0.97, 0.82]);
+      box(r.x, r.y, w * 0.18, 4, rot, e + 52, e + 62, C('#c4362c'));
+    }
+    const g = L(0, -d / 2 + 1), n2 = L(0, d / 2 - 1);
+    box(g.x, g.y, w * 0.3, 3, rot, e + 36, e + 48, trim);
+    box(n2.x, n2.y, 52, 3, rot, e + 36, e + 47, [0.95, 0.95, 0.95]);
   },
   BLD_FLOOR: 10,
   /** Постройка «как дом», внутри которой стоит объект (погреб/яма) — или null */
@@ -9013,6 +9196,20 @@ const UI = {
             : 'Высота объекта — до конька; если при заданном уклоне столбы выходят ниже 1,8 м, конёк поднимается. Направления — относительно самой постройки.'));
     };
     if (BLD_ROOF_SHAPES.has(def.shape)) body.append(roofSection());
+    if (def.shape === 'gateSlide') {
+      const z = gateZone(it, it.w);
+      body.append(F.section('Ворота',
+        F.select('Откат', it.slide === 'left' ? 'left' : 'right', [['right', 'вправо (+Ш)'], ['left', 'влево (−Ш)']], (v) => { it.slide = v; Model.commit(); }),
+        F.info('Зона отката', `${U.fmtLen(z.len)} вдоль забора`),
+        F.note('Полотно откатных ворот примерно в 1,5 раза длиннее проёма и уезжает вдоль забора — эта зона должна быть свободной: без калитки, столбов, деревьев и угла участка. Проверяется в «Анализе проекта».')));
+    }
+    if (def.shape === 'gateSwing') {
+      const wk = def.wicket ? Math.min(100, it.w * 0.25) : 0, leaf = def.leaves === 1 ? it.w - wk : (it.w - wk) / 2;
+      body.append(F.section('Ворота',
+        F.select('Створки открываются', it.swingOut ? 'out' : 'in', [['in', 'внутрь участка'], ['out', 'наружу']], (v) => { if (v === 'out') it.swingOut = true; else delete it.swingOut; Model.commit(); }),
+        F.info('Створка', U.fmtLen(leaf) + (wk ? `, калитка ${U.fmtLen(wk)}` : '')),
+        F.note('Створкам нужно свободное место радиусом с их ширину. Открывание наружу, на улицу, обычно не допускается — лучше внутрь участка.')));
+    }
     if (BLD_ROOF_SHAPES.has(def.shape) || def.shape === 'gazebo') {
       const g = Checks.groupsOf(it).filter(x => x !== 'outbuilding' || Checks.groupsOf(it).length === 1).map(x => CHECK_GROUPS[x]).join(', ') || 'не учитывается';
       body.append(F.section('Нормы отступов',
@@ -9090,7 +9287,9 @@ const UI = {
       F.info('Точек', String(l.pts.length)),
       k.dia || l.dia ? F.num('Диаметр', l.dia, (v) => UI.set(l, 'dia', v), { unit: 'мм' }) : null,
       k.section !== undefined ? F.text('Сечение / марка', l.section || '', (v) => UI.set(l, 'section', v), { placeholder: k.section }) : null,
-      l.kind === 'overhead' ? null : F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
+      l.kind === 'overhead' || l.kind === 'gasAir' ? null : F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
+      l.kind === 'gasAir' ? F.num('Высота прокладки', l.height ?? LINE_KINDS.gasAir.height, (v) => UI.set(l, 'height', U.clamp(v, 30, 800)), { min: 30, max: 800 }) : null,
+      l.kind === 'gasAir' ? F.note('Надземный газопровод: не ниже 2,2 м там, где ходят люди, и не ниже 5 м над проездами; по фасаду — на кронштейнах, не ближе 0,5 м к окнам и дверям. Ввод в котельную — через футляр в стене.') : null,
       l.kind === 'overhead' ? F.num('Охранная зона (в каждую сторону)', (l.zone ?? 200) / 100, (v) => UI.set(l, 'zone', Math.round(v * 100)), { unit: 'м', min: 0, max: 50, step: 0.5 }) : null,
       l.kind === 'overhead' ? F.note('Опоры рисуются в вершинах и через ~40 м; столб из библиотеки в вершине заменяет нарисованный. Конец у стены дома — ввод (крюк на фасаде). Охранная зона ВЛ 0,4 кВ — 2 м, 10 кВ — 10 м: строить под проводами нельзя.') : null,
       F.text('Обозначение', l.label || '', (v) => UI.set(l, 'label', v.trim() || undefined), { placeholder: k.code }),
@@ -10517,7 +10716,7 @@ const PRICE_DEFAULTS = {
   'win:m2': 11000, 'door:int': 15000, 'door:ext': 45000, 'door:gate': 110000, 'door:slide': 25000,
   // сети (за м)
   'net:water': 1100, 'net:hotwater': 900, 'net:sewer': 1600, 'net:drain': 1400, 'net:heating': 1800, 'net:warmfloor': 250,
-  'net:gas': 3500, 'net:power': 1300, 'net:overhead': 900, 'net:lowvolt': 250, 'net:ground': 700,
+  'net:gas': 3500, 'net:gasAir': 2800, 'net:power': 1300, 'net:overhead': 900, 'net:lowvolt': 250, 'net:ground': 700,
   // оборудование и постройки (за шт.)
   'item:septic2': 140000, 'item:septic3': 190000, 'item:septicRing': 90000, 'item:cesspool': 70000, 'item:well': 110000,
   'item:borehole': 220000, 'item:manhole': 25000, 'item:drainWell': 30000, 'item:filterField': 60000, 'item:gasholder': 450000,
@@ -10819,6 +11018,19 @@ const Analysis = {
       if (!BLD_HOLLOW.has(catItem(it.key).shape)) continue;
       const name = it.label || catItem(it.key).name;
       if (!bldOps(it).some(o => (OPENING_TYPES[o.type] || {}).cat === 'door')) add('warn', 'Постройки', `${name}: нет ни двери, ни ворот`, '', it, it.id);
+    }
+
+    // ---------------- ворота: зона отката откатных ворот свободна и в пределах участка ----------------
+    for (const it of d.items) {
+      if (catItem(it.key).shape !== 'gateSlide') continue;
+      const z = gateZone(it, it.w), W2 = (x, y) => G.toWorld({ x: it.flip ? -x : x, y }, it.x, it.y, it.rot || 0);
+      const zone = [W2(Math.min(z.x0, z.x1), -30), W2(Math.max(z.x0, z.x1), -30), W2(Math.max(z.x0, z.x1), 30), W2(Math.min(z.x0, z.x1), 30)];
+      const hit = d.items.find(o => o !== it && o.h > 20 && !catItem(o.key).sym && (it.floor || '') === (o.floor || '') && (Model.itemPts(o).some(q => G.pointInPoly(q, zone)) || zone.some(q => G.pointInPoly(q, Model.itemPts(o)))));
+      const end = [W2(z.x1, 40), W2(z.x1, -40)];
+      const outside = plots.length && !end.some(q => plots.some(pl => G.pointInPoly(q, pl.pts)));
+      const name = it.label || catItem(it.key).name;
+      if (hit) add('bad', 'Ворота', `${name}: в зоне отката (${m(z.len)} вдоль забора) стоит «${hit.label || catItem(hit.key).name}» — полотно не откроется`, 'нужно ≈ 1,5 ширины проёма свободного забора', G.mid(zone[0], zone[2]), it.id);
+      else if (outside) add('bad', 'Ворота', `${name}: зона отката (${m(z.len)}) выходит за угол участка — смените сторону отката или поставьте распашные ворота`, 'нужно ≈ 1,5 ширины проёма свободного забора', G.mid(zone[0], zone[2]), it.id);
     }
 
     // ---------------- аккуратность чертежа ----------------

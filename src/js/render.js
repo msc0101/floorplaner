@@ -577,23 +577,21 @@ const Render = {
     const M = FENCE_MATERIALS[w.mat] || FENCE_MATERIALS.profile;
     ctx.strokeStyle = M.color; ctx.lineWidth = Math.max(1.8 * px, w.th); ctx.lineCap = M.dash.length ? 'butt' : 'round';
     ctx.setLineDash(M.dash.map(v => v * px * 2));
-    ctx.beginPath(); ctx.moveTo(w.a.x, w.a.y); ctx.lineTo(w.b.x, w.b.y); ctx.stroke();
+    // забор — кусками между проёмами, воротами и калитками
+    const spans = Model.fenceSpans(w);
+    ctx.beginPath();
+    for (const [s0, s1] of spans) { const a = G.add(w.a, G.mul(u, s0)), b = G.add(w.a, G.mul(u, s1)); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); }
+    ctx.stroke();
     ctx.setLineDash([]);
     ctx.lineCap = 'butt';
     const step = w.mat === 'brickF' ? 300 : 250;
     ctx.fillStyle = M.color;
-    const cnt = Math.max(1, Math.round(L / step));
     const s = Math.max(8, w.th * 2);
-    for (let i = 0; i <= cnt; i++) {
-      const p = G.add(w.a, G.mul(u, L * i / cnt));
-      ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+    for (const [s0, s1] of spans) {
+      const cnt = Math.max(1, Math.round((s1 - s0) / step));
+      for (let i = 0; i <= cnt; i++) { const p = G.add(w.a, G.mul(u, s0 + (s1 - s0) * i / cnt)); ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s); }
     }
-    // проёмы (калитки/ворота) в заборе
-    for (const op of App.V.openings) if (op.wall === w.id) {
-      const g = Model.opGeom(op);
-      ctx.strokeStyle = env.exporting ? '#fff' : env.C.bg; ctx.lineWidth = w.th + 4 * px;
-      ctx.beginPath(); ctx.moveTo(g.a.x, g.a.y); ctx.lineTo(g.b.x, g.b.y); ctx.stroke();
-    }
+    void L;
   },
   opening(env, op) {
     const g = Model.opGeom(op);

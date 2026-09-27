@@ -355,7 +355,7 @@ const net = await page.evaluate(() => {
   return r;
 });
 console.log('networks', JSON.stringify(net));
-if (net.n !== 11 || net.poles !== 2 || !net.item || !net.wall || net.zRidge !== Math.round(440 + 510 * Math.tan(38 * Math.PI / 180)) || net.zOut !== null || !net.belowRoof) errors.push('Сети / ЛЭП / стены под крышей: ' + JSON.stringify(net));
+if (net.n !== 12 || net.poles !== 2 || !net.item || !net.wall || net.zRidge !== Math.round(440 + 510 * Math.tan(38 * Math.PI / 180)) || net.zOut !== null || !net.belowRoof) errors.push('Сети / ЛЭП / стены под крышей: ' + JSON.stringify(net));
 // проём постройки: выделяется отдельно, удаляется Del; площадь постройки внутри — в сводке
 const bop = await page.evaluate(() => {
   const f = App.doc.floors[0].id;
@@ -426,6 +426,26 @@ const an = await page.evaluate(() => {
 });
 console.log('analysis', JSON.stringify(an));
 if (!/Участок/.test(an.stats) || !/Дом/.test(an.stats) || !an.rooms || !an.text || !an.shown || !an.btn) errors.push('Анализ проекта: ' + JSON.stringify(an));
+// ворота: зона отката откатных, разрыв забора под воротами; надземный газ над проездом
+const gt = await page.evaluate(() => {
+  const f = App.doc.floors[0].id, X = 400000;
+  const fence = Model.add('walls', { kind: 'fence', th: 5, h: 180, mat: 'profile', a: { x: X, y: 0 }, b: { x: X + 2000, y: 0 }, floor: f });
+  const gate = Model.add('items', { key: 'gate', x: X + 600, y: 0, w: 400, d: 20, h: 200, rot: 0, floor: f });
+  Model.add('items', { key: 'wicket', x: X + 1000, y: 0, w: 100, d: 10, h: 200, rot: 0, floor: f });
+  Model.add('areas', { kind: 'asphalt', pts: [{ x: X, y: 100 }, { x: X + 500, y: 100 }, { x: X + 500, y: 600 }, { x: X, y: 600 }], floor: f });
+  Model.add('lines', { kind: 'gasAir', pts: [{ x: X - 100, y: 300 }, { x: X + 700, y: 300 }], dia: 32, depth: 0, height: 270, floor: f });
+  Model.commit();
+  const R = Analysis.run(), r = {};
+  r.zone = R.issues.some(i => i.group === 'Ворота' && /Калитка/.test(i.text));
+  r.spans = Model.fenceSpans(Model.get(fence.id)).length;
+  r.gasDrive = R.issues.some(i => i.group === 'Сети' && /над проездом/.test(i.text));
+  Model.get(gate.id).slide = 'left'; Model.commit();
+  r.zoneLeft = !Analysis.run().issues.some(i => i.group === 'Ворота' && /Калитка/.test(i.text));
+  Model.undo(); Model.undo();
+  return r;
+});
+console.log('gates', JSON.stringify(gt));
+if (!gt.zone || gt.spans !== 3 || !gt.gasDrive || !gt.zoneLeft) errors.push('Ворота / газ: ' + JSON.stringify(gt));
 // заголовок вкладки — имя открытого файла
 const ttl = await page.evaluate(() => { const f0 = App.fileName; IO.setFile('Дача.json'); const t = document.title; IO.setFile(f0); return t; });
 console.log('title', ttl);

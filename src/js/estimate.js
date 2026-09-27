@@ -22,7 +22,7 @@ const PRICE_DEFAULTS = {
   'win:m2': 11000, 'door:int': 15000, 'door:ext': 45000, 'door:gate': 110000, 'door:slide': 25000,
   // сети (за м)
   'net:water': 1100, 'net:hotwater': 900, 'net:sewer': 1600, 'net:drain': 1400, 'net:heating': 1800, 'net:warmfloor': 250,
-  'net:gas': 3500, 'net:power': 1300, 'net:overhead': 900, 'net:lowvolt': 250, 'net:ground': 700,
+  'net:gas': 3500, 'net:gasAir': 2800, 'net:power': 1300, 'net:overhead': 900, 'net:lowvolt': 250, 'net:ground': 700,
   // оборудование и постройки (за шт.)
   'item:septic2': 140000, 'item:septic3': 190000, 'item:septicRing': 90000, 'item:cesspool': 70000, 'item:well': 110000,
   'item:borehole': 220000, 'item:manhole': 25000, 'item:drainWell': 30000, 'item:filterField': 60000, 'item:gasholder': 450000,

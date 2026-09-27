@@ -807,6 +807,20 @@ const UI = {
             : 'Высота объекта — до конька; если при заданном уклоне столбы выходят ниже 1,8 м, конёк поднимается. Направления — относительно самой постройки.'));
     };
     if (BLD_ROOF_SHAPES.has(def.shape)) body.append(roofSection());
+    if (def.shape === 'gateSlide') {
+      const z = gateZone(it, it.w);
+      body.append(F.section('Ворота',
+        F.select('Откат', it.slide === 'left' ? 'left' : 'right', [['right', 'вправо (+Ш)'], ['left', 'влево (−Ш)']], (v) => { it.slide = v; Model.commit(); }),
+        F.info('Зона отката', `${U.fmtLen(z.len)} вдоль забора`),
+        F.note('Полотно откатных ворот примерно в 1,5 раза длиннее проёма и уезжает вдоль забора — эта зона должна быть свободной: без калитки, столбов, деревьев и угла участка. Проверяется в «Анализе проекта».')));
+    }
+    if (def.shape === 'gateSwing') {
+      const wk = def.wicket ? Math.min(100, it.w * 0.25) : 0, leaf = def.leaves === 1 ? it.w - wk : (it.w - wk) / 2;
+      body.append(F.section('Ворота',
+        F.select('Створки открываются', it.swingOut ? 'out' : 'in', [['in', 'внутрь участка'], ['out', 'наружу']], (v) => { if (v === 'out') it.swingOut = true; else delete it.swingOut; Model.commit(); }),
+        F.info('Створка', U.fmtLen(leaf) + (wk ? `, калитка ${U.fmtLen(wk)}` : '')),
+        F.note('Створкам нужно свободное место радиусом с их ширину. Открывание наружу, на улицу, обычно не допускается — лучше внутрь участка.')));
+    }
     if (BLD_ROOF_SHAPES.has(def.shape) || def.shape === 'gazebo') {
       const g = Checks.groupsOf(it).filter(x => x !== 'outbuilding' || Checks.groupsOf(it).length === 1).map(x => CHECK_GROUPS[x]).join(', ') || 'не учитывается';
       body.append(F.section('Нормы отступов',
@@ -884,7 +898,9 @@ const UI = {
       F.info('Точек', String(l.pts.length)),
       k.dia || l.dia ? F.num('Диаметр', l.dia, (v) => UI.set(l, 'dia', v), { unit: 'мм' }) : null,
       k.section !== undefined ? F.text('Сечение / марка', l.section || '', (v) => UI.set(l, 'section', v), { placeholder: k.section }) : null,
-      l.kind === 'overhead' ? null : F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
+      l.kind === 'overhead' || l.kind === 'gasAir' ? null : F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
+      l.kind === 'gasAir' ? F.num('Высота прокладки', l.height ?? LINE_KINDS.gasAir.height, (v) => UI.set(l, 'height', U.clamp(v, 30, 800)), { min: 30, max: 800 }) : null,
+      l.kind === 'gasAir' ? F.note('Надземный газопровод: не ниже 2,2 м там, где ходят люди, и не ниже 5 м над проездами; по фасаду — на кронштейнах, не ближе 0,5 м к окнам и дверям. Ввод в котельную — через футляр в стене.') : null,
       l.kind === 'overhead' ? F.num('Охранная зона (в каждую сторону)', (l.zone ?? 200) / 100, (v) => UI.set(l, 'zone', Math.round(v * 100)), { unit: 'м', min: 0, max: 50, step: 0.5 }) : null,
       l.kind === 'overhead' ? F.note('Опоры рисуются в вершинах и через ~40 м; столб из библиотеки в вершине заменяет нарисованный. Конец у стены дома — ввод (крюк на фасаде). Охранная зона ВЛ 0,4 кВ — 2 м, 10 кВ — 10 м: строить под проводами нельзя.') : null,
       F.text('Обозначение', l.label || '', (v) => UI.set(l, 'label', v.trim() || undefined), { placeholder: k.code }),

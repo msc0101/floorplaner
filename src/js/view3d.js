@@ -343,6 +343,24 @@ const View3D = {
         if (def.shape === 'rug') continue;
         View3D.item(it, def, e, top => top);
       }
+      // надземный газопровод: жёлтая труба на высоте, стойки на участке (у стен — кронштейны)
+      for (const l of App.V.lines) {
+        if (l.kind !== 'gasAir') continue;
+        const z = e + (l.height ?? LINE_KINDS.gasAir.height), yel = View3D.hex('#e3b000'), post = View3D.hex('#8a8f94');
+        const nearWall = (p) => App.V.walls.some(w => w.kind !== 'fence' && G.distSeg(p, w.a, w.b) <= w.th / 2 + 40);
+        for (let i = 0; i + 1 < l.pts.length; i++) {
+          const a = l.pts[i], b2 = l.pts[i + 1];
+          wire([a.x, a.y, z], [b2.x, b2.y, z], 2.8, yel);
+          const L = G.dist(a, b2), n = Math.max(1, Math.ceil(L / 350));
+          for (let k = 0; k <= n; k++) {
+            const p = G.add(a, G.mul(G.sub(b2, a), k / n));
+            if (nearWall(p)) { cyl(p.x, p.y, 2, z - 8, z + 2, post, 6); continue; }
+            cyl(p.x, p.y, 4, e, z - 2, post, 8);
+          }
+        }
+        // спуск к точке подключения и ввод — вертикальные участки на концах
+        for (const p of [l.pts[0], l.pts[l.pts.length - 1]]) wire([p.x, p.y, e + 40], [p.x, p.y, z], 2.8, yel);
+      }
       // воздушные линии: опоры (свои — если нет столба из библиотеки), крюк ввода на стене, СИП с провисом
       for (const l of App.V.lines) {
         if (l.kind !== 'overhead') continue;
@@ -407,11 +425,8 @@ const View3D = {
     const col = View3D.hex(M.color);
     const L = Model.wallLen(w), u = Model.wallDir(w), n = G.perp(u);
     const th = Math.max(w.th, 3);
-    const gaps = App.V.openings.filter(o => o.wall === w.id).map(o => Model.opGeom(o)).filter(Boolean).sort((a, b) => a.pos - b.pos);
-    const spans = [];
-    let s = 0;
-    for (const g of gaps) { if (g.pos - g.width / 2 - s > 1) spans.push([s, g.pos - g.width / 2]); s = g.pos + g.width / 2; }
-    if (L - s > 1) spans.push([s, L]);
+    const spans = Model.fenceSpans(w);          // без проёмов, ворот и калиток
+    void L;
     const see = w.mat === 'mesh' || w.mat === 'forged' || w.mat === 'picket' || w.mat === 'euro';
     for (const [s0, s1] of spans) {
       const A = G.add(w.a, G.mul(u, s0)), B = G.add(w.a, G.mul(u, s1));
@@ -498,14 +513,8 @@ const View3D = {
     if (sh === 'parking') { box(it.x, it.y, it.w, it.d, rot, e, e + 3, C('#a9abb0')); return; }
     if (sh === 'gardenbed' || sh === 'flowerbed') { box(it.x, it.y, it.w, it.d, rot, e, e + Math.max(20, H), C('#7a5a3a')); return; }
     if (sh === 'filterfield' || sh === 'ground') return;
-    if (sh === 'car') {
-      const body = C('#6f7f95');
-      box(it.x, it.y, it.w, it.d, rot, e + 25, e + 85, body);
-      const q = G.toWorld({ x: 0, y: it.d * 0.05 }, it.x, it.y, rot);
-      box(q.x, q.y, it.w - 20, it.d * 0.5, rot, e + 85, e + H, C('#32393f'));
-      for (const [sx, sy] of [[-1, -0.3], [1, -0.3], [-1, 0.32], [1, 0.32]]) { const w = G.toWorld({ x: sx * (it.w / 2 - 8), y: sy * it.d }, it.x, it.y, rot); box(w.x, w.y, 22, 64, rot, e, e + 60, dark); }
-      return;
-    }
+    if (sh === 'car') { View3D.car(it, e); return; }
+    if (sh === 'gateSlide' || sh === 'gateSwing' || sh === 'wicket') { View3D.gate(it, def, e); return; }
     if (sh === 'stairs' || sh === 'stairsL') {
       const steps = Math.max(3, Math.round(it.d / 28));
       const rise = H / steps;
@@ -613,6 +622,72 @@ const View3D = {
     };
     const s = (p) => G.dot(G.sub(p, o), u);
     return clip(clip(poly, p => s(p) - a), p => b - s(p));
+  },
+  /** Ворота и калитка: столбы, рама, полотно с рёбрами; у откатных — противовес и рельс */
+  gate(it, def, e) {
+    const { box } = View3D._g, C = View3D.hex, rot = it.rot || 0, w = it.w, H = it.h || 200, sh = def.shape;
+    const L = (x, y) => G.toWorld({ x: it.flip ? -x : x, y }, it.x, it.y, rot);
+    const bx = (x, y, bw, bd, z0, z1, col) => { const q = L(x, y); box(q.x, q.y, bw, bd, rot, z0, z1, col); };
+    const metal = C('#6f7880'), frame = C('#474d53'), post = C('#3d4247');
+    const leaf = (x0, x1) => {
+      const cx = (x0 + x1) / 2, lw = Math.abs(x1 - x0) - 2;
+      bx(cx, 0, lw, 3, e + 8, e + H - 4, metal);
+      for (const z of [e + 8, e + H / 2, e + H - 10]) bx(cx, 0, lw, 5, z, z + 6, frame);
+      for (const x of [x0, x1]) bx(x + Math.sign(x1 - x0) * 3 * (x === x0 ? 1 : -1), 0, 6, 5, e + 8, e + H - 4, frame);
+    };
+    if (sh === 'wicket') { for (const x of [-w / 2, w / 2]) bx(x, 0, 8, 8, e, e + H + 10, post); leaf(-w / 2 + 4, w / 2 - 4); return; }
+    if (sh === 'gateSlide') {
+      const z = gateZone(it, w), tail = w * 0.45;
+      for (const x of [-w / 2, w / 2]) bx(x, 0, 12, 12, e, e + H + 10, post);
+      leaf(-w / 2 + 6, w / 2 - 6);
+      const t0 = z.dir > 0 ? w / 2 : -w / 2 - tail;
+      bx(t0 + tail / 2, 0, tail, 4, e + 8, e + 16, frame);                 // противовес
+      bx((z.x0 + z.x1) / 2, 0, z.len, 6, e, e + 2, C('#8b8f93'));          // линия отката (фундамент под балку)
+      return;
+    }
+    const wk = def.wicket ? Math.min(100, w * 0.25) : 0, gw = w - wk, x0 = -w / 2;
+    for (const x of [x0, x0 + gw, ...(wk ? [w / 2] : [])]) bx(x, 0, 12, 12, e, e + H + 10, post);
+    if (def.leaves === 1) leaf(x0 + 6, x0 + gw - 6);
+    else { leaf(x0 + 6, x0 + gw / 2 - 1); leaf(x0 + gw / 2 + 1, x0 + gw - 6); }
+    if (wk) leaf(x0 + gw + 6, w / 2 - 6);
+  },
+  /** Автомобиль: кузов со скруглёнными углами, салон-трапеция со стёклами, круглые колёса, фары и фонари */
+  car(it, e) {
+    const { prism, face, box } = View3D._g, C = View3D.hex, rot = it.rot || 0, w = it.w, d = it.d, H = it.h || 150;
+    const L = (x, y) => G.toWorld({ x, y }, it.x, it.y, rot), V = (x, y, z) => { const q = L(x, y); return [q.x / 100, z / 100, q.y / 100]; };
+    const body = it.color ? C(it.color) : C('#5d7898'), glass = [0.16, 0.2, 0.26], trim = C('#2b2e33');
+    // кузов: скруглённый прямоугольник в плане
+    const rr = (hw, hd, r, n = 5) => { const pts = []; for (const [cx, cy, a0] of [[hw - r, hd - r, 0], [-hw + r, hd - r, 90], [-hw + r, -hd + r, 180], [hw - r, -hd + r, 270]]) for (let i = 0; i <= n; i++) { const a = U.rad(a0 + 90 * i / n); pts.push(L(cx + Math.cos(a) * r, cy + Math.sin(a) * r)); } return pts; };
+    prism(rr(w / 2, d / 2, Math.min(40, w * 0.22)), e + 24, e + 70, body, { topK: 1.08 });
+    prism(rr(w / 2 - 2, d / 2 - 2, Math.min(38, w * 0.2)), e + 18, e + 24, trim);      // пороги / бамперы снизу
+    // салон: низ шире, верх уже; перед −d/2 — лобовое наклонное
+    const zb = e + 70, zt = e + H;
+    const b = [[-w / 2 + 8, -d * 0.2], [w / 2 - 8, -d * 0.2], [w / 2 - 8, d * 0.3], [-w / 2 + 8, d * 0.3]];
+    const t = [[-w / 2 + 22, -d * 0.06], [w / 2 - 22, -d * 0.06], [w / 2 - 22, d * 0.22], [-w / 2 + 22, d * 0.22]];
+    const ref = V(0, d * 0.05, (zb + zt) / 2);
+    for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; face([V(...b[i], zb), V(...b[j], zb), V(...t[j], zt), V(...t[i], zt)], glass, ref); }
+    face(t.map(p => V(...p, zt)), body.map(x => Math.min(1, x * 1.1)), V(0, d * 0.08, zt - 50));
+    // стойки между стёклами (светлее кузова по краям крыши)
+    for (const sx of [-1, 1]) face([V(sx * (w / 2 - 8), -d * 0.2 + 1, zb), V(sx * (w / 2 - 8), -d * 0.2 + 12, zb), V(sx * (w / 2 - 22), -d * 0.06 + 8, zt), V(sx * (w / 2 - 22), -d * 0.06, zt)], body, V(0, 0, zb));
+    // колёса — цилиндры поперёк машины
+    const wheel = (cx, cy) => {
+      const R = 32, n = 12, zc = e + R, sx = Math.sign(cx), tyre = C('#1c1d20');
+      const ring = (r, m) => Array.from({ length: m }, (_, k) => { const a = k / m * Math.PI * 2; return [cy + Math.cos(a) * r, zc + Math.sin(a) * r]; });
+      for (const xs of [cx - 11, cx + 11]) face(ring(R, n).map(([y, z]) => V(xs, y, z)), tyre, V(cx, cy, zc));
+      const rg = ring(R, n);
+      for (let k = 0; k < n; k++) { const [y0, z0] = rg[k], [y1, z1] = rg[(k + 1) % n]; face([V(cx - 11, y0, z0), V(cx + 11, y0, z0), V(cx + 11, y1, z1), V(cx - 11, y1, z1)], tyre, V(cx, cy, zc)); }
+      face(ring(17, 10).map(([y, z]) => V(cx + sx * 11.4, y, z)), C('#a9aeb5'), V(cx, cy, zc));    // диск
+    };
+    for (const cy of [-d * 0.31, d * 0.3]) for (const sx of [-1, 1]) wheel(sx * (w / 2 - 12), cy);
+    // фары, фонари, решётка, номера
+    for (const sx of [-1, 1]) {
+      const f = L(sx * w * 0.33, -d / 2 + 2), r = L(sx * w * 0.36, d / 2 - 2);
+      box(f.x, f.y, w * 0.2, 4, rot, e + 52, e + 62, [1, 0.97, 0.82]);
+      box(r.x, r.y, w * 0.18, 4, rot, e + 52, e + 62, C('#c4362c'));
+    }
+    const g = L(0, -d / 2 + 1), n2 = L(0, d / 2 - 1);
+    box(g.x, g.y, w * 0.3, 3, rot, e + 36, e + 48, trim);
+    box(n2.x, n2.y, 52, 3, rot, e + 36, e + 47, [0.95, 0.95, 0.95]);
   },
   BLD_FLOOR: 10,
   /** Постройка «как дом», внутри которой стоит объект (погреб/яма) — или null */

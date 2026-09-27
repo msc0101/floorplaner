@@ -208,6 +208,28 @@ const Model = {
     const quads = inner.map((p, i) => [p, inner[(i + 1) % n], outer[(i + 1) % n], outer[i]]);
     return { id, name, w, inner, outer, quads, area: Math.abs(G.polyArea(outer)) - Math.abs(G.polyArea(inner)), over };
   },
+  /** Разрывы забора: проёмы в нём и ворота / калитки из библиотеки, стоящие на его линии → [[s0, s1]] вдоль стены */
+  fenceGaps(w) {
+    const L = Model.wallLen(w), u = Model.wallDir(w), gaps = [];
+    for (const op of App.V.openings) if (op.wall === w.id) { const g = Model.opGeom(op); if (g) gaps.push([g.pos - g.width / 2, g.pos + g.width / 2]); }
+    for (const it of App.V.items) {
+      const sh = catItem(it.key).shape;
+      if (sh !== 'gateSlide' && sh !== 'gateSwing' && sh !== 'wicket') continue;
+      const ax = G.toWorld({ x: 1, y: 0 }, 0, 0, it.rot || 0), pr = G.proj(it, w.a, w.b);
+      if (pr.perp > w.th / 2 + 20 || Math.abs(G.dot(ax, u)) < 0.95) continue;
+      const c = pr.t * L, s0 = Math.max(0, c - it.w / 2), s1 = Math.min(L, c + it.w / 2);
+      if (s1 - s0 > 1) gaps.push([s0, s1]);
+    }
+    return gaps.sort((a, b) => a[0] - b[0]);
+  },
+  /** Куски забора между разрывами */
+  fenceSpans(w) {
+    const L = Model.wallLen(w), spans = [];
+    let s = 0;
+    for (const [g0, g1] of Model.fenceGaps(w)) { if (g0 - s > 1) spans.push([s, g0]); s = Math.max(s, g1); }
+    if (L - s > 1) spans.push([s, L]);
+    return spans;
+  },
   wallMap(walls) { return new Map(walls.map(w => [w.id, { th: w.th, ins: w.ins || 0, mat: w.mat, kind: w.kind, floor: w.floor, a: { ...w.a }, b: { ...w.b } }])); },
   /** Наружные стены утолщаются наружу: если у стены изменилась только толщина (материал, утеплитель, тип размера),
    *  её ось сдвигается наружу на половину прироста — внутренняя грань и планировка остаются на месте.

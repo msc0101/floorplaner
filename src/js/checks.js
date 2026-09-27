@@ -229,18 +229,31 @@ const Checks = {
       if (l.kind === 'sewer') {
         // выпуск до колодца: Ø до 110 — не длиннее 12 м, Ø150 — 15 м; на поворотах трассы — колодец
         const maxRun = (l.dia || 110) <= 110 ? 1200 : 1500;
+        // выпуск считается от стены дома: участок под полом (внутренняя канализация) в длину выпуска не входит
+        const inHouse = (p) => outlines.some(o => G.pointInPoly(p, o));
+        const outLen = (a, b) => { const n = Math.max(1, Math.ceil(G.dist(a, b) / 10)); let s2 = 0; for (let k = 0; k < n; k++) { const p = G.add(a, G.mul(G.sub(b, a), (k + 0.5) / n)); if (!inHouse(p)) s2 += G.dist(a, b) / n; } return s2; };
         let run = 0, worst = 0, at = null;
         for (let i = 0; i + 1 < l.pts.length; i++) {
-          run += G.dist(l.pts[i], l.pts[i + 1]);
+          run += outLen(l.pts[i], l.pts[i + 1]);
           if (nearWell(l.pts[i + 1]) || i + 1 === l.pts.length - 1) { if (run > worst) { worst = run; at = G.mid(l.pts[i], l.pts[i + 1]); } run = 0; }
         }
         out.push({ line: l, kind: l.kind, title, text: worst > maxRun ? `участок без колодца ${m(worst)} > ${m(maxRun)} — нужен ревизионный колодец` : `участки между колодцами ≤ ${m(maxRun)}`, ok: worst <= maxRun, at, src: 'СП 30.13330: выпуск Ø100 — до 12 м, Ø150 — до 15 м' });
         const bends = [];
         for (let i = 1; i + 1 < l.pts.length; i++) {
           const u1 = G.unit(G.sub(l.pts[i], l.pts[i - 1])), u2 = G.unit(G.sub(l.pts[i + 1], l.pts[i]));
-          if (G.dot(u1, u2) < Math.cos(U.rad(30)) && !nearWell(l.pts[i])) bends.push(l.pts[i]);
+          if (G.dot(u1, u2) < Math.cos(U.rad(30)) && !nearWell(l.pts[i]) && !outlines.some(o => G.pointInPoly(l.pts[i], o))) bends.push(l.pts[i]);   // под полом — отводы с ревизией
         }
         if (bends.length) out.push({ line: l, kind: l.kind, title, text: `поворотов без колодца: ${bends.length} — на поворотах ставят поворотный / ревизионный колодец`, ok: false, at: bends[0], src: 'СП 32.13330' });
+      }
+      if (l.kind === 'gasAir') {
+        const h = l.height ?? LINE_KINDS.gasAir.height;
+        // над проездами (асфальт, бетон, дороги) — не ниже 5 м, в местах прохода людей — 2,2 м
+        const drive = App.doc.areas.filter(a => ['asphalt', 'concrete', 'road'].includes(a.kind)).map(a => a.pts)
+          .concat(App.doc.roads.filter(r => ['street', 'road', 'driveway'].includes(r.kind)).flatMap(r => r.pts.slice(1).map((b, i) => { const a = r.pts[i], n = G.mul(G.perp(G.unit(G.sub(b, a))), r.width / 2); return [G.add(a, n), G.add(b, n), G.sub(b, n), G.sub(a, n)]; })));
+        let over = null;
+        for (let i = 0; i + 1 < l.pts.length && !over; i++) for (let k = 0; k <= 20; k++) { const p = G.add(l.pts[i], G.mul(G.sub(l.pts[i + 1], l.pts[i]), k / 20)); if (drive.some(poly => G.pointInPoly(p, poly))) { over = p; break; } }
+        if (over && h < 500) out.push({ line: l, kind: l.kind, title, text: `проходит над проездом на ${m(h)} (норма ≥ 5 м) — поднимите или обойдите`, ok: false, at: over, src: 'СП 62.13330, прил. Б' });
+        else out.push({ line: l, kind: l.kind, title, text: `высота прокладки ${m(h)} (норма ≥ 2,2 м${over ? ', над проездом ≥ 5 м' : ''})`, ok: h >= 219, at: mid, src: 'СП 62.13330' });
       }
       if (l.kind === 'gas' && (l.depth || 0) > 0) {
         const c = clearance(l, 250);

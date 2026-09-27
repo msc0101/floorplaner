@@ -106,6 +106,19 @@ const Analysis = {
       if (!bldOps(it).some(o => (OPENING_TYPES[o.type] || {}).cat === 'door')) add('warn', 'Постройки', `${name}: нет ни двери, ни ворот`, '', it, it.id);
     }
 
+    // ---------------- ворота: зона отката откатных ворот свободна и в пределах участка ----------------
+    for (const it of d.items) {
+      if (catItem(it.key).shape !== 'gateSlide') continue;
+      const z = gateZone(it, it.w), W2 = (x, y) => G.toWorld({ x: it.flip ? -x : x, y }, it.x, it.y, it.rot || 0);
+      const zone = [W2(Math.min(z.x0, z.x1), -30), W2(Math.max(z.x0, z.x1), -30), W2(Math.max(z.x0, z.x1), 30), W2(Math.min(z.x0, z.x1), 30)];
+      const hit = d.items.find(o => o !== it && o.h > 20 && !catItem(o.key).sym && (it.floor || '') === (o.floor || '') && (Model.itemPts(o).some(q => G.pointInPoly(q, zone)) || zone.some(q => G.pointInPoly(q, Model.itemPts(o)))));
+      const end = [W2(z.x1, 40), W2(z.x1, -40)];
+      const outside = plots.length && !end.some(q => plots.some(pl => G.pointInPoly(q, pl.pts)));
+      const name = it.label || catItem(it.key).name;
+      if (hit) add('bad', 'Ворота', `${name}: в зоне отката (${m(z.len)} вдоль забора) стоит «${hit.label || catItem(hit.key).name}» — полотно не откроется`, 'нужно ≈ 1,5 ширины проёма свободного забора', G.mid(zone[0], zone[2]), it.id);
+      else if (outside) add('bad', 'Ворота', `${name}: зона отката (${m(z.len)}) выходит за угол участка — смените сторону отката или поставьте распашные ворота`, 'нужно ≈ 1,5 ширины проёма свободного забора', G.mid(zone[0], zone[2]), it.id);
+    }
+
     // ---------------- аккуратность чертежа ----------------
     const W = d.walls.filter(w => w.kind !== 'fence');
     for (const w of W) {
