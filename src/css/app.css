@@ -68,8 +68,6 @@ kbd {
 @media (max-width: 560px) { .visits { display: none; } }
 .visits svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
 .visits b { font-weight: 600; font-variant-numeric: tabular-nums; }
-.visits.li { padding: 0; background: none; }
-.visits.li img { display: block; height: 26px; width: auto; border-radius: 3px; }
 .toggle-btn { color: var(--muted); }
 .toggle-btn.on { color: var(--accent); background: var(--accent-soft); }
 .zoom-val { min-width: 58px; justify-content: center; font-variant-numeric: tabular-nums; }

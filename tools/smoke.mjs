@@ -446,6 +446,25 @@ const vent = await page.evaluate(() => {
 });
 console.log('vent', JSON.stringify(vent));
 if (Object.values(vent).some(v => !v)) errors.push('Вентиляция / печи / водопровод: ' + JSON.stringify(vent));
+// веранда у дома: скат от карниза дома, предметы — на её полу; прогулка «призраком» — полёт без стен и тяжести
+const porch = await page.evaluate(() => {
+  IO.loadDemo();
+  const r = {}, c = catItem('veranda');
+  const v = Model.add('items', { key: 'veranda', x: 1200, y: 2100 + c.d / 2 + 20, w: c.w, d: c.d, h: c.h, rot: 0, floor: App.doc.floors[0].id });
+  const t = Model.add('items', { key: 'pingpong', x: 1200, y: v.y, w: 274, d: 153, h: 76, rot: 0, floor: v.floor });
+  Model.commit();
+  const z0 = Math.max(porchOpt(v).ph, 10), rg = View3D.roofGeom(v, Math.max(v.h, z0 + 260), z0 + 210), j = View3D.porchJoin(v, rg, z0);
+  r.join = !!j && j.joined && j.eave >= z0 + 214 && j.roofZ({ x: v.x, y: v.y - v.d / 2 }) > j.eave;
+  r.deck = Math.abs(View3D.deckZ(t) - (z0 + 0.3)) < 0.01;
+  View3D.toggle(true);
+  Walk.start(true); r.ghost = Walk.on && Walk.ghost;
+  const x0 = Walk.x, f0 = Walk.foot; Walk.pitch = 0.5; Walk.keys.add('KeyW'); Walk.update(0.5); Walk.keys.clear();
+  r.fly = Walk.x !== x0 && Walk.foot > f0;
+  Walk.setGhost(false); r.walk = !Walk.ghost; Walk.stop(); View3D.toggle(false);
+  return r;
+});
+console.log('porch', JSON.stringify(porch));
+if (Object.values(porch).some(v => !v)) errors.push('Веранда / призрак: ' + JSON.stringify(porch));
 // ворота: зона отката откатных, разрыв забора под воротами; надземный газ над проездом
 const gt = await page.evaluate(() => {
   const f = App.doc.floors[0].id, X = 400000;

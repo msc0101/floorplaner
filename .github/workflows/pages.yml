@@ -29,10 +29,8 @@ jobs:
           # переменная (Variables) или секрет (Secrets) — подойдёт любой вариант
           GOOGLE_VERIFY: ${{ vars.GOOGLE_VERIFY || secrets.GOOGLE_VERIFY }}
           YANDEX_VERIFY: ${{ vars.YANDEX_VERIFY || secrets.YANDEX_VERIFY }}
-          # счётчик посетителей: свой адрес ({op} = hit/get) или off; номер Яндекс Метрики — по желанию
+          # счётчик посетителей: свои адреса через | ({засчитать/прочитать}) или off
           VISITS_URL: ${{ vars.VISITS_URL }}
-          VISITS_LI: ${{ vars.VISITS_LI }}
-          YANDEX_METRIKA: ${{ vars.YANDEX_METRIKA || secrets.YANDEX_METRIKA }}
         run: |
           node tools/build.mjs
           if [ -n "$GOOGLE_VERIFY" ]; then grep -q 'google-site-verification' dist/index.html && echo "Тег Google добавлен"; else echo "::warning::GOOGLE_VERIFY не задан — тег Google не добавлен"; fi

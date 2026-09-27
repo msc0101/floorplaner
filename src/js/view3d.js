@@ -1075,6 +1075,125 @@ const View3D = {
       sheet(70);
       return true;
     }
+    // --- растения: ствол с ветками, крона из нескольких «облаков»; у плодовых — плоды; хвойные — ярусами ---
+    const { cone, blob, wire, prism } = View3D._g;
+    const rnd = (k) => View3D.noise(it.x * 0.37 + k * 1.7, it.y * 0.53 + k * 2.3);
+    const tint = (c, k) => c.map(x => Math.min(1, x * (0.9 + rnd(k) * 0.2)));
+    if (sh === 'tree') {
+      const R = Math.min(W, D), Ht = H || 500, fruit = it.key === 'fruitTree';
+      const bark = [0.4, 0.29, 0.19], trunkH = Ht * (fruit ? 0.3 : 0.38), tr = Math.max(6, R * (fruit ? 0.05 : 0.055));
+      cone(it.x, it.y, tr * 1.3, tr * 0.7, e, e + trunkH + Ht * 0.15, bark, 9);
+      const nb = fruit ? 4 : 5, zc = e + trunkH + (Ht - trunkH) * 0.48, rz = (Ht - trunkH) * 0.5;
+      for (let k = 0; k < nb; k++) {
+        const a = (k + rnd(k)) / nb * Math.PI * 2, rr = R * (0.35 + rnd(k + 9) * 0.15);
+        wire([it.x, it.y, e + trunkH * (0.8 + rnd(k + 3) * 0.3)], [it.x + Math.cos(a) * rr, it.y + Math.sin(a) * rr, zc + rz * (0.1 + rnd(k + 5) * 0.3)], tr * 0.4, bark);
+      }
+      const green = fruit ? [0.42, 0.66, 0.3] : [0.36, 0.6, 0.27];
+      blob(it.x, it.y, zc, R * 0.72, rz * 0.85, tint(green, 1), it.x);
+      for (let k = 0; k < 5; k++) {
+        const a = (k + rnd(k + 20)) / 5 * Math.PI * 2, off = R * 0.38;
+        blob(it.x + Math.cos(a) * off, it.y + Math.sin(a) * off, zc + rz * (rnd(k + 30) * 0.5 - 0.2), R * (0.42 + rnd(k + 40) * 0.12), rz * 0.55, tint(green, k + 50).map(x => x * (0.92 + 0.08 * (k % 2))), it.y + k);
+      }
+      if (fruit) {
+        const fc = rnd(99) > 0.5 ? [0.82, 0.18, 0.12] : [0.9, 0.72, 0.18];
+        for (let k = 0; k < 14; k++) {
+          const a = rnd(k + 60) * Math.PI * 2, t = rnd(k + 70) * 0.9 - 0.45;
+          const rr = R * 0.8 * Math.sqrt(1 - t * t);
+          View3D._g.cyl(it.x + Math.cos(a) * rr, it.y + Math.sin(a) * rr, 4.5, zc + t * rz * 0.9 - 4, zc + t * rz * 0.9 + 4, fc, 6);
+        }
+      }
+      return true;
+    }
+    if (sh === 'conifer') {
+      const R = Math.min(W, D), Ht = H || 600, thuja = it.key === 'thuja', dark = [0.18, 0.4, 0.26];
+      View3D._g.cyl(it.x, it.y, Math.max(4, R * 0.07), e, e + Ht * 0.14, [0.36, 0.25, 0.16], 8);
+      if (thuja) {
+        cone(it.x, it.y, R * 0.55, R * 0.8, e + Ht * 0.05, e + Ht * 0.45, tint(dark, 1), 14);
+        cone(it.x, it.y, R * 0.8, R * 0.45, e + Ht * 0.45, e + Ht * 0.82, tint(dark, 2), 14);
+        cone(it.x, it.y, R * 0.45, 0, e + Ht * 0.82, e + Ht, tint(dark, 3), 14);
+        return true;
+      }
+      const tiers = 7;
+      for (let k = 0; k < tiers; k++) {
+        const z0 = e + Ht * (0.1 + k * 0.12), z1 = Math.min(e + Ht, z0 + Ht * 0.24), r = R * (1 - k / tiers * 0.88);
+        cone(it.x, it.y, r, r * 0.12, z0, z1, tint(dark, k).map(x => x * (0.88 + k * 0.03)), 14);
+      }
+      cone(it.x, it.y, R * 0.12, 0, e + Ht * 0.92, e + Ht, tint(dark, 9), 8);
+      return true;
+    }
+    if (sh === 'bush') {
+      const R = Math.min(W, D), Ht = H || 150, green = [0.37, 0.6, 0.28];
+      blob(it.x, it.y, e + Ht * 0.48, R * 0.8, Ht * 0.48, tint(green, 1), it.x);
+      for (let k = 0; k < 3; k++) {
+        const a = (k + rnd(k)) / 3 * Math.PI * 2, off = R * 0.35;
+        blob(it.x + Math.cos(a) * off, it.y + Math.sin(a) * off, e + Ht * (0.35 + rnd(k + 5) * 0.15), R * 0.58, Ht * 0.36, tint(green, k + 3), it.y + k);
+      }
+      return true;
+    }
+    if (sh === 'hedge') {
+      const Ht = H || 180, green = [0.31, 0.54, 0.24];
+      bx(-W + 10, -D * 0.7, W - 10, D * 0.7, e, e + Ht * 0.85, green.map(x => x * 0.85));
+      const n = Math.max(2, Math.round(w / 60));
+      for (let k = 0; k < n; k++) {
+        const x = -W + (k + 0.5) * w / n, q = L(x, 0);
+        blob(q.x, q.y, e + Ht * (0.55 + rnd(k) * 0.08), Math.max(D, w / n * 0.62), Ht * 0.48, tint(green, k), q.x + k);
+      }
+      return true;
+    }
+    // --- колодцы и ёмкости на участке ---
+    // кольцо из бетонных сегментов (стенка с толщиной t)
+    const ringWall = (R, t, za, zb, col, n = 18) => {
+      for (let k = 0; k < n; k++) {
+        const a = (k + 0.5) / n * Math.PI * 2, q = L(Math.cos(a) * (R - t / 2), Math.sin(a) * (R - t / 2));
+        View3D._g.box(q.x, q.y, 2 * Math.PI * R / n + 1, t, rot + U.deg(a) + 90, za, zb, col);
+      }
+    };
+    const conc = [0.68, 0.67, 0.64];
+    if (sh === 'ring') {
+      const R = Math.min(W, D), top = e + Math.max(12, H || 10), septicK = it.key === 'septicRing' || it.key === 'cesspool';
+      ringWall(R, 9, e - 10, top - 6, conc);
+      cy(0, 0, R, top - 6, top, conc.map(x => x * 0.95), 20);                                           // плита перекрытия
+      const hatch = septicK ? [0.24, 0.42, 0.28] : [0.2, 0.2, 0.22];
+      cy(0, 0, 34, top, top + 2.5, hatch, 18);                                                            // люк
+      for (let k = -2; k <= 2; k++) bx(-28, k * 9 - 0.8, 28, k * 9 + 0.8, top + 2.5, top + 3, hatch.map(x => x * 0.75));   // рифление
+      bx(-6, 26, 6, 29, top + 2.5, top + 4, hatch.map(x => x * 0.7));                                     // ручка
+      if (septicK) { cy(R * 0.62, 0, 5.5, top, top + 60, [0.86, 0.87, 0.88], 10); cy(R * 0.62, 0, 8, top + 60, top + 64, [0.86, 0.87, 0.88], 10); }   // вентиляционный стояк
+      return true;
+    }
+    if (sh === 'septic') {
+      const ch = def.chambers || 2, body = [0.36, 0.44, 0.34], lid = [0.28, 0.46, 0.3];
+      bx(-W, -D, W, D, e, e + 4, body);
+      for (let k = 0; k < ch; k++) {
+        const x = -W + (k + 0.5) * w / ch, r = Math.min(D * 0.38, 32);
+        cy(x, 0, r, e + 4, e + 16, lid.map(v => v * 0.85), 16); cy(x, 0, r + 2, e + 16, e + 19, lid, 16);
+        bx(x - 5, r - 4, x + 5, r - 1, e + 19, e + 20.5, lid.map(v => v * 0.7));
+      }
+      const vx = W - 18;
+      cy(vx, -D + 18, 5.5, e + 4, e + 70, [0.86, 0.87, 0.88], 10); cy(vx, -D + 18, 8, e + 70, e + 74, [0.86, 0.87, 0.88], 10);
+      return true;
+    }
+    if (sh === 'borehole') {
+      const R = Math.min(W, D);
+      bx(-R, -R, R, R, e, e + 2, [0.72, 0.71, 0.68]);                                                    // отмостка у люка
+      const neck = it.key === 'boreholeArt' ? [0.55, 0.58, 0.62] : [0.22, 0.4, 0.62];
+      cy(0, 0, R * 0.42, e + 2, e + 38, neck, 20);                                                        // горловина кессона
+      cy(0, 0, R * 0.47, e + 38, e + 43, neck.map(x => x * 0.85), 20);                                    // крышка
+      bx(-8, R * 0.3, 8, R * 0.34, e + 43, e + 45, [0.2, 0.2, 0.22]);
+      cy(-R * 0.3, -R * 0.3, 2.5, e + 43, e + 80, [0.85, 0.86, 0.87], 8); bx(-R * 0.3 - 5, -R * 0.3 - 2, -R * 0.3 + 1, -R * 0.3 + 2, e + 76, e + 80, [0.85, 0.86, 0.87]);   // вентиляция кессона
+      return true;
+    }
+    if (sh === 'well') {
+      const R = Math.min(W, D), top = e + Math.max(60, H || 80), wood = [0.55, 0.4, 0.26];
+      ringWall(R, 10, e - 5, top, conc);
+      bx(-R, -R, R, R, e, e + 1.5, [0.6, 0.58, 0.55]);
+      prism(View3D._g.ring(it.x, it.y, R - 10, R - 10, 16, rot), top - 70, top - 69, [0.12, 0.2, 0.28]);   // вода в глубине
+      for (const s2 of [-1, 1]) bx(s2 * (R + 4) - 4, -4, s2 * (R + 4) + 4, 4, e, e + 190, wood);          // стойки
+      bx(-R - 2, -7, R + 2, 7, top + 40, top + 54, wood.map(x => x * 0.9));                                // ворот
+      bx(R + 8, -1.5, R + 11, 1.5, top + 45, top + 60, [0.3, 0.3, 0.32]); bx(R + 8, -1.5, R + 25, 1.5, top + 58, top + 61, [0.3, 0.3, 0.32]);   // ручка
+      cy(R * 0.45, R * 0.45, 11, top, top + 22, [0.6, 0.62, 0.65], 12);                                    // ведро на срубе
+      View3D.roof({ x: it.x, y: it.y, w: w + 40, d: d + 30, rot, type: 'gable', pitch: 40, base: e + 190, mat: 'soft', floor: null });
+      return true;
+    }
     // --- котельная: котлы, баки, водоподготовка, газовый счётчик и кран, коллектор, щит ---
     const red = [0.78, 0.18, 0.14], blue = [0.2, 0.4, 0.75], yellow = [0.93, 0.75, 0.1], grey = [0.62, 0.64, 0.67];
     if (it.key === 'gasBoilerWall' || it.key === 'elBoiler') {
@@ -1332,6 +1451,31 @@ const View3D = {
     }
     return 0;
   },
+  /** Односкатная крыша пристроенной веранды — от карниза дома: верх ската у стены прячется под основную крышу,
+   *  уклон — как у дома, если хватает высоты (≥ 2,15 м над настилом у края), иначе положе (перелом ската). */
+  porchJoin(it, rg, z0) {
+    const o = porchOpt(it);
+    if (!o.attached || rg.R.type !== 'shed' || it.roofJoin === false) return null;
+    const rot = it.rot || 0, W = it.w / 2, D = it.d / 2;
+    const back = [-W + 10, 0, W - 10].map(x => G.toWorld({ x, y: -D }, it.x, it.y, rot));
+    let zb = Infinity, pitch = 0, mat = null;
+    for (const p of back) {
+      let best = null;
+      for (const r of App.doc.roofs) { const z = Roof.zAt(r, p); if (z != null && (best == null || z > best.z)) best = { z, r }; }
+      if (!best) return null;                                          // над стыком нет крыши дома — обычная крыша
+      if (best.z < zb) { zb = best.z; pitch = best.r.type === 'flat' ? 0 : best.r.pitch || 0; mat = best.r.mat; }
+    }
+    zb -= 3;                                                           // чуть ниже основной кровли
+    const minFront = z0 + 215;
+    if (zb < minFront + 5) return null;
+    const r = rg.r, yBack = -D, yFront = r.y + r.d / 2, run = yFront - yBack;
+    let front = zb - Math.tan(U.rad(pitch)) * run;
+    if (front < minFront) front = minFront;
+    const rise = zb - front, r2 = { x: r.x, y: (yBack + yFront) / 2, w: r.w, d: run, rot: 0, type: 'shed' };
+    const roofZ = (q) => { const v = G.toLocal(q, it.x, it.y, rot); return front + rise * U.clamp((yFront - v.y) / run, 0, 1); };
+    // кровля — как у дома, если свой материал у веранды не выбран
+    return { R: { ...rg.R, type: 'shed', mat: it.roofMat || mat || rg.R.mat }, r: r2, rise, eave: front, pitch: U.deg(Math.atan(rise / run)), roofZ, joined: true };
+  },
   veranda(it, e) {
     const { box } = View3D._g, C = View3D.hex, rot = it.rot || 0;
     const w = it.w, d = it.d, g = porchGeom(it, w, d), o = g.o;
@@ -1350,7 +1494,8 @@ const View3D = {
     }
     const z0 = e + ph;
     // крыша — как у построек (тип, уклон, материал на выбор); верх — высота объекта, карниз не ниже 2.1 м над настилом
-    const rg = o.roofed ? View3D.roofGeom(it, e + Math.max(it.h || 0, o.ph + 260), z0 + 210) : null;
+    let rg = o.roofed ? View3D.roofGeom(it, e + Math.max(it.h || 0, o.ph + 260), z0 + 210) : null;
+    if (rg) rg = View3D.porchJoin(it, rg, z0) || rg;
     const eave = rg ? rg.eave : z0 + 230;
     // сегмент стороны: построить «ленту» элементов вдоль неё (локальные координаты)
     const seg = (s, t, za, zb, col, opt) => {

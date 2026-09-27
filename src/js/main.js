@@ -541,40 +541,36 @@ const App = {
   },
 };
 
-/* Счётчик уникальных посетителей — только на сайте (сборка с SITE_URL кладёт адрес в <meta name="fp-visits">).
-   Браузер засчитывается один раз: первый заход — hit (+1), дальше — только get.
-   Запасной счётчик — LiveInternet (<meta name="fp-visits-li">, работает и из России, где зарубежный сервис
-   может быть недоступен): картинка «посетители за 24 часа и за сегодня» — если основной не ответил за 6 с. */
+/* Счётчик уникальных посетителей — только на сайте (сборка с SITE_URL кладёт адреса в <meta name="fp-visits">).
+   Адресов может быть несколько через «|» — пробуем по очереди, пока какой-то не ответит (сервис бывает недоступен).
+   В адресе {hit/get}: при первом заходе браузера подставляется часть до «/» (засчитать +1), дальше — после (только прочитать).
+   Не ответил ни один — в шапке «—» с подсказкой, чтобы было видно, что счётчик есть. */
 const Visits = {
   KEY: 'fp:visited',
   init() {
-    const m = document.querySelector('meta[name="fp-visits"]'), li = document.querySelector('meta[name="fp-visits-li"]'), el = $('visits');
-    if (!el || !/^https?:$/.test(window.location.protocol)) return;
-    let done = false;
-    const fallback = () => { if (!done && li) { done = true; Visits.liveinternet(el); } };
-    if (!m || !m.content || !window.fetch) { fallback(); return; }
-    let seen = true;
-    try { seen = !!localStorage.getItem(Visits.KEY); } catch { /* хранилище недоступно — не накручиваем */ }
-    const timer = setTimeout(fallback, 6000);
-    window.fetch(m.content.replace('{op}', seen ? 'get' : 'hit'), { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
-      .then(j => {
-        const n = Number(j && (j.value ?? j.count));
-        if (!Number.isFinite(n) || done) return fallback();
-        done = true; clearTimeout(timer);
-        if (!seen) try { localStorage.setItem(Visits.KEY, String(Date.now())); } catch { /* ничего */ }
-        el.querySelector('b').textContent = n.toLocaleString('ru-RU');
-        el.hidden = false;
-      })
-      .catch(() => { clearTimeout(timer); fallback(); });
-  },
-  /** Информер LiveInternet 88×31: просмотры за 24 часа, посетители за 24 часа и за сегодня */
-  liveinternet(el) {
-    const d = document, s = window.screen;
-    const img = U.el('img', { width: 88, height: 31, alt: 'LiveInternet', title: 'LiveInternet: просмотры за 24 часа, посетители за 24 часа и за сегодня' });
-    img.src = 'https://counter.yadro.ru/hit?t14.6;r' + encodeURIComponent(d.referrer) + ';s' + s.width + '*' + s.height + '*' + (s.colorDepth || s.pixelDepth) + ';u' + encodeURIComponent(d.URL) + ';h' + encodeURIComponent(d.title.substring(0, 150)) + ';' + Math.random();
-    const a = U.el('a', { href: 'https://www.liveinternet.ru/click', target: '_blank', rel: 'noopener' }, img);
-    el.textContent = ''; el.append(a); el.classList.add('li'); el.hidden = false;
+    const m = document.querySelector('meta[name="fp-visits"]'), el = $('visits');
+    if (!m || !m.content || !el || !/^https?:$/.test(window.location.protocol) || !window.fetch) return;
+    const urls = m.content.split('|').map(u => u.trim()).filter(Boolean);
+    const show = (text, title) => { el.querySelector('b').textContent = text; if (title) el.title = title; el.hidden = false; };
+    const tryAt = (i) => {
+      if (i >= urls.length) return show('—', 'Счётчик посетителей: сервис сейчас недоступен');
+      const host = new URL(urls[i].replace(/\{[^}]*\}/g, 'x')).host, key = Visits.KEY + ':' + host;
+      let seen = true;
+      try { seen = !!localStorage.getItem(key); } catch { /* хранилище недоступно — не накручиваем */ }
+      const url = urls[i].replace(/\{([^}/]*)\/([^}]*)\}/g, (_, hit, get) => seen ? get : hit);
+      const ctl = window.AbortController ? new AbortController() : null, timer = setTimeout(() => ctl && ctl.abort(), 6000);
+      window.fetch(url, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+        .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
+        .then(j => {
+          clearTimeout(timer);
+          const n = Number(j && (j.value ?? j.count ?? (j.data && (j.data.up_count ?? j.data.count))));
+          if (!Number.isFinite(n)) throw new Error('bad response');
+          if (!seen) try { localStorage.setItem(key, String(Date.now())); } catch { /* ничего */ }
+          show(n.toLocaleString('ru-RU'), `Уникальных посетителей сайта (каждый браузер считается один раз) · ${host}`);
+        })
+        .catch((err) => { clearTimeout(timer); console.warn('Счётчик посетителей:', host, err && err.message); tryAt(i + 1); });
+    };
+    tryAt(0);
   },
 };
 
