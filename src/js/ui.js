@@ -92,6 +92,10 @@ const UI = {
     $('btnSnap').onclick = () => { App.doc.settings.snap = !App.doc.settings.snap; UI.syncToggles(); App.saveSoon(); };
     $('btnHelp').onclick = () => $('dlgHelp').showModal();
     $('btn3d').onclick = () => View3D.toggle();
+    $('btnAnalyze').onclick = () => Analysis.open();
+    $('anClose').onclick = () => $('dlgAnalysis').close();
+    $('anCopy').onclick = () => Analysis.copy();
+    $('anPrint').onclick = () => Analysis.print();
     $('estAdd').onclick = () => Estimate.addCustom();
     $('estReset').onclick = () => Estimate.resetPrices();
     $('estCsv').onclick = () => Estimate.csv();
@@ -142,6 +146,7 @@ const UI = {
       case 'svg': Vector.exportFile('svg', { area: 'all', scale: 100 }); break;
       case 'ifc': IFC.export(); break;
       case 'estimate': Estimate.open(); break;
+      case 'analyze': Analysis.open(); break;
       case 'drawings': $('prDrawing').checked = true; $('dlgPrint').showModal(); break;
       case 'obj': View3D.exportOBJ(); break;
       case 'dxf': Vector.exportFile('dxf', { area: 'all', scale: 100 }); break;

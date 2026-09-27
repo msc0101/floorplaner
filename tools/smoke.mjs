@@ -417,6 +417,15 @@ const bld2 = await page.evaluate(() => {
 });
 console.log('bld2', JSON.stringify(bld2));
 if (bld2.wallH !== 235 || !bld2.pitchKept || !bld2.none || !bld2.blind || !bld2.route) errors.push('Постройки / отмостка / трассы: ' + JSON.stringify(bld2));
+// анализ проекта: статистика и нарушения одним отчётом
+const an = await page.evaluate(() => {
+  IO.loadDemo();
+  const R = Analysis.run(), t = Analysis.text();
+  Analysis.open(); const shown = $('dlgAnalysis').open && $('anBody').textContent.length > 200; $('dlgAnalysis').close();
+  return { stats: R.stats.map(s => s.title).join(','), rooms: R.rooms.length, issues: R.issues.length, text: /ЗАМЕЧАНИЯ/.test(t) && /Общая площадь помещений/.test(t), shown, btn: !!$('btnAnalyze') };
+});
+console.log('analysis', JSON.stringify(an));
+if (!/Участок/.test(an.stats) || !/Дом/.test(an.stats) || !an.rooms || !an.text || !an.shown || !an.btn) errors.push('Анализ проекта: ' + JSON.stringify(an));
 // заголовок вкладки — имя открытого файла
 const ttl = await page.evaluate(() => { const f0 = App.fileName; IO.setFile('Дача.json'); const t = document.title; IO.setFile(f0); return t; });
 console.log('title', ttl);

@@ -487,3 +487,17 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
 .bld-op > select { width: 100%; margin-bottom: 4px; }
 .bld-op.on { background: var(--accent-soft, rgba(47,111,237,.1)); border-radius: 6px; padding: 6px; }
 .check-item em { grid-column: 2; }
+/* анализ проекта */
+.an-dlg { width: min(980px, 96vw); max-height: 92vh; }
+.an-body { overflow: auto; max-height: 68vh; outline: none; }
+.an-issues h4, .an-card h4 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.an-issues .check-item { grid-template-columns: 1fr; }
+.an-issues .check-item em { grid-column: 1; }
+.check-item.an-warn { border-left-color: #d98a00; }
+.check-item.an-info { border-left-color: var(--border-2); }
+.an-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 0 16px; }
+.an-card .tbl td.num { text-align: right; white-space: nowrap; }
+.an-card .tbl td.bad { color: var(--danger); font-weight: 600; }
+.an-print .check-item { border: 1px solid #ccc; border-left-width: 3px; margin-top: 3px; padding: 3px 6px; font-size: 11px; }
+.an-print .an-stats { grid-template-columns: 1fr 1fr; }
+.an-h { font-size: 15px; margin: 18px 0 0; }
