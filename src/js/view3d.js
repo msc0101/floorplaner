@@ -976,6 +976,8 @@ const View3D = {
       cy(0, 0, 3, e, e + (H || 75) - 5, chrome, 8); cy(0, 0, 18, e, e + 2, chrome, 14); cy(0, 0, W, e + (H || 75) - 5, e + (H || 75), C('#5a4636'), 16); cy(0, 0, W * 0.8, e + 25, e + 27, chrome, 14);
       return true;
     }
+    // --- пенал / колонна под технику ---
+    if (sh === 'tall') { View3D.tallCab(bx, -W, -D, W, D, e, H || 215, it.key === 'ovenTower' ? 'oven' : 'pantry'); return true; }
     // --- кухонная вытяжка: купол над плитой, фильтры снизу, кнопки, короб до потолка (задняя сторона −d/2 — у стены) ---
     if (sh === 'hood') {
       const steel = [0.78, 0.8, 0.82], z0h = z0, ceil = View3D.ceilZ(it, e);
@@ -1525,6 +1527,42 @@ const View3D = {
     }
     return 0;
   },
+  /** Шкаф-колонна (пенал) кухни: утопленный цоколь, корпус, фасады с зазорами и ручками; kind 'oven' — колонна
+   *  под технику: ящик, духовой шкаф со стеклом и дисплеем, СВЧ, верхняя дверца. bx — локальный бокс (x0,y0,x1,y1,z0,z1,col),
+   *  фасад — сторона y1 */
+  tallCab(bx, x0, y0, x1, y1, e, H, kind) {
+    const top = e + H, fac = [0.94, 0.94, 0.93], body = [0.86, 0.86, 0.85], chrome = [0.78, 0.8, 0.82];
+    const glass = [0.07, 0.08, 0.1], black = [0.15, 0.15, 0.16], w = x1 - x0, xm = (x0 + x1) / 2;
+    bx(x0 + 1, y0, x1 - 1, y1 - 6, e, e + 10, [0.28, 0.29, 0.31]);                                   // цоколь, утоплен
+    bx(x0, y0, x1, y1 - 2, e + 10, top - 2, body);                                                    // корпус
+    bx(x0 - 0.5, y0, x1 + 0.5, y1 + 0.3, top - 2, top, body.map(v => v * 0.95));                      // верхняя кромка
+    const two = w > 70;                                                                                // широкий — двустворчатые фасады
+    const door = (za, zb, hz0, hz1) => {
+      const parts = two ? [[x0, xm], [xm, x1]] : [[x0, x1]];
+      parts.forEach(([a, b], i) => {
+        bx(a + 0.3, y1 - 2, b - 0.3, y1, za + 0.2, zb - 0.2, fac);
+        const hx = two ? (i === 0 ? b - 5 : a + 5) : b - 5;                                            // ручка у притвора / у края
+        bx(hx - 0.8, y1, hx + 0.8, y1 + 2.5, hz0, hz1, chrome);
+      });
+    };
+    const hbar = (z) => bx(x0 + 8, y1, x1 - 8, y1 + 2.5, z - 0.8, z + 0.8, chrome);
+    if (kind === 'oven') {
+      bx(x0 + 0.3, y1 - 2, x1 - 0.3, y1, e + 10.2, e + 39.8, fac); hbar(e + 35);                      // ящик
+      bx(x0 + 1, y1 - 2, x1 - 1, y1, e + 41, e + 101, black);                                         // духовой шкаф
+      bx(x0 + 4, y1, x1 - 4, y1 + 0.4, e + 44, e + 84, glass);
+      bx(x0 + 3, y1, x1 - 3, y1 + 0.4, e + 91, e + 99, [0.2, 0.21, 0.23]);                            // панель
+      bx(xm - 5, y1 + 0.4, xm + 5, y1 + 0.6, e + 93, e + 97, [0.35, 0.72, 0.95]);                     // дисплей
+      hbar(e + 87.5);
+      bx(x0 + 1, y1 - 2, x1 - 1, y1, e + 103, e + 141, black);                                        // СВЧ
+      bx(x0 + 4, y1, x1 - 18, y1 + 0.4, e + 106, e + 138, glass);
+      bx(x1 - 16, y1, x1 - 4, y1 + 0.4, e + 106, e + 138, [0.24, 0.25, 0.27]);
+      door(e + 143, top - 2, e + 146, e + 176);                                                       // верхняя дверца
+    } else {
+      const mid = e + Math.min(140, (H - 10) * 0.62);
+      door(e + 10, mid, mid - 45, mid - 8);
+      door(mid, top - 2, mid + 8, mid + 45);
+    }
+  },
   /** Потолок помещения, где стоит предмет: по высоте внутренних стен этажа (иначе — высота этажа) */
   ceilZ(it, e) {
     const f1 = App.doc.floors[0].id, fl = it.floor || f1, f = App.doc.floors.find(x => x.id === fl) || App.doc.floors[0];
@@ -1752,7 +1790,11 @@ const View3D = {
         for (const [s0, s1] of segs) alongX ? bx(s0, b[1], s1, b[3], e + 145, e + 215, upper) : bx(b[0], s0, b[2], s1, e + 145, e + 215, upper);
       }
     }
-    for (const r of K.tall || []) bx(r.x0, r.y0, r.x1, r.y1, e, e + 215, facade);
+    // пеналы: широкий участок — колонна под духовку и СВЧ + пенал
+    for (const r of K.tall || []) {
+      if (r.x1 - r.x0 >= 110) { const xm = (r.x0 + r.x1) / 2; View3D.tallCab(bx, r.x0, r.y0, xm, r.y1, e, 215, 'pantry'); View3D.tallCab(bx, xm, r.y0, r.x1, r.y1, e, 215, 'oven'); }
+      else View3D.tallCab(bx, r.x0, r.y0, r.x1, r.y1, e, 215, 'pantry');
+    }
     if (K.sink) { const s = K.sink; bx(s.x - 22, s.y - 18, s.x + 22, s.y + 18, e + H - 0.5, e + H + 0.3, C('#b9c3cc')); }
     if (K.hob) {
       const hb = K.hob, hw = hb.v ? 25 : 28, hd = hb.v ? 28 : 25;
