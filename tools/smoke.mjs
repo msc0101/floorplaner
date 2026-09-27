@@ -454,7 +454,7 @@ const porch = await page.evaluate(() => {
   const t = Model.add('items', { key: 'pingpong', x: 1200, y: v.y, w: 274, d: 153, h: 76, rot: 0, floor: v.floor });
   Model.commit();
   const z0 = Math.max(porchOpt(v).ph, 10), rg = View3D.roofGeom(v, Math.max(v.h, z0 + 260), z0 + 210), j = View3D.porchJoin(v, rg, z0);
-  r.join = !!j && j.joined && j.eave >= z0 + 214 && j.roofZ({ x: v.x, y: v.y - v.d / 2 }) > j.eave;
+  r.join = !!j && j.joined && j.eave >= z0 + 214 && j.roofZ({ x: 0, y: -v.d / 2 }) > j.eave && Math.abs(j.roofZ({ x: 0, y: v.d / 2 - 7 }) - j.eave) < j.rise * 0.2;
   r.deck = Math.abs(View3D.deckZ(t) - (z0 + 0.3)) < 0.01;
   View3D.toggle(true);
   Walk.start(true); r.ghost = Walk.on && Walk.ghost;

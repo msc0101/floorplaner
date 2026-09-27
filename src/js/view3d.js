@@ -480,7 +480,7 @@ const View3D = {
   },
   /** Предмет в 3D. e — отметка пола этажа, см */
   item(it, def, e) {
-    const { prism, box, cyl, cone, blob, face } = View3D._g;
+    const { prism, box, cyl, face } = View3D._g;
     const sh = def.shape, H = it.h || 0, rot = it.rot || 0;
     const C = (h) => View3D.hex(h);
     const wood = C('#b88a5a'), white = C('#f1f2f3'), fabric = C('#8a98ad'), metal = C('#9aa3ab'), dark = C('#3a3d42');
@@ -518,28 +518,7 @@ const View3D = {
       const uz = sh === 'upper' ? 140 : sh === 'hood' ? 155 : 0;
       if (View3D.fixture(it, def, e, e + uz, e + uz + Math.max(2, H))) return;
     }
-    // --- озеленение ---
-    if (sh === 'tree' || sh === 'conifer' || sh === 'bush') {
-      const r = Math.min(it.w, it.d) / 2;
-      if (sh === 'bush') { blob(it.x, it.y, e + H * 0.5, r, H * 0.5, C('#5f9a45'), it.x); return; }
-      if (sh === 'conifer') {
-        cyl(it.x, it.y, Math.max(8, r * 0.07), e, e + H * 0.12, C('#5b3a22'), 8);
-        const green = C('#2f6b43');
-        const tiers = 4;
-        for (let k = 0; k < tiers; k++) {
-          const z0 = e + H * (0.08 + k * 0.2), z1 = e + H * (0.08 + k * 0.2 + 0.42);
-          cone(it.x, it.y, r * (1 - k * 0.2), 0, z0, Math.min(z1, e + H), green.map(x => x * (0.9 + k * 0.05)), 12);
-        }
-        return;
-      }
-      const trunkH = H * 0.38;
-      cyl(it.x, it.y, Math.max(9, r * 0.06), e, e + trunkH + H * 0.15, C('#6b4a2e'), 8);
-      const green = it.key === 'fruitTree' ? C('#6fa94d') : C('#5c9c44');
-      blob(it.x, it.y, e + trunkH + (H - trunkH) * 0.5, r, (H - trunkH) * 0.52, green, it.y);
-      blob(it.x + r * 0.35, it.y - r * 0.2, e + trunkH + (H - trunkH) * 0.62, r * 0.6, (H - trunkH) * 0.35, green.map(x => x * 1.06), it.x);
-      return;
-    }
-    if (sh === 'hedge') { box(it.x, it.y, it.w, it.d, rot, e, e + H * 0.85, C('#4f8a3c')); blob(it.x, it.y, e + H * 0.85, it.w / 2, it.d * 0.4, C('#5a9645'), 3); return; }
+    // растения, колодцы, септики, скважины — детальные модели в fixture
     // --- постройки: гараж, сарай, баня, навесы, теплица — крыша по выбору (тип, уклон, материал) ---
     if (BLD_ROOF_SHAPES.has(sh)) { View3D.building(it, def, e); return; }
     if (sh === 'gazebo') {
@@ -569,11 +548,8 @@ const View3D = {
       } else box(it.x, it.y, it.w, it.d, rot, e, e + H * 0.5, wood);
       return;
     }
-    if (['round', 'boiler', 'ring', 'well', 'borehole', 'roundtable', 'columnRound', 'pump'].includes(sh)) {
-      const n = 16;
-      const col = sh === 'well' ? C('#b8b4ac') : sh === 'ring' || sh === 'borehole' ? C('#9d9a93') : def.layer === 'furniture' ? wood : white;
-      prism(View3D._g.ring(it.x, it.y, it.w / 2, it.d / 2, n, rot), e, e + Math.max(3, H), col, { topK: 0.9 });
-      if (sh === 'well') View3D.roof({ x: it.x, y: it.y, w: it.w + 40, d: it.d + 30, rot, type: 'gable', pitch: 40, base: e + 190, mat: 'soft', floor: null });
+    if (['round', 'boiler', 'roundtable', 'columnRound', 'pump'].includes(sh)) {
+      prism(View3D._g.ring(it.x, it.y, it.w / 2, it.d / 2, 16, rot), e, e + Math.max(3, H), def.layer === 'furniture' ? wood : white, { topK: 0.9 });
       return;
     }
     if (!(H > 0) && sh !== 'shower') return;       // душ с трапом — вровень с полом, но стекло и стойка есть
@@ -586,7 +562,7 @@ const View3D = {
       tv: dark, piano: C('#2b2622'), counter: white, tall: C('#eef0f1'), bar: wood, hood: C('#c8ccd1'), kitchenI: white, kitchenL: white, ksink: white, upper: white, fridge: white, fridge2: C('#c8ccd1'),
       stove: C('#e2e4e6'), oven: dark, washer: white, bath: white, bathCorner: white, shower: C('#dfe9f0'), toilet: white, bidet: white, urinal: white,
       sink: white, vanity: C('#e8e2d8'), radiator: white, stoveHeat: C('#b5654a'), fireplace: C('#9c8f86'), fireplaceCorner: C('#9c8f86'), stoveMetal: dark,
-      chimney: C('#8f5a45'), column: C('#d6d2ca'), septic: C('#5e7d4f'), capsule: C('#dfe3e6'), bbq: dark, gateSlide: metal, wicket: metal, labelbox: C('#d0ccc4'),
+      chimney: C('#8f5a45'), column: C('#d6d2ca'), capsule: C('#dfe3e6'), bbq: dark, gateSlide: metal, wicket: metal, labelbox: C('#d0ccc4'),
     }[sh] || (def.layer === 'furniture' ? wood : C('#d0ccc4'));
     if (sh === 'bed') {
       box(it.x, it.y, it.w, it.d, rot, z0, z0 + 28, C('#9a7550'));
@@ -1144,7 +1120,8 @@ const View3D = {
     // кольцо из бетонных сегментов (стенка с толщиной t)
     const ringWall = (R, t, za, zb, col, n = 18) => {
       for (let k = 0; k < n; k++) {
-        const a = (k + 0.5) / n * Math.PI * 2, q = L(Math.cos(a) * (R - t / 2), Math.sin(a) * (R - t / 2));
+        // без зеркала (кольцо симметрично): иначе у «Зеркально» положение сегмента отражено, а поворот — нет
+        const a = (k + 0.5) / n * Math.PI * 2, q = G.toWorld({ x: Math.cos(a) * (R - t / 2), y: Math.sin(a) * (R - t / 2) }, it.x, it.y, rot);
         View3D._g.box(q.x, q.y, 2 * Math.PI * R / n + 1, t, rot + U.deg(a) + 90, za, zb, col);
       }
     };
@@ -1187,11 +1164,12 @@ const View3D = {
       ringWall(R, 10, e - 5, top, conc);
       bx(-R, -R, R, R, e, e + 1.5, [0.6, 0.58, 0.55]);
       prism(View3D._g.ring(it.x, it.y, R - 10, R - 10, 16, rot), top - 70, top - 69, [0.12, 0.2, 0.28]);   // вода в глубине
-      for (const s2 of [-1, 1]) bx(s2 * (R + 4) - 4, -4, s2 * (R + 4) + 4, 4, e, e + 190, wood);          // стойки
+      const roofZ = Math.max(e + 190, top + 70);                                                          // крыша выше ворота
+      for (const s2 of [-1, 1]) bx(s2 * (R + 4) - 4, -4, s2 * (R + 4) + 4, 4, e, roofZ, wood);            // стойки
       bx(-R - 2, -7, R + 2, 7, top + 40, top + 54, wood.map(x => x * 0.9));                                // ворот
       bx(R + 8, -1.5, R + 11, 1.5, top + 45, top + 60, [0.3, 0.3, 0.32]); bx(R + 8, -1.5, R + 25, 1.5, top + 58, top + 61, [0.3, 0.3, 0.32]);   // ручка
       cy(R * 0.45, R * 0.45, 11, top, top + 22, [0.6, 0.62, 0.65], 12);                                    // ведро на срубе
-      View3D.roof({ x: it.x, y: it.y, w: w + 40, d: d + 30, rot, type: 'gable', pitch: 40, base: e + 190, mat: 'soft', floor: null });
+      View3D.roof({ x: it.x, y: it.y, w: w + 40, d: d + 30, rot, type: 'gable', pitch: 40, base: roofZ, mat: 'soft', floor: null });
       return true;
     }
     // --- котельная: котлы, баки, водоподготовка, газовый счётчик и кран, коллектор, щит ---
@@ -1455,7 +1433,8 @@ const View3D = {
    *  уклон — как у дома, если хватает высоты (≥ 2,15 м над настилом у края), иначе положе (перелом ската). */
   porchJoin(it, rg, z0) {
     const o = porchOpt(it);
-    if (!o.attached || rg.R.type !== 'shed' || it.roofJoin === false) return null;
+    // только скат «от дома» (высокая сторона сзади): при другой стороне прямоугольник крыши повёрнут — оставляем как выбрано
+    if (!o.attached || rg.R.type !== 'shed' || rg.R.shedDir !== 'back' || it.roofJoin === false) return null;
     const rot = it.rot || 0, W = it.w / 2, D = it.d / 2;
     const back = [-W + 10, 0, W - 10].map(x => G.toWorld({ x, y: -D }, it.x, it.y, rot));
     let zb = Infinity, pitch = 0, mat = null;
@@ -1472,7 +1451,7 @@ const View3D = {
     let front = zb - Math.tan(U.rad(pitch)) * run;
     if (front < minFront) front = minFront;
     const rise = zb - front, r2 = { x: r.x, y: (yBack + yFront) / 2, w: r.w, d: run, rot: 0, type: 'shed' };
-    const roofZ = (q) => { const v = G.toLocal(q, it.x, it.y, rot); return front + rise * U.clamp((yFront - v.y) / run, 0, 1); };
+    const roofZ = (q) => front + rise * U.clamp((yFront - q.y) / run, 0, 1);   // q — в локальных координатах веранды (как у roofGeom)
     // кровля — как у дома, если свой материал у веранды не выбран
     return { R: { ...rg.R, type: 'shed', mat: it.roofMat || mat || rg.R.mat }, r: r2, rise, eave: front, pitch: U.deg(Math.atan(rise / run)), roofZ, joined: true };
   },

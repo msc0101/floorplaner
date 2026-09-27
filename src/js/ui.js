@@ -776,7 +776,7 @@ const UI = {
     // варианты того же вида
     const same = CATALOG.find(c => c.id === def.cat).items.filter(x => x.shape === def.shape && x.key !== def.key);
     body.append(F.section('Размеры',
-      same.length ? F.select('Типоразмер', '', [['', `${def.name} (${def.w}×${def.d})`], ...same.map(x => [x.key, `${x.name} (${x.w}×${x.d})`])], (v) => { if (!v) return; const d2 = catItem(v); it.key = v; it.w = d2.w; it.d = d2.d; it.h = d2.h; for (const k of PORCH_KEYS.concat(PIT_KEYS)) delete it[k]; for (const k of ['roofType', 'roofMat', 'roofPitch', 'roofRidge', 'roofShed', 'roofOver', 'wallH']) delete it[k]; Model.commit(); }) : null,
+      same.length ? F.select('Типоразмер', '', [['', `${def.name} (${def.w}×${def.d})`], ...same.map(x => [x.key, `${x.name} (${x.w}×${x.d})`])], (v) => { if (!v) return; const d2 = catItem(v); it.key = v; it.w = d2.w; it.d = d2.d; it.h = d2.h; for (const k of PORCH_KEYS.concat(PIT_KEYS)) delete it[k]; for (const k of ['roofType', 'roofMat', 'roofPitch', 'roofRidge', 'roofShed', 'roofOver', 'roofJoin', 'wallH']) delete it[k]; Model.commit(); }) : null,
       F.num('Ширина', it.w, (v) => UI.set(it, 'w', v), { min: 1, field: 'w' }),
       F.num('Глубина', it.d, (v) => UI.set(it, 'd', v), { min: 1 }),
       BLD_HOLLOW.has(def.shape)
@@ -888,7 +888,8 @@ const UI = {
         g.steps ? F.info('Ступени', `${g.steps - 1} шт. + площадка, подъём ${U.fmtLen(g.rise)}, проступь ${g.tread} см`) : null,
         F.note('Стороны — если смотреть на площадку спереди; «сзади» — сторона у дома (у пристроенной недоступна). Где ступени — там проход в ограждении, у закрытой веранды — дверь. Высота объекта — до верха крыши.')));
       if (o.roofed) body.append(roofSection());
-      if (o.roofed && o.attached) body.append(F.section('Примыкание к дому',
+      const R0 = o.roofed && o.attached ? bldRoof(it) : null;
+      if (R0 && R0.type === 'shed' && R0.shedDir === 'back') body.append(F.section('Примыкание к дому',
         F.check('Скат от карниза дома (крыши сливаются)', it.roofJoin !== false, (v) => { it.roofJoin = v ? undefined : false; Model.commit(); }),
         F.note('У односкатной крыши пристроенной веранды верх ската заводится под кровлю дома, уклон — как у дома, если хватает высоты над настилом (2,15 м у края), иначе чуть положе — с переломом ската.')));
     }

@@ -554,18 +554,25 @@ const Visits = {
     const show = (text, title) => { el.querySelector('b').textContent = text; if (title) el.title = title; el.hidden = false; };
     const tryAt = (i) => {
       if (i >= urls.length) return show('—', 'Счётчик посетителей: сервис сейчас недоступен');
-      const host = new URL(urls[i].replace(/\{[^}]*\}/g, 'x')).host, key = Visits.KEY + ':' + host;
+      let host;
+      try { host = new URL(urls[i].replace(/\{[^}]*\}/g, 'x')).host; } catch { console.warn('Счётчик посетителей: неверный адрес', urls[i]); return tryAt(i + 1); }
+      const key = Visits.KEY + ':' + host;
       let seen = true;
-      try { seen = !!localStorage.getItem(key); } catch { /* хранилище недоступно — не накручиваем */ }
+      // старый общий ключ (до нескольких сервисов) — засчитан первым сервисом, повторно не накручиваем
+      try { seen = !!(localStorage.getItem(key) || (i === 0 && localStorage.getItem(Visits.KEY))); } catch { /* хранилище недоступно — не накручиваем */ }
       const url = urls[i].replace(/\{([^}/]*)\/([^}]*)\}/g, (_, hit, get) => seen ? get : hit);
       const ctl = window.AbortController ? new window.AbortController() : null, timer = setTimeout(() => ctl && ctl.abort(), 6000);
       window.fetch(url, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
-        .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
+        .then(r => {
+          if (!r.ok) throw new Error(String(r.status));
+          // сервис ответил — посещение уже засчитано, даже если ответ не разберём
+          if (!seen) try { localStorage.setItem(key, String(Date.now())); } catch { /* ничего */ }
+          return r.json();
+        })
         .then(j => {
           clearTimeout(timer);
           const n = Number(j && (j.value ?? j.count ?? (j.data && (j.data.up_count ?? j.data.count))));
           if (!Number.isFinite(n)) throw new Error('bad response');
-          if (!seen) try { localStorage.setItem(key, String(Date.now())); } catch { /* ничего */ }
           show(n.toLocaleString('ru-RU'), `Уникальных посетителей сайта (каждый браузер считается один раз) · ${host}`);
         })
         .catch((err) => { clearTimeout(timer); console.warn('Счётчик посетителей:', host, err && err.message); tryAt(i + 1); });
