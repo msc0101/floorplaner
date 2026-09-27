@@ -1,7 +1,7 @@
 // Сборка в один автономный HTML-файл: dist/floorplaner.html (открывается двойным кликом, без сервера).
 // Для публикации на сайте: SITE_URL=https://example.ru/ node tools/build.mjs — дополнительно
 // dist/index.html с canonical/og:url/og:image, dist/robots.txt, dist/sitemap.xml и dist/og.png.
-// Коды подтверждения прав: GOOGLE_VERIFY=… (Search Console), YANDEX_VERIFY=… (Яндекс Вебмастер).
+// Код подтверждения прав: GOOGLE_VERIFY=… (Search Console).
 // Счётчик уникальных посетителей в шапке: VISITS_URL=адрес[|запасной…] ({засчитать/прочитать} в адресе; «off» — выключить),
 // по умолчанию — abacus.jasoncameron.dev, запасной — counterapi.dev.
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
@@ -34,7 +34,7 @@ if (site) {
   const esc = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   // код подтверждения: принимаем и сам код, и целиком тег <meta name="…" content="код">
   const code = (v) => { v = (v || '').trim(); const m = v.match(/content\s*=\s*["']([^"']+)["']/i); return m ? m[1].trim() : v; };
-  const gv = code(process.env.GOOGLE_VERIFY), yv = code(process.env.YANDEX_VERIFY);
+  const gv = code(process.env.GOOGLE_VERIFY);
   // счётчик: пространство имён — из адреса сайта (msc0101.github.io/floorplaner → msc0101-github-io-floorplaner)
   const ns = base.replace(/^https?:\/\//, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
   // два бесплатных сервиса без регистрации: если первый недоступен — второй
@@ -48,7 +48,6 @@ if (site) {
     '<meta property="og:image:height" content="860">',
     `<meta name="twitter:image" content="${esc(base)}og.png">`,
     gv && `<meta name="google-site-verification" content="${esc(gv)}">`,
-    yv && `<meta name="yandex-verification" content="${esc(yv)}">`,
     visits && `<meta name="fp-visits" content="${esc(visits)}">`,
   ].filter(Boolean).join('\n');
   const page = html.replace('<!-- build:seo -->', tags)

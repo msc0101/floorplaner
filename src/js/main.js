@@ -558,7 +558,7 @@ const Visits = {
       let seen = true;
       try { seen = !!localStorage.getItem(key); } catch { /* хранилище недоступно — не накручиваем */ }
       const url = urls[i].replace(/\{([^}/]*)\/([^}]*)\}/g, (_, hit, get) => seen ? get : hit);
-      const ctl = window.AbortController ? new AbortController() : null, timer = setTimeout(() => ctl && ctl.abort(), 6000);
+      const ctl = window.AbortController ? new window.AbortController() : null, timer = setTimeout(() => ctl && ctl.abort(), 6000);
       window.fetch(url, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
         .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
         .then(j => {
