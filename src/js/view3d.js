@@ -976,6 +976,20 @@ const View3D = {
       cy(0, 0, 3, e, e + (H || 75) - 5, chrome, 8); cy(0, 0, 18, e, e + 2, chrome, 14); cy(0, 0, W, e + (H || 75) - 5, e + (H || 75), C('#5a4636'), 16); cy(0, 0, W * 0.8, e + 25, e + 27, chrome, 14);
       return true;
     }
+    // --- кухонная вытяжка: купол над плитой, фильтры снизу, кнопки, короб до потолка (задняя сторона −d/2 — у стены) ---
+    if (sh === 'hood') {
+      const steel = [0.78, 0.8, 0.82], z0h = z0, ceil = View3D.ceilZ(it, e);
+      bx(-W, -D, W, D, z0h, z0h + 4, steel);
+      for (const s2 of [-1, 1]) bx(s2 * W * 0.5 - W * 0.4, -D + 5, s2 * W * 0.5 + W * 0.4, D - 5, z0h - 0.2, z0h, [0.35, 0.36, 0.38]);   // жировые фильтры
+      bx(W - 22, D, W - 4, D + 0.4, z0h + 1, z0h + 3, [0.1, 0.1, 0.12]);                                   // кнопки
+      const steps = 4;
+      for (let k = 0; k < steps; k++) {
+        const t0 = k / steps, t1 = (k + 1) / steps, ww = W * (1 - 0.65 * t1), dd = D * (1 - 0.45 * t1);
+        bx(-ww, -D, ww, -D + 2 * dd, z0h + 4 + 18 * t0, z0h + 4 + 18 * t1, steel.map(x => x * (1 - 0.03 * k)));
+      }
+      bx(-W * 0.32, -D, W * 0.32, -D + D * 1.05, z0h + 22, ceil, steel.map(x => x * 0.95));             // декоративный короб
+      return true;
+    }
     // --- дымоход и вентканал: внутри дома оштукатурен, над крышей — кирпичный оголовок с колпаком; вентстояк — с дефлектором ---
     if (def.stack) {
       const top = e + Checks.stackH(it), st = Checks.stack(it), roofZ = st ? Math.min(st.roofZ, top) : top;
@@ -988,6 +1002,24 @@ const View3D = {
       }
       const brick = C(sh === 'chimney' ? '#8f5a45' : '#a86a52'), plaster = C('#e8e4dc');
       bx(-W, -D, W, D, e, roofZ, plaster);
+      if (sh === 'ventShaft') {
+        // в помещении: плинтус, решётки каналов под потолком (лицевая сторона — +d/2); у вентблока на 2 канала
+        // второй канал — под короб от кухонной вытяжки, если она рядом
+        const ceil = View3D.ceilZ(it, e), n = def.channels || 1, white = [0.95, 0.95, 0.94], slot = [0.25, 0.26, 0.28];
+        bx(-W - 1, -D, W + 1, D + 1, e, e + 8, [0.9, 0.9, 0.88]);                                        // плинтус
+        bx(-W - 1.5, -D, W + 1.5, D + 1.5, ceil - 6, ceil, [0.93, 0.93, 0.91]);                         // галтель у потолка
+        const hood = n >= 2 ? View3D.nearHood(it) : null;
+        for (let k = 0; k < n; k++) {
+          const xc = -W + (k + 0.5) * w / n, gz = ceil - 42;
+          if (hood && k === n - 1) {
+            bx(xc - 12, D, xc + 12, D + 1, gz - 2, gz + 20, white);                                      // фланец под короб
+            View3D.hoodDuct(it, L(xc, D + 1), hood, ceil, e);
+            continue;
+          }
+          bx(xc - 9, D, xc + 9, D + 0.8, gz, gz + 16, white);                                            // решётка
+          for (let z = gz + 2.5; z < gz + 14; z += 2.8) bx(xc - 7, D + 0.8, xc + 7, D + 1.1, z, z + 1.2, slot);
+        }
+      }
       if (top > roofZ + 1) {
         bx(-W, -D, W, D, roofZ - 2, top - 10, brick);
         bx(-W - 4, -D - 4, W + 4, D + 4, top - 10, top - 4, brick.map(x => x * 0.88));    // выступ оголовка
@@ -1493,6 +1525,29 @@ const View3D = {
     }
     return 0;
   },
+  /** Потолок помещения, где стоит предмет: по высоте внутренних стен этажа (иначе — высота этажа) */
+  ceilZ(it, e) {
+    const f1 = App.doc.floors[0].id, fl = it.floor || f1, f = App.doc.floors.find(x => x.id === fl) || App.doc.floors[0];
+    const hs = App.doc.walls.filter(w => (w.floor || f1) === fl && (w.kind === 'int' || w.kind === 'part')).map(w => w.h);
+    return e + (hs.length ? Math.max(...hs) : f.h || 270);
+  },
+  /** Кухонная вытяжка рядом с вентблоком (до 8 м, тот же этаж) — для короба во второй канал */
+  nearHood(it) {
+    const f1 = App.doc.floors[0].id;
+    let best = null;
+    for (const o of App.doc.items) if (catItem(o.key).shape === 'hood' && (o.floor || f1) === (it.floor || f1)) { const dd = G.dist(o, it); if (dd < 800 && (!best || dd < best.d)) best = { o, d: dd }; }
+    return best ? best.o : null;
+  },
+  /** Плоский воздуховод 20×10 см под потолком от вентблока к вытяжке: вдоль стены с вентблоком, затем вдоль стены вытяжки */
+  hoodDuct(shaft, A, hood, ceil) {
+    const { box } = View3D._g, col = [0.9, 0.9, 0.9], rot = shaft.rot || 0;
+    const n = { x: -Math.sin(U.rad(rot)), y: Math.cos(U.rad(rot)) }, u = { x: n.y, y: -n.x };      // n — от стены в комнату, u — вдоль стены
+    const hb = G.toWorld({ x: 0, y: -hood.d / 2 + hood.d * 0.5 }, hood.x, hood.y, hood.rot || 0);   // короб вытяжки у стены
+    const P0 = G.add(A, G.mul(n, 12)), r = G.sub(hb, P0), P1 = G.add(P0, G.mul(u, G.dot(r, u)));
+    const z0 = ceil - 34, z1 = ceil - 24;
+    const seg = (a, b) => { const L = G.dist(a, b); if (L < 1) return; box((a.x + b.x) / 2, (a.y + b.y) / 2, L + 20, 20, U.deg(Math.atan2(b.y - a.y, b.x - a.x)), z0, z1, col); };
+    seg(A, P0); seg(P0, P1); seg(P1, hb);
+  },
   /** Односкатная крыша пристройки (веранда, гараж, сарай, навес у дома) высокой стороной к дому: край ската
    *  упирается в стену прямо под кровлей дома, свеса с этой стороны нет — крыши не наезжают, нет «ступеньки».
    *  opt.world(q) — локальная точка → план; opt.eave — карниз низкой стороны (у построек — по стенам);
@@ -1683,6 +1738,14 @@ const View3D = {
           if (off(pa) > g.th / 2 + 15 || off(pb) > g.th / 2 + 15) continue;
           const [c0, c1] = alongX ? [Math.min(pa.x, pb.x), Math.max(pa.x, pb.x)] : [Math.min(pa.y, pb.y), Math.max(pa.y, pb.y)];
           cuts.push([c0 - 5, c1 + 5]);
+        }
+        // и над вытяжкой (зонт с коробом до потолка вместо шкафа)
+        for (const o of App.V.items) {
+          if (catItem(o.key).shape !== 'hood') continue;
+          const c = G.toLocal({ x: o.x, y: o.y }, it.x, it.y, rot); c.x *= fx;
+          if (Math.abs((alongX ? c.y : c.x) - back) > 60) continue;
+          const m = alongX ? c.x : c.y;
+          cuts.push([m - o.w / 2 - 2, m + o.w / 2 + 2]);
         }
         let segs = [[alongX ? b[0] : b[1], alongX ? b[2] : b[3]]];
         for (const [c0, c1] of cuts) segs = segs.flatMap(([s0, s1]) => (c1 <= s0 || c0 >= s1) ? [[s0, s1]] : [[s0, Math.max(s0, c0)], [Math.min(s1, c1), s1]].filter(q => q[1] - q[0] > 8));
