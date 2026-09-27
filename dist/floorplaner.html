@@ -1007,6 +1007,8 @@ const G = {
     return { t, tc, q, d: Math.hypot(p.x - q.x, p.y - q.y), perp: Math.abs((p.x - a.x) * dy - (p.y - a.y) * dx) / (Math.sqrt(l2) || 1) };
   },
   distSeg(p, a, b) { return G.proj(p, a, b).d; },
+  /** Расстояние от точки до замкнутого многоугольника (0 — внутри) */
+  distPoly(p, poly) { return G.pointInPoly(p, poly) ? 0 : Math.min(...poly.map((q, j) => G.distSeg(p, q, poly[(j + 1) % poly.length]))); },
   /** Пересечение отрезков (строгое внутри, с допуском) */
   segInter(a, b, c, d) {
     const r = G.sub(b, a), s = G.sub(d, c);
@@ -4186,7 +4188,7 @@ const CHECK_RULES = [
   { id: 'house_bath', a: 'house', b: 'bath', min: 800, name: 'Дом — баня, летний душ', src: 'СП 53.13330.2019 п. 6.8' },
   { id: 'well_toilet', a: 'well', b: 'toilet', min: 800, name: 'Колодец — уборная, компост', src: 'СП 53.13330.2019 п. 6.8' },
   { id: 'septic_house', a: 'septic', b: 'house', min: 500, name: 'Септик — дом', src: 'СП 32.13330, рекомендация' },
-  { id: 'septic_well', a: 'septic', b: 'well', min: 2000, name: 'Септик — колодец / скважина', src: 'санитарные правила; с полем фильтрации — 50 м' },
+  { id: 'septic_well', a: 'septic', b: 'well', min: 2000, name: 'Септик — колодец / скважина', src: 'санитарные правила; с полем фильтрации — 50 м', except: 'filter' },
   { id: 'filter_well', a: 'filter', b: 'well', min: 5000, name: 'Поле фильтрации — колодец / скважина', src: 'СанПиН 2.1.3684-21, СП 32.13330' },
   { id: 'well_house', a: 'well', b: 'house', min: 300, name: 'Колодец / скважина — фундамент дома', src: 'рекомендация: не подмывать фундамент, подъезд буровой' },
   { id: 'well_animals', a: 'well', b: 'animals', min: 2000, name: 'Колодец / скважина — постройка для скота и птицы', src: 'рекомендация; для общественных колодцев — 50 м (СанПиН 2.1.3684-21)' },
@@ -4355,6 +4357,7 @@ const Checks = {
         const Bs = objs(r.b);
         for (const A of As) for (const B of Bs) {
           if (A.id === B.id) continue;
+          if (r.except && (A.groups || []).includes(r.except)) continue;   // поле фильтрации — своя норма (50 м), а не септика
           const res = Checks.dist(A, B);
           out.push({ rule: r, a: A, b: B, bName: B.name, ...res, ok: res.d >= r.min - 0.5 });
         }
@@ -4384,7 +4387,7 @@ const Checks = {
           if (s < skip || s > L - skip) continue;
           const p = G.add(a, G.mul(G.sub(b, a), k / n));
           for (const poly of blds) {
-            const d = G.pointInPoly(p, poly) ? 0 : Math.min(...poly.map((q, j) => G.distSeg(p, q, poly[(j + 1) % poly.length])));
+            const d = G.distPoly(p, poly);
             if (d < best.d) best = { d, p };
           }
         }
@@ -4487,7 +4490,7 @@ const Checks = {
     ];
     const under = routes.filter(l => (l.depth || 0) > 0);
     const titleOf = (l) => (l.label || LINE_KINDS[l.kind].code) + ' — ' + LINE_KINDS[l.kind].name.toLowerCase();
-    const nearBld = (p) => blds.some(poly => G.pointInPoly(p, poly) || Math.min(...poly.map((q, j) => G.distSeg(p, q, poly[(j + 1) % poly.length]))) < 150);
+    const nearBld = (p) => blds.some(poly => G.distPoly(p, poly) < 150);
     for (const [ka, kb, min, src] of PAIRS) for (const A of under.filter(l => l.kind === ka)) for (const B of under.filter(l => l.kind === kb)) {
       const xs = [];
       for (let i = 0; i + 1 < A.pts.length; i++) for (let j = 0; j + 1 < B.pts.length; j++) { const x = G.segInter(A.pts[i], A.pts[i + 1], B.pts[j], B.pts[j + 1]); if (x) xs.push({ x: x.x, y: x.y, j, u: x.u }); }
@@ -4507,10 +4510,11 @@ const Checks = {
       if (worst) out.push({ line: A, kind: A.kind, title: titleOf(A), text: `идёт рядом с трассой «${LINE_KINDS[kb].name.toLowerCase()}» на ${m(worst.d)} — нужно ≥ ${m(min)}`, ok: false, at: worst.p, src });
       // пересечение водопровода с канализацией: вода выше на 0,4 м, иначе — в стальном футляре
       if (ka === 'water' && kb === 'sewer') for (const x of xs) {
-        let run = 0;
-        for (let j = 0; j < x.j; j++) run += G.dist(B.pts[j], B.pts[j + 1]);
-        run += G.dist(B.pts[x.j], B.pts[x.j + 1]) * x.u;
-        const sd = (B.depth || 0) + run * ((B.dia || 110) <= 110 ? 0.02 : 0.01);
+        // глубина задана в начале первой нарисованной части; у склеенной трассы оно может быть не в B.pts[0]
+        const runTo = (j, u) => { let s = 0; for (let k = 0; k < j; k++) s += G.dist(B.pts[k], B.pts[k + 1]); return s + (u ? G.dist(B.pts[j], B.pts[j + 1]) * u : 0); };
+        const i0 = Math.max(0, B.pts.indexOf(B.parts[0].pts[0]));
+        const run = runTo(x.j, x.u) - runTo(i0, 0);
+        const sd = Math.max(0, (B.depth || 0) + run * ((B.dia || 110) <= 110 ? 0.02 : 0.01));
         if (A.depth > sd - 40 && !A.sleeve) out.push({ line: A, kind: A.kind, title: titleOf(A), text: `пересекает канализацию: водопровод на ${m(A.depth)}, канализация ≈ ${m(sd)} — вода должна идти выше на 0,4 м, иначе — в стальном футляре (по 5 м в обе стороны, в песке — 10 м)`, ok: false, at: x, src: 'СП 31.13330' });
       }
     }
@@ -7725,11 +7729,20 @@ const Walk = {
   /** Переключение «ногами / призраком»; из полёта — падаем на то, что под ногами */
   setGhost(on) {
     Walk.ghost = on; Walk.vy = 0; Walk.crouch = false; Walk._blk = null;
-    if (!on) {
-      const top = Walk.top(Walk.x, Walk.y);
-      if (top === null || top > Walk.foot + Walk.STEP) Walk.noclip = true;           // оказались внутри стены — выпускаем
-    }
+    // из полёта: этаж — тот, над чьим полом мы в плане (над садом — земля, а не пол мансарды);
+    // ниже пола поднимет update(), из стены выпустит canStand() — «сквозь стены» не включаем
+    if (!on) Walk.level = Walk.levelAt(Walk.x, Walk.y, Walk.foot);
     Walk.hud(); UI.render3dPanel(); Walk.loop();
+  },
+  /** Этаж под точкой плана на высоте ног: верхний, чей пол не выше ног и чей контур дома накрывает точку (1-й — везде) */
+  levelAt(x, y, foot) {
+    const fl = App.doc.floors, fd = App.floorData || [], p = { x, y };
+    let lv = 0;
+    fl.forEach((f, i) => {
+      if (i === 0 || foot < (f.elev || 0) - Walk.STEP) return;
+      if (!fd[i] || !fd[i].outlines.length || fd[i].outlines.some(o => G.pointInPoly(p, o.outer))) lv = i;
+    });
+    return lv;
   },
   hud() {
     const h = $('walkHud');
@@ -7750,7 +7763,7 @@ const Walk = {
     if (down) {
       if (code === 'Escape') { Walk.stop(); return true; }
       if (code === 'KeyN') { Walk.noclip = !Walk.noclip; Walk.hud(); return true; }
-      if (code === 'KeyF') { Walk.setGhost(!Walk.ghost); return true; }
+      if (code === 'KeyF') { if (!e.repeat) Walk.setGhost(!Walk.ghost); return true; }   // удержание F не «мигает» режимом
       if (code === 'PageUp' || code === 'PageDown') { Walk.setLevel(Walk.level + (code === 'PageUp' ? 1 : -1)); return true; }
       if (code === 'Space' && !Walk.ghost && Walk.onGround()) Walk.vy = 360;
       if (code === 'KeyC' && !Walk.ghost) { Walk.crouch = !Walk.crouch; Walk.hud(); }
@@ -7845,7 +7858,7 @@ const Walk = {
           for (const r of rects) list.push({ poly: [W(r.x0, r.y0), W(r.x1, r.y0), W(r.x1, r.y1), W(r.x0, r.y1)], h: it.h });
           continue;
         }
-        list.push({ poly: Model.itemPts(it), h: it.h });
+        list.push({ poly: Model.itemPts(it), h: it.h + View3D.deckZ(it) });   // на веранде / настиле — от их пола
       }
       // ограждение/остекление/стены крыльца и веранды (кроме проходов к ступеням)
       for (const it of App.V.items) {
@@ -7931,7 +7944,8 @@ const Walk = {
       if (Walk.foot <= ground) { Walk.foot = ground; Walk.vy = 0; }
     } else Walk.foot = ground;
     const fl = App.doc.floors, i = Walk.level;
-    if (fl[i + 1] && Walk.foot >= fl[i + 1].elev - 5) { Walk.level = i + 1; Walk._blk = null; Walk.hud(); }
+    // наверх — только там, где есть этаж выше (иначе, падая над садом, «встанем» на пол мансарды в воздухе)
+    if (fl[i + 1] && Walk.foot >= fl[i + 1].elev - 5 && Walk.levelAt(Walk.x, Walk.y, Walk.foot) > i) { Walk.level = i + 1; Walk._blk = null; Walk.hud(); }
     else if (i > 0 && Walk.foot < Walk.elev(i) - 20) { Walk.level = i - 1; Walk._blk = null; Walk.hud(); }
     return !!(turn || fwd || side || Walk.vy !== 0 || Walk.foot > ground + 0.5);
   },
@@ -7952,8 +7966,7 @@ const Walk = {
       Walk.x = U.clamp(Walk.x, b.x0 - 3000, b.x1 + 3000); Walk.y = U.clamp(Walk.y, b.y0 - 3000, b.y1 + 3000);
       Walk.foot = U.clamp(Walk.foot, 15 - Walk.EYE - 400, 6000);             // можно спуститься в погреб, но не под землю глубоко
       // этаж для HUD и столкновений после приземления — по высоте глаз
-      const fl = App.doc.floors, eye = Walk.foot + Walk.EYE;
-      let lv = 0; fl.forEach((f, i) => { if (eye >= f.elev) lv = i; });
+      const lv = Walk.levelAt(Walk.x, Walk.y, Walk.foot);
       if (lv !== Walk.level) { Walk.level = lv; Walk._blk = null; }
       Walk.hud();
     }
@@ -11544,14 +11557,15 @@ const IFC = {
         const z = siteObj ? f.elev * 10 : (def.shape === 'upper' ? 1400 : 0);
         const pl = LP(base, A3(X(it), Y(it), z, xdir));
         const size = def.sym ? Tools.itemDrawSize(it) : it;
-        const h = Math.max(10, ((def.shape === 'veranda' ? Math.max(it.h || 0, porchOpt(it).ph) : it.h) || 2) * 10);
+        const itH = def.stack ? Checks.stackH(it) : it.h;                 // труба «по норме» — высота считается, it.h не используется
+        const h = Math.max(10, ((def.shape === 'veranda' ? Math.max(it.h || 0, porchOpt(it).ph) : itH) || 2) * 10);
         const round = ['round', 'boiler', 'ring', 'well', 'borehole', 'roundtable', 'columnRound', 'tree', 'conifer', 'bush', 'pump'].includes(def.shape);
         const solid = round
           ? add('IFCEXTRUDEDAREASOLID', add('IFCCIRCLEPROFILEDEF', E('AREA'), null, add('IFCAXIS2PLACEMENT2D', P2(0, 0), null), Math.min(size.w, size.d) * 5), A3(), dz, h)
           : extrudeRect(0, 0, size.w * 10, size.d * 10, h);
         const rep = shape([bodyRep('SweptSolid', [solid])]);
         const name = it.label || def.name;
-        const descr = `${Math.round(it.w)}×${Math.round(it.d)}×${Math.round(it.h)} см`;
+        const descr = `${Math.round(it.w)}×${Math.round(it.d)}×${Math.round(itH)} см`;
         let el;
         if (def.shape === 'stairs' || def.shape === 'stairsL') el = add('IFCSTAIR', IFC.guid(), oh, name, descr, def.name, pl, rep, it.id, E(def.shape === 'stairs' ? 'STRAIGHT_RUN_STAIR' : 'QUARTER_TURN_STAIR'));
         else if (def.shape === 'column' || def.shape === 'columnRound') el = add('IFCCOLUMN', IFC.guid(), oh, name, descr, def.name, pl, rep, it.id);
@@ -12005,7 +12019,7 @@ const Analysis = {
   vent(d, fd, add, stats, m) {
     const f1 = d.floors[0].id, EXH = new Set(['ventGrille', 'ventShaft', 'ventShaft2', 'ventPipe', 'fan', 'recuperator']);
     const SHAFT = (it) => catItem(it.key).stack === 'vent';
-    const near = (p, poly, tol) => G.pointInPoly(p, poly) || Math.min(...poly.map((q, j) => G.distSeg(p, q, poly[(j + 1) % poly.length]))) <= tol;
+    const near = (p, poly, tol) => G.distPoly(p, poly) <= tol;
     const name = (it) => it.label || catItem(it.key).name;
     let need = 0, supplyNeed = 0;
     const noSupply = [];

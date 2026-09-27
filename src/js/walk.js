@@ -62,11 +62,20 @@ const Walk = {
   /** Переключение «ногами / призраком»; из полёта — падаем на то, что под ногами */
   setGhost(on) {
     Walk.ghost = on; Walk.vy = 0; Walk.crouch = false; Walk._blk = null;
-    if (!on) {
-      const top = Walk.top(Walk.x, Walk.y);
-      if (top === null || top > Walk.foot + Walk.STEP) Walk.noclip = true;           // оказались внутри стены — выпускаем
-    }
+    // из полёта: этаж — тот, над чьим полом мы в плане (над садом — земля, а не пол мансарды);
+    // ниже пола поднимет update(), из стены выпустит canStand() — «сквозь стены» не включаем
+    if (!on) Walk.level = Walk.levelAt(Walk.x, Walk.y, Walk.foot);
     Walk.hud(); UI.render3dPanel(); Walk.loop();
+  },
+  /** Этаж под точкой плана на высоте ног: верхний, чей пол не выше ног и чей контур дома накрывает точку (1-й — везде) */
+  levelAt(x, y, foot) {
+    const fl = App.doc.floors, fd = App.floorData || [], p = { x, y };
+    let lv = 0;
+    fl.forEach((f, i) => {
+      if (i === 0 || foot < (f.elev || 0) - Walk.STEP) return;
+      if (!fd[i] || !fd[i].outlines.length || fd[i].outlines.some(o => G.pointInPoly(p, o.outer))) lv = i;
+    });
+    return lv;
   },
   hud() {
     const h = $('walkHud');
@@ -87,7 +96,7 @@ const Walk = {
     if (down) {
       if (code === 'Escape') { Walk.stop(); return true; }
       if (code === 'KeyN') { Walk.noclip = !Walk.noclip; Walk.hud(); return true; }
-      if (code === 'KeyF') { Walk.setGhost(!Walk.ghost); return true; }
+      if (code === 'KeyF') { if (!e.repeat) Walk.setGhost(!Walk.ghost); return true; }   // удержание F не «мигает» режимом
       if (code === 'PageUp' || code === 'PageDown') { Walk.setLevel(Walk.level + (code === 'PageUp' ? 1 : -1)); return true; }
       if (code === 'Space' && !Walk.ghost && Walk.onGround()) Walk.vy = 360;
       if (code === 'KeyC' && !Walk.ghost) { Walk.crouch = !Walk.crouch; Walk.hud(); }
@@ -182,7 +191,7 @@ const Walk = {
           for (const r of rects) list.push({ poly: [W(r.x0, r.y0), W(r.x1, r.y0), W(r.x1, r.y1), W(r.x0, r.y1)], h: it.h });
           continue;
         }
-        list.push({ poly: Model.itemPts(it), h: it.h });
+        list.push({ poly: Model.itemPts(it), h: it.h + View3D.deckZ(it) });   // на веранде / настиле — от их пола
       }
       // ограждение/остекление/стены крыльца и веранды (кроме проходов к ступеням)
       for (const it of App.V.items) {
@@ -268,7 +277,8 @@ const Walk = {
       if (Walk.foot <= ground) { Walk.foot = ground; Walk.vy = 0; }
     } else Walk.foot = ground;
     const fl = App.doc.floors, i = Walk.level;
-    if (fl[i + 1] && Walk.foot >= fl[i + 1].elev - 5) { Walk.level = i + 1; Walk._blk = null; Walk.hud(); }
+    // наверх — только там, где есть этаж выше (иначе, падая над садом, «встанем» на пол мансарды в воздухе)
+    if (fl[i + 1] && Walk.foot >= fl[i + 1].elev - 5 && Walk.levelAt(Walk.x, Walk.y, Walk.foot) > i) { Walk.level = i + 1; Walk._blk = null; Walk.hud(); }
     else if (i > 0 && Walk.foot < Walk.elev(i) - 20) { Walk.level = i - 1; Walk._blk = null; Walk.hud(); }
     return !!(turn || fwd || side || Walk.vy !== 0 || Walk.foot > ground + 0.5);
   },
@@ -289,8 +299,7 @@ const Walk = {
       Walk.x = U.clamp(Walk.x, b.x0 - 3000, b.x1 + 3000); Walk.y = U.clamp(Walk.y, b.y0 - 3000, b.y1 + 3000);
       Walk.foot = U.clamp(Walk.foot, 15 - Walk.EYE - 400, 6000);             // можно спуститься в погреб, но не под землю глубоко
       // этаж для HUD и столкновений после приземления — по высоте глаз
-      const fl = App.doc.floors, eye = Walk.foot + Walk.EYE;
-      let lv = 0; fl.forEach((f, i) => { if (eye >= f.elev) lv = i; });
+      const lv = Walk.levelAt(Walk.x, Walk.y, Walk.foot);
       if (lv !== Walk.level) { Walk.level = lv; Walk._blk = null; }
       Walk.hud();
     }

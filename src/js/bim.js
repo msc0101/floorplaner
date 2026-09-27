@@ -227,14 +227,15 @@ const IFC = {
         const z = siteObj ? f.elev * 10 : (def.shape === 'upper' ? 1400 : 0);
         const pl = LP(base, A3(X(it), Y(it), z, xdir));
         const size = def.sym ? Tools.itemDrawSize(it) : it;
-        const h = Math.max(10, ((def.shape === 'veranda' ? Math.max(it.h || 0, porchOpt(it).ph) : it.h) || 2) * 10);
+        const itH = def.stack ? Checks.stackH(it) : it.h;                 // труба «по норме» — высота считается, it.h не используется
+        const h = Math.max(10, ((def.shape === 'veranda' ? Math.max(it.h || 0, porchOpt(it).ph) : itH) || 2) * 10);
         const round = ['round', 'boiler', 'ring', 'well', 'borehole', 'roundtable', 'columnRound', 'tree', 'conifer', 'bush', 'pump'].includes(def.shape);
         const solid = round
           ? add('IFCEXTRUDEDAREASOLID', add('IFCCIRCLEPROFILEDEF', E('AREA'), null, add('IFCAXIS2PLACEMENT2D', P2(0, 0), null), Math.min(size.w, size.d) * 5), A3(), dz, h)
           : extrudeRect(0, 0, size.w * 10, size.d * 10, h);
         const rep = shape([bodyRep('SweptSolid', [solid])]);
         const name = it.label || def.name;
-        const descr = `${Math.round(it.w)}×${Math.round(it.d)}×${Math.round(it.h)} см`;
+        const descr = `${Math.round(it.w)}×${Math.round(it.d)}×${Math.round(itH)} см`;
         let el;
         if (def.shape === 'stairs' || def.shape === 'stairsL') el = add('IFCSTAIR', IFC.guid(), oh, name, descr, def.name, pl, rep, it.id, E(def.shape === 'stairs' ? 'STRAIGHT_RUN_STAIR' : 'QUARTER_TURN_STAIR'));
         else if (def.shape === 'column' || def.shape === 'columnRound') el = add('IFCCOLUMN', IFC.guid(), oh, name, descr, def.name, pl, rep, it.id);

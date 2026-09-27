@@ -128,6 +128,8 @@ const G = {
     return { t, tc, q, d: Math.hypot(p.x - q.x, p.y - q.y), perp: Math.abs((p.x - a.x) * dy - (p.y - a.y) * dx) / (Math.sqrt(l2) || 1) };
   },
   distSeg(p, a, b) { return G.proj(p, a, b).d; },
+  /** Расстояние от точки до замкнутого многоугольника (0 — внутри) */
+  distPoly(p, poly) { return G.pointInPoly(p, poly) ? 0 : Math.min(...poly.map((q, j) => G.distSeg(p, q, poly[(j + 1) % poly.length]))); },
   /** Пересечение отрезков (строгое внутри, с допуском) */
   segInter(a, b, c, d) {
     const r = G.sub(b, a), s = G.sub(d, c);

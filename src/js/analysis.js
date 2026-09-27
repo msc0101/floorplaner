@@ -146,7 +146,7 @@ const Analysis = {
   vent(d, fd, add, stats, m) {
     const f1 = d.floors[0].id, EXH = new Set(['ventGrille', 'ventShaft', 'ventShaft2', 'ventPipe', 'fan', 'recuperator']);
     const SHAFT = (it) => catItem(it.key).stack === 'vent';
-    const near = (p, poly, tol) => G.pointInPoly(p, poly) || Math.min(...poly.map((q, j) => G.distSeg(p, q, poly[(j + 1) % poly.length]))) <= tol;
+    const near = (p, poly, tol) => G.distPoly(p, poly) <= tol;
     const name = (it) => it.label || catItem(it.key).name;
     let need = 0, supplyNeed = 0;
     const noSupply = [];

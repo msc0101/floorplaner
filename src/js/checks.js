@@ -22,7 +22,7 @@ const CHECK_RULES = [
   { id: 'house_bath', a: 'house', b: 'bath', min: 800, name: 'Дом — баня, летний душ', src: 'СП 53.13330.2019 п. 6.8' },
   { id: 'well_toilet', a: 'well', b: 'toilet', min: 800, name: 'Колодец — уборная, компост', src: 'СП 53.13330.2019 п. 6.8' },
   { id: 'septic_house', a: 'septic', b: 'house', min: 500, name: 'Септик — дом', src: 'СП 32.13330, рекомендация' },
-  { id: 'septic_well', a: 'septic', b: 'well', min: 2000, name: 'Септик — колодец / скважина', src: 'санитарные правила; с полем фильтрации — 50 м' },
+  { id: 'septic_well', a: 'septic', b: 'well', min: 2000, name: 'Септик — колодец / скважина', src: 'санитарные правила; с полем фильтрации — 50 м', except: 'filter' },
   { id: 'filter_well', a: 'filter', b: 'well', min: 5000, name: 'Поле фильтрации — колодец / скважина', src: 'СанПиН 2.1.3684-21, СП 32.13330' },
   { id: 'well_house', a: 'well', b: 'house', min: 300, name: 'Колодец / скважина — фундамент дома', src: 'рекомендация: не подмывать фундамент, подъезд буровой' },
   { id: 'well_animals', a: 'well', b: 'animals', min: 2000, name: 'Колодец / скважина — постройка для скота и птицы', src: 'рекомендация; для общественных колодцев — 50 м (СанПиН 2.1.3684-21)' },
@@ -191,6 +191,7 @@ const Checks = {
         const Bs = objs(r.b);
         for (const A of As) for (const B of Bs) {
           if (A.id === B.id) continue;
+          if (r.except && (A.groups || []).includes(r.except)) continue;   // поле фильтрации — своя норма (50 м), а не септика
           const res = Checks.dist(A, B);
           out.push({ rule: r, a: A, b: B, bName: B.name, ...res, ok: res.d >= r.min - 0.5 });
         }
@@ -220,7 +221,7 @@ const Checks = {
           if (s < skip || s > L - skip) continue;
           const p = G.add(a, G.mul(G.sub(b, a), k / n));
           for (const poly of blds) {
-            const d = G.pointInPoly(p, poly) ? 0 : Math.min(...poly.map((q, j) => G.distSeg(p, q, poly[(j + 1) % poly.length])));
+            const d = G.distPoly(p, poly);
             if (d < best.d) best = { d, p };
           }
         }
@@ -323,7 +324,7 @@ const Checks = {
     ];
     const under = routes.filter(l => (l.depth || 0) > 0);
     const titleOf = (l) => (l.label || LINE_KINDS[l.kind].code) + ' — ' + LINE_KINDS[l.kind].name.toLowerCase();
-    const nearBld = (p) => blds.some(poly => G.pointInPoly(p, poly) || Math.min(...poly.map((q, j) => G.distSeg(p, q, poly[(j + 1) % poly.length]))) < 150);
+    const nearBld = (p) => blds.some(poly => G.distPoly(p, poly) < 150);
     for (const [ka, kb, min, src] of PAIRS) for (const A of under.filter(l => l.kind === ka)) for (const B of under.filter(l => l.kind === kb)) {
       const xs = [];
       for (let i = 0; i + 1 < A.pts.length; i++) for (let j = 0; j + 1 < B.pts.length; j++) { const x = G.segInter(A.pts[i], A.pts[i + 1], B.pts[j], B.pts[j + 1]); if (x) xs.push({ x: x.x, y: x.y, j, u: x.u }); }
@@ -343,10 +344,11 @@ const Checks = {
       if (worst) out.push({ line: A, kind: A.kind, title: titleOf(A), text: `идёт рядом с трассой «${LINE_KINDS[kb].name.toLowerCase()}» на ${m(worst.d)} — нужно ≥ ${m(min)}`, ok: false, at: worst.p, src });
       // пересечение водопровода с канализацией: вода выше на 0,4 м, иначе — в стальном футляре
       if (ka === 'water' && kb === 'sewer') for (const x of xs) {
-        let run = 0;
-        for (let j = 0; j < x.j; j++) run += G.dist(B.pts[j], B.pts[j + 1]);
-        run += G.dist(B.pts[x.j], B.pts[x.j + 1]) * x.u;
-        const sd = (B.depth || 0) + run * ((B.dia || 110) <= 110 ? 0.02 : 0.01);
+        // глубина задана в начале первой нарисованной части; у склеенной трассы оно может быть не в B.pts[0]
+        const runTo = (j, u) => { let s = 0; for (let k = 0; k < j; k++) s += G.dist(B.pts[k], B.pts[k + 1]); return s + (u ? G.dist(B.pts[j], B.pts[j + 1]) * u : 0); };
+        const i0 = Math.max(0, B.pts.indexOf(B.parts[0].pts[0]));
+        const run = runTo(x.j, x.u) - runTo(i0, 0);
+        const sd = Math.max(0, (B.depth || 0) + run * ((B.dia || 110) <= 110 ? 0.02 : 0.01));
         if (A.depth > sd - 40 && !A.sleeve) out.push({ line: A, kind: A.kind, title: titleOf(A), text: `пересекает канализацию: водопровод на ${m(A.depth)}, канализация ≈ ${m(sd)} — вода должна идти выше на 0,4 м, иначе — в стальном футляре (по 5 м в обе стороны, в песке — 10 м)`, ok: false, at: x, src: 'СП 31.13330' });
       }
     }
