@@ -910,6 +910,9 @@ const UI = {
       k.dia || l.dia ? F.num('Диаметр', l.dia, (v) => UI.set(l, 'dia', v), { unit: 'мм' }) : null,
       k.section !== undefined ? F.text('Сечение / марка', l.section || '', (v) => UI.set(l, 'section', v), { placeholder: k.section }) : null,
       l.kind === 'overhead' || l.kind === 'gasAir' ? null : F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
+      l.kind === 'water' || l.kind === 'hotwater' ? F.check('Греющий кабель и утеплитель (можно мельче промерзания)', !!l.heated, (v) => UI.set(l, 'heated', v || undefined)) : null,
+      l.kind === 'water' ? F.check('В стальном футляре на пересечениях с канализацией', !!l.sleeve, (v) => UI.set(l, 'sleeve', v || undefined)) : null,
+      l.kind === 'water' ? F.note(`Водопровод кладут ниже промерзания на 0,5 м: сейчас нужно ≥ ${U.fmtLen((App.doc.settings.frost ?? 130) + 50)} (глубина промерзания — вкладка «Проект»). Канализация — на 0,4 м ниже водопровода в местах пересечения; параллельно — не ближе 1,5 м.`) : null,
       l.kind === 'gasAir' ? F.num('Высота прокладки', l.height ?? LINE_KINDS.gasAir.height, (v) => UI.set(l, 'height', U.clamp(v, 30, 800)), { min: 30, max: 800 }) : null,
       l.kind === 'gasAir' ? F.note('Надземный газопровод: не ниже 2,2 м там, где ходят люди, и не ниже 5 м над проездами; по фасаду — на кронштейнах, не ближе 0,5 м к окнам и дверям. Ввод в котельную — через футляр в стене.') : null,
       l.kind === 'overhead' ? F.num('Охранная зона (в каждую сторону)', (l.zone ?? 200) / 100, (v) => UI.set(l, 'zone', Math.round(v * 100)), { unit: 'м', min: 0, max: 50, step: 0.5 }) : null,
@@ -1522,6 +1525,9 @@ const UI = {
       bl.w > 0 && blinds.length ? F.info('Площадь', U.fmtArea(blinds.reduce((a, b) => a + b.area, 0))) : null,
       narrow.length ? F.note(`<b style="color:var(--danger)">Свес крыши ${U.fmtLen(narrow[0].over)} — отмостка должна быть шире свеса минимум на 20 см (≥ ${U.fmtLen(narrow[0].over + 20)}).</b>`) : null,
       F.note('Норма: ширина не менее 0,8–1 м и на 20 см больше свеса кровли, уклон от стены 1–3% (СП 82.13330, СП 22.13330). Отмостка гаража, бани, сарая — в свойствах постройки. Попадает в смету.')));
+    body.append(F.section('Грунт',
+      F.num('Глубина промерзания', s.frost ?? 130, (v) => { s.frost = U.clamp(v, 0, 400); Model.commit(); }, { min: 0, max: 400 }),
+      F.note('Нормативная глубина промерзания (СП 22.13330, СП 131.13330): Москва и область — 1,1–1,5 м (глина — меньше, песок — больше), Санкт-Петербург — 1,2–1,5, Екатеринбург — 1,6–2, Новосибирск — 2,2–2,4 м. По ней проверяется глубина водопровода: низ трубы на 0,5 м ниже.')));
     body.append(F.section('Стены по типам', tbl,
       F.check('Применять к уже нарисованным стенам', s.wallDefaultsLive !== false, (v) => { s.wallDefaultsLive = v; App.saveSoon(); }),
       F.btns([['Применить сейчас ко всем стенам', () => { for (const w of d.walls) { const dd = d.defaults.wall[w.kind]; w.th = dd.th + (w.ins || 0); w.h = dd.h; w.mat = dd.mat; } Model.commit(); UI.toast('Материал, толщина и высота стен обновлены (Ctrl+Z — отменить)'); }]]),

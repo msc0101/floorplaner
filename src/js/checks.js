@@ -23,11 +23,14 @@ const CHECK_RULES = [
   { id: 'well_toilet', a: 'well', b: 'toilet', min: 800, name: 'Колодец — уборная, компост', src: 'СП 53.13330.2019 п. 6.8' },
   { id: 'septic_house', a: 'septic', b: 'house', min: 500, name: 'Септик — дом', src: 'СП 32.13330, рекомендация' },
   { id: 'septic_well', a: 'septic', b: 'well', min: 2000, name: 'Септик — колодец / скважина', src: 'санитарные правила; с полем фильтрации — 50 м' },
+  { id: 'filter_well', a: 'filter', b: 'well', min: 5000, name: 'Поле фильтрации — колодец / скважина', src: 'СанПиН 2.1.3684-21, СП 32.13330' },
+  { id: 'well_house', a: 'well', b: 'house', min: 300, name: 'Колодец / скважина — фундамент дома', src: 'рекомендация: не подмывать фундамент, подъезд буровой' },
+  { id: 'well_animals', a: 'well', b: 'animals', min: 2000, name: 'Колодец / скважина — постройка для скота и птицы', src: 'рекомендация; для общественных колодцев — 50 м (СанПиН 2.1.3684-21)' },
   { id: 'septic_neighbor', a: 'septic', b: 'bound:neighbor', min: 200, name: 'Септик — граница соседа', src: 'рекомендация' },
 ];
 const CHECK_GROUPS = {
   house: 'Дом', outbuilding: 'Хозпостройка', animals: 'Постройка для скота и птицы', bath: 'Баня / душ', toilet: 'Уборная / выгребная яма / компост',
-  cellar: 'Погреб', septic: 'Септик', well: 'Колодец / скважина', treeTall: 'Высокорослое дерево', treeMid: 'Среднерослое дерево', shrub: 'Кустарник',
+  cellar: 'Погреб', septic: 'Септик', filter: 'Поле фильтрации', well: 'Колодец / скважина', treeTall: 'Высокорослое дерево', treeMid: 'Среднерослое дерево', shrub: 'Кустарник',
 };
 /** Назначение постройки для проверки норм (вручную в свойствах): '' — по виду из библиотеки */
 const CHECK_AS = { '': 'по виду постройки', house: 'жилой дом', outb: 'хозпостройка (гараж, сарай…)', animals: 'для скота и птицы (курятник, хлев)', bath: 'баня / душ', toilet: 'уборная', none: 'не учитывать' };
@@ -46,7 +49,8 @@ const Checks = {
     if (['outhouse', 'cesspool', 'compost'].includes(k)) g.push('toilet');
     if (['cellar', 'cellarHouse', 'podpol'].includes(k)) g.push('cellar');
     if (['septic2', 'septic3', 'septicRing', 'filterField'].includes(k)) g.push('septic');
-    if (['well', 'borehole'].includes(k)) g.push('well');
+    if (k === 'filterField') g.push('filter');
+    if (['well', 'borehole', 'boreholeArt'].includes(k)) g.push('well');
     if (['tree', 'fruitTree', 'conifer', 'thuja'].includes(k) || sh === 'tree' || sh === 'conifer') g.push(it.h >= 1000 ? 'treeTall' : it.h >= 400 ? 'treeMid' : 'shrub');
     if (['bush', 'hedge'].includes(k)) g.push('shrub');
     return g;
@@ -293,6 +297,12 @@ const Checks = {
         if (c.p) out.push({ line: l, kind: l.kind, title, text: `до фундаментов ${m(c.d)} (норма ≥ 0,6 м, кроме ввода)`, ok: c.d >= 59, at: c.p, src: 'ПУЭ п. 2.3.86' });
         if (L > 5000) out.push({ line: l, kind: l.kind, title, text: `длинная трасса ${m(L)} — проверьте сечение по падению напряжения`, ok: null, at: mid });
       }
+      if ((l.kind === 'water' || l.kind === 'hotwater') && (l.depth || 0) > 0) {
+        // водопровод под землёй: низ трубы на 0,5 м ниже промерзания, иначе — греющий кабель и утеплитель
+        const frost = App.doc.settings.frost ?? 130, dep = l.depth;
+        if (l.heated) out.push({ line: l, kind: l.kind, title, text: `глубина ${m(dep)}, с греющим кабелем и утеплителем (не мельче 0,5 м)`, ok: dep >= 49, at: mid, src: 'СП 31.13330' });
+        else out.push({ line: l, kind: l.kind, title, text: dep >= frost + 49 ? `глубина ${m(dep)} — ниже промерзания (${m(frost)}) на ${m(dep - frost)}` : `глубина ${m(dep)} — нужно ≥ ${m(frost + 50)} (промерзание ${m(frost)} + 0,5 м) или греющий кабель с утеплителем`, ok: dep >= frost + 49, at: mid, src: 'СП 31.13330: низ трубы на 0,5 м ниже глубины промерзания' });
+      }
       if (l.kind === 'overhead') {
         const poles = overheadPoles(l, App.doc.items.filter(it => (it.floor || f1) === f1), App.doc.walls.filter(w => (w.floor || f1) === f1));
         const low = poles.filter(q => q.item && q.item.h - 45 < 500);
@@ -303,6 +313,41 @@ const Checks = {
           const d = G.dist(a.p, b.p);
           out.push({ line: l, kind: l.kind, title, text: `ответвление к вводу ${m(d)} (норма ≤ 25 м)`, ok: d <= 2500, at: G.mid(a.p, b.p), src: 'ПУЭ гл. 2.4: при большей длине — дополнительная опора' });
         }
+      }
+    }
+    // подземные сети рядом: расстояние в свету между параллельными трассами (у вводов в дом и на пересечениях не считаем)
+    const PAIRS = [
+      ['water', 'sewer', 150, 'СП 42.13330: водопровод — бытовая канализация 1,5 м'], ['water', 'drain', 150, 'СП 42.13330'],
+      ['water', 'gas', 100, 'СП 62.13330, прил. Б'], ['water', 'power', 100, 'ПУЭ гл. 2.3'],
+      ['sewer', 'gas', 100, 'СП 62.13330, прил. Б'], ['sewer', 'power', 100, 'ПУЭ гл. 2.3'], ['gas', 'power', 100, 'ПУЭ гл. 2.3; СП 62.13330'],
+    ];
+    const under = routes.filter(l => (l.depth || 0) > 0);
+    const titleOf = (l) => (l.label || LINE_KINDS[l.kind].code) + ' — ' + LINE_KINDS[l.kind].name.toLowerCase();
+    const nearBld = (p) => blds.some(poly => G.pointInPoly(p, poly) || Math.min(...poly.map((q, j) => G.distSeg(p, q, poly[(j + 1) % poly.length]))) < 150);
+    for (const [ka, kb, min, src] of PAIRS) for (const A of under.filter(l => l.kind === ka)) for (const B of under.filter(l => l.kind === kb)) {
+      const xs = [];
+      for (let i = 0; i + 1 < A.pts.length; i++) for (let j = 0; j + 1 < B.pts.length; j++) { const x = G.segInter(A.pts[i], A.pts[i + 1], B.pts[j], B.pts[j + 1]); if (x) xs.push({ x: x.x, y: x.y, j, u: x.u }); }
+      const gap = ((A.dia || 0) + (B.dia || 0)) / 20;                 // трубы — в свету: минус радиусы (мм → см)
+      let worst = null;
+      for (let i = 0; i + 1 < A.pts.length; i++) {
+        const a = A.pts[i], b = A.pts[i + 1], n = Math.max(1, Math.ceil(G.dist(a, b) / 20));
+        for (let k = 0; k <= n; k++) {
+          const p = G.add(a, G.mul(G.sub(b, a), k / n));
+          if (xs.some(x => G.dist(x, p) < min * 1.5 + 50) || nearBld(p)) continue;
+          let d2 = Infinity;
+          for (let j = 0; j + 1 < B.pts.length; j++) d2 = Math.min(d2, G.distSeg(p, B.pts[j], B.pts[j + 1]));
+          d2 -= gap;
+          if (d2 < min - 1 && (!worst || d2 < worst.d)) worst = { d: Math.max(0, d2), p };
+        }
+      }
+      if (worst) out.push({ line: A, kind: A.kind, title: titleOf(A), text: `идёт рядом с трассой «${LINE_KINDS[kb].name.toLowerCase()}» на ${m(worst.d)} — нужно ≥ ${m(min)}`, ok: false, at: worst.p, src });
+      // пересечение водопровода с канализацией: вода выше на 0,4 м, иначе — в стальном футляре
+      if (ka === 'water' && kb === 'sewer') for (const x of xs) {
+        let run = 0;
+        for (let j = 0; j < x.j; j++) run += G.dist(B.pts[j], B.pts[j + 1]);
+        run += G.dist(B.pts[x.j], B.pts[x.j + 1]) * x.u;
+        const sd = (B.depth || 0) + run * ((B.dia || 110) <= 110 ? 0.02 : 0.01);
+        if (A.depth > sd - 40 && !A.sleeve) out.push({ line: A, kind: A.kind, title: titleOf(A), text: `пересекает канализацию: водопровод на ${m(A.depth)}, канализация ≈ ${m(sd)} — вода должна идти выше на 0,4 м, иначе — в стальном футляре (по 5 м в обе стороны, в песке — 10 м)`, ok: false, at: x, src: 'СП 31.13330' });
       }
     }
     return out;
