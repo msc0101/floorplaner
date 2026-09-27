@@ -1369,7 +1369,9 @@ const View3D = {
     const { box } = View3D._g, C = View3D.hex, sh = def.shape, rot = it.rot || 0, H = it.h || 250;
     // карниз не ниже 1.5 м (у навесов 1.8 м) — иначе уклон уменьшаем
     const hollow = BLD_HOLLOW.has(sh);
-    const g = View3D.roofGeom(it, e + H, e + (bldRoof(it).open ? 180 : 150), hollow ? e + bldWallH(it) : undefined);
+    const g0 = View3D.roofGeom(it, e + H, e + (bldRoof(it).open ? 180 : 150), hollow ? e + bldWallH(it) : undefined);
+    // пристройка у дома с односкатной крышей — скат упирается под кровлю дома (без свеса и «ступеньки»)
+    const g = View3D.leanJoin(it, g0, { world: (q) => G.toWorld(q, it.x, it.y, rot), eave: g0.eave }) || g0;   // как itemRoof: крыша без зеркала
     const { eave, roofZ } = g;
     if (hollow) {
       // «как дом»: пол, стены с толщиной, ворота/дверь; внутри — пусто (погреб, яма, машина, мебель видны без крыши)
@@ -1429,31 +1431,38 @@ const View3D = {
     }
     return 0;
   },
-  /** Односкатная крыша пристроенной веранды — от карниза дома: верх ската у стены прячется под основную крышу,
-   *  уклон — как у дома, если хватает высоты (≥ 2,15 м над настилом у края), иначе положе (перелом ската). */
-  porchJoin(it, rg, z0) {
-    const o = porchOpt(it);
-    // только скат «от дома» (высокая сторона сзади): при другой стороне прямоугольник крыши повёрнут — оставляем как выбрано
-    if (!o.attached || rg.R.type !== 'shed' || rg.R.shedDir !== 'back' || it.roofJoin === false) return null;
-    const rot = it.rot || 0, W = it.w / 2, D = it.d / 2;
-    const back = [-W + 10, 0, W - 10].map(x => G.toWorld({ x, y: -D }, it.x, it.y, rot));
+  /** Односкатная крыша пристройки (веранда, гараж, сарай, навес у дома) высокой стороной к дому: край ската
+   *  упирается в стену прямо под кровлей дома, свеса с этой стороны нет — крыши не наезжают, нет «ступеньки».
+   *  opt.world(q) — локальная точка → план; opt.eave — карниз низкой стороны (у построек — по стенам);
+   *  opt.follow — у веранды: уклон как у дома, но карниз не ниже opt.minEave (иначе — перелом ската). */
+  leanJoin(it, rg, opt) {
+    const R = rg.R, r = rg.r;
+    if (R.type !== 'shed' || it.roofJoin === false) return null;
+    const W = it.w / 2, D = it.d / 2;
+    const edge = { back: (t) => ({ x: t * (W - 10), y: -D }), front: (t) => ({ x: t * (W - 10), y: D }), left: (t) => ({ x: -W, y: t * (D - 10) }), right: (t) => ({ x: W, y: t * (D - 10) }) }[R.shedDir];
     let zb = Infinity, pitch = 0, mat = null;
-    for (const p of back) {
+    for (const t of [-1, 0, 1]) {
+      const p = opt.world(edge(t));
       let best = null;
-      for (const r of App.doc.roofs) { const z = Roof.zAt(r, p); if (z != null && (best == null || z > best.z)) best = { z, r }; }
-      if (!best) return null;                                          // над стыком нет крыши дома — обычная крыша
+      for (const hr of App.doc.roofs) { const z = Roof.zAt(hr, p); if (z != null && (best == null || z > best.z)) best = { z, r: hr }; }
+      if (!best) return null;                                          // над стыком нет крыши дома — крыша как выбрана
       if (best.z < zb) { zb = best.z; pitch = best.r.type === 'flat' ? 0 : best.r.pitch || 0; mat = best.r.mat; }
     }
-    zb -= 3;                                                           // чуть ниже основной кровли
-    const minFront = z0 + 215;
-    if (zb < minFront + 5) return null;
-    const r = rg.r, yBack = -D, yFront = r.y + r.d / 2, run = yFront - yBack;
-    let front = zb - Math.tan(U.rad(pitch)) * run;
-    if (front < minFront) front = minFront;
-    const rise = zb - front, r2 = { x: r.x, y: (yBack + yFront) / 2, w: r.w, d: run, rot: 0, type: 'shed' };
-    const roofZ = (q) => front + rise * U.clamp((yFront - q.y) / run, 0, 1);   // q — в локальных координатах веранды (как у roofGeom)
-    // кровля — как у дома, если свой материал у веранды не выбран
-    return { R: { ...rg.R, type: 'shed', mat: it.roofMat || mat || rg.R.mat }, r: r2, rise, eave: front, pitch: U.deg(Math.atan(rise / run)), roofZ, joined: true };
+    zb -= 3;                                                           // чуть ниже кровли дома
+    // прямоугольник крыши без свеса со стороны дома (в осях ската высокая сторона — −v)
+    const sHigh = R.sides[{ back: 'b', front: 'f', left: 'l', right: 'r' }[R.shedDir]] || 0;
+    const sh = G.toWorld({ x: 0, y: sHigh / 2 }, 0, 0, r.rot), c2 = { x: r.x + sh.x, y: r.y + sh.y }, run = r.d - sHigh;
+    const front = opt.follow ? Math.max(opt.minEave, zb - Math.tan(U.rad(pitch)) * run) : opt.eave;
+    if (!(run > 10) || zb < front + 5) return null;                    // карниз дома ниже стен пристройки — не подвести
+    const rise = zb - front, r2 = { x: c2.x, y: c2.y, w: r.w, d: run, rot: r.rot, type: 'shed' };
+    const roofZ = (q) => { const v = G.toLocal(q, c2.x, c2.y, r.rot); return front + rise * U.clamp((run / 2 - v.y) / run, 0, 1); };
+    // у веранды кровля — как у дома (если свой материал не выбран), у построек — своя
+    return { R: { ...R, type: 'shed', mat: it.roofMat || (opt.follow && mat) || R.mat }, r: r2, rise, eave: front, pitch: U.deg(Math.atan(rise / run)), roofZ, joined: true };
+  },
+  /** Крыша пристроенной веранды — от карниза дома (см. leanJoin) */
+  porchJoin(it, rg, z0) {
+    if (!porchOpt(it).attached) return null;
+    return View3D.leanJoin(it, rg, { world: (q) => G.toWorld(q, it.x, it.y, it.rot || 0), follow: true, minEave: z0 + 215 });
   },
   veranda(it, e) {
     const { box } = View3D._g, C = View3D.hex, rot = it.rot || 0;

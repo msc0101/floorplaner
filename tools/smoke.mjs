@@ -456,6 +456,12 @@ const porch = await page.evaluate(() => {
   const z0 = Math.max(porchOpt(v).ph, 10), rg = View3D.roofGeom(v, Math.max(v.h, z0 + 260), z0 + 210), j = View3D.porchJoin(v, rg, z0);
   r.join = !!j && j.joined && j.eave >= z0 + 214 && j.roofZ({ x: 0, y: -v.d / 2 }) > j.eave && Math.abs(j.roofZ({ x: 0, y: v.d / 2 - 7 }) - j.eave) < j.rise * 0.2;
   r.deck = Math.abs(View3D.deckZ(t) - (z0 + 0.3)) < 0.01;
+  // гараж вплотную к дому, скат высокой стороной к дому: край — под кровлей дома, без свеса с этой стороны
+  const gd = catItem('garage1'), gar = Model.add('items', { key: 'garage1', x: 1000, y: 1200 - 20 - gd.d / 2, w: gd.w, d: gd.d, h: gd.h, rot: 0, roofType: 'shed', roofShed: 'front', floor: v.floor });
+  Model.commit();
+  const g0 = View3D.roofGeom(gar, gar.h, 150, bldWallH(gar)), gj = View3D.leanJoin(gar, g0, { world: (q) => G.toWorld(q, gar.x, gar.y, 0), eave: g0.eave });
+  const edge = { x: gar.x, y: gar.y + gd.d / 2 }, hz = Math.max(...App.doc.roofs.map(rf => Roof.zAt(rf, edge) ?? -1));
+  r.garage = !!gj && gj.r.d < g0.r.d && Math.abs(gj.roofZ({ x: 0, y: gd.d / 2 }) - (hz - 3)) < 2;
   View3D.toggle(true);
   Walk.start(true); r.ghost = Walk.on && Walk.ghost;
   const x0 = Walk.x, f0 = Walk.foot; Walk.pitch = 0.5; Walk.keys.add('KeyW'); Walk.update(0.5); Walk.keys.clear();
