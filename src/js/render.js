@@ -105,7 +105,7 @@ const Render = {
     const fi = Model.floorIdx(App.floor);
     if (fi > 0 && L.lower !== false) Render.ghostFloor(env, App.doc.floors[fi - 1].id);
     lay('SITE');
-    if (L.site) { Render.areas(env); lay('ROADS'); Render.roads(env); }
+    if (L.site) { Render.areas(env); lay('ROADS'); Render.roads(env); Render.blind(env); }
     if (L.heat && App.heat && !ctx.isVector) Render.heat(env);
     lay('ROOMS');
     if (L.rooms) Render.roomFills(env);
@@ -776,6 +776,26 @@ const Render = {
         continue;
       }
       for (const p of l.pts) { ctx.beginPath(); ctx.arc(p.x, p.y, 2.2 * px, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); }
+    }
+  },
+
+  /** Отмостка: бетонная полоса вокруг дома и построек */
+  blind(env) {
+    const { ctx, px } = env;
+    if (Model.floorIdx(App.floor) !== 0) return;
+    for (const b of Model.blindAreas()) {
+      ctx.save();
+      ctx.fillStyle = Theme.isDark() && !env.exporting ? '#565a5f' : '#d9d7d1';
+      for (const q of b.quads) { Render.polyPath(ctx, q); ctx.fill(); }
+      // уклон от стены — штрихи поперёк
+      ctx.strokeStyle = 'rgba(90,90,90,.35)'; ctx.lineWidth = 0.7 * px;
+      for (const [a, c, d2, e2] of b.quads) {
+        const L = G.dist(a, c), n = Math.floor(L / 40);
+        for (let k = 1; k < n; k++) { const t = k / n, p = G.add(a, G.mul(G.sub(c, a), t)), q2 = G.add(e2, G.mul(G.sub(d2, e2), t)); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(G.add(p, G.mul(G.sub(q2, p), 0.35)).x, G.add(p, G.mul(G.sub(q2, p), 0.35)).y); ctx.stroke(); }
+      }
+      ctx.strokeStyle = '#8a877f'; ctx.lineWidth = 1 * px;
+      Render.polyPath(ctx, b.outer); ctx.stroke();
+      ctx.restore();
     }
   },
 

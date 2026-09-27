@@ -767,24 +767,39 @@ const UI = {
     // варианты того же вида
     const same = CATALOG.find(c => c.id === def.cat).items.filter(x => x.shape === def.shape && x.key !== def.key);
     body.append(F.section('Размеры',
-      same.length ? F.select('Типоразмер', '', [['', `${def.name} (${def.w}×${def.d})`], ...same.map(x => [x.key, `${x.name} (${x.w}×${x.d})`])], (v) => { if (!v) return; const d2 = catItem(v); it.key = v; it.w = d2.w; it.d = d2.d; it.h = d2.h; for (const k of PORCH_KEYS.concat(PIT_KEYS)) delete it[k]; for (const k of ['roofType', 'roofMat', 'roofPitch', 'roofRidge', 'roofShed']) delete it[k]; Model.commit(); }) : null,
+      same.length ? F.select('Типоразмер', '', [['', `${def.name} (${def.w}×${def.d})`], ...same.map(x => [x.key, `${x.name} (${x.w}×${x.d})`])], (v) => { if (!v) return; const d2 = catItem(v); it.key = v; it.w = d2.w; it.d = d2.d; it.h = d2.h; for (const k of PORCH_KEYS.concat(PIT_KEYS)) delete it[k]; for (const k of ['roofType', 'roofMat', 'roofPitch', 'roofRidge', 'roofShed', 'roofOver', 'wallH']) delete it[k]; Model.commit(); }) : null,
       F.num('Ширина', it.w, (v) => UI.set(it, 'w', v), { min: 1, field: 'w' }),
       F.num('Глубина', it.d, (v) => UI.set(it, 'd', v), { min: 1 }),
-      F.num('Высота', it.h, (v) => UI.set(it, 'h', v), { min: 0 }),
-      F.btns([['Сбросить к типовым', () => { it.w = def.w; it.d = def.d; it.h = def.h; Model.commit(); }], ['Поменять Ш↔Г', () => { [it.w, it.d] = [it.d, it.w]; Model.commit(); }]]),
+      BLD_HOLLOW.has(def.shape)
+        ? F.num('Высота стен', Math.round(bldWallH(it)), (v) => { it.wallH = U.clamp(v, 100, 1000); it.h = Math.round(it.wallH + bldRoofRise(it)); Model.commit(); }, { min: 100, field: 'wallH' })
+        : F.num('Высота', it.h, (v) => UI.set(it, 'h', v), { min: 0 }),
+      F.btns([['Сбросить к типовым', () => { it.w = def.w; it.d = def.d; it.h = def.h; delete it.wallH; Model.commit(); }], ['Поменять Ш↔Г', () => { [it.w, it.d] = [it.d, it.w]; Model.commit(); }]]),
     ));
+    const hollow = BLD_HOLLOW.has(def.shape);
+    // у гаража / сарая стены задаются явно: правка крыши меняет конёк, а не высоту стен
+    const roofEdit = (fn) => {
+      if (hollow && !U.isNum(it.wallH)) it.wallH = Math.round(bldWallH(it));
+      fn();
+      if (hollow) it.h = Math.round(bldWallH(it) + bldRoofRise(it));
+      Model.commit();
+    };
     const roofSection = () => {
-      const R = bldRoof(it);
-      const types = Object.entries(ITEM_ROOF_TYPES).filter(([k]) => k !== 'arch' || def.shape !== 'canopyLean');
+      const R = bldRoof(it), sloped = R.type === 'gable' || R.type === 'hip' || R.type === 'shed';
+      const types = Object.entries(ITEM_ROOF_TYPES).filter(([k]) => (k !== 'arch' || def.shape !== 'canopyLean') && (k !== 'none' || hollow));
       return F.section('Крыша',
-        F.select('Тип', R.type, types.map(([k, v]) => [k, v.name]), (v) => { it.roofType = v; delete it.roofPitch; Model.commit(); }, { field: 'roofType' }),
-        F.select('Материал', R.mat, Object.entries(ROOF_MATERIALS).map(([k, v]) => [k, v.name]), (v) => { it.roofMat = v; Model.commit(); }, { field: 'roofMat' }),
-        R.type === 'gable' || R.type === 'hip' || R.type === 'shed' ? F.num('Уклон', R.pitch, (v) => { it.roofPitch = U.clamp(v, 3, 60); Model.commit(); }, { unit: '°', min: 3, max: 60 }) : null,
-        R.type === 'gable' || R.type === 'hip' || R.type === 'arch' ? F.select('Конёк', R.ridge, [['long', 'вдоль длинной стороны'], ['short', 'вдоль короткой стороны']], (v) => { it.roofRidge = v; Model.commit(); }) : null,
-        R.type === 'shed' ? F.select('Высокая сторона', R.shedDir, [['back', 'сзади (−Г)'], ['front', 'спереди (+Г)'], ['left', 'слева (−Ш)'], ['right', 'справа (+Ш)']], (v) => { it.roofShed = v; Model.commit(); }) : null,
+        F.select('Тип', R.type, types.map(([k, v]) => [k, v.name]), (v) => roofEdit(() => { it.roofType = v; delete it.roofPitch; }), { field: 'roofType' }),
+        R.type === 'none' ? F.note('Крыши нет: стены постройки — открытые сверху. Чтобы добавить крышу, выберите её тип.') : null,
+        R.type !== 'none' ? F.select('Материал', R.mat, Object.entries(ROOF_MATERIALS).map(([k, v]) => [k, v.name]), (v) => { it.roofMat = v; Model.commit(); }, { field: 'roofMat' }) : null,
+        sloped ? F.num('Уклон ската', R.pitch, (v) => roofEdit(() => { it.roofPitch = U.clamp(v, 3, 60); }), { unit: '°', min: 3, max: 60, field: 'roofPitch' }) : null,
+        sloped ? U.el('div', { class: 'chips' }, [10, 15, 20, 25, 30, 35, 45].map(a => U.el('button', { type: 'button', class: Math.round(R.pitch) === a ? 'on' : '', onclick: () => roofEdit(() => { it.roofPitch = a; }) }, a + '°'))) : null,
+        R.type === 'gable' || R.type === 'hip' || R.type === 'arch' ? F.select('Конёк', R.ridge, [['long', 'вдоль длинной стороны'], ['short', 'вдоль короткой стороны']], (v) => roofEdit(() => { it.roofRidge = v; })) : null,
+        R.type === 'shed' ? F.select('Высокая сторона', R.shedDir, [['back', 'сзади (−Г)'], ['front', 'спереди (+Г)'], ['left', 'слева (−Ш)'], ['right', 'справа (+Ш)']], (v) => roofEdit(() => { it.roofShed = v; })) : null,
+        R.type !== 'none' ? F.num('Свес', R.over, (v) => roofEdit(() => { it.roofOver = U.clamp(v, 0, 150); }), { min: 0, max: 150 }) : null,
+        hollow && R.type !== 'none' ? F.info('Подъём ската / до конька', `${U.fmtLen(bldRoofRise(it))} / ${U.fmtLen(bldWallH(it) + bldRoofRise(it))}`) : null,
         F.note(def.shape === 'veranda'
           ? 'Высота объекта — до верха крыши; «сзади» — сторона у дома: у пристроенной там нет свеса, односкатная поднимается к стене. Столбы доходят до низа ската.'
-          : 'Высота объекта — до конька; высота стен (столбов) получается из уклона. Направления — относительно самой постройки: поверните её ручкой, крыша повернётся вместе с ней.'));
+          : hollow ? 'Высота стен — в разделе «Размеры»; конёк = стены + подъём ската, уклон соблюдается точно. Направления — относительно самой постройки: поверните её ручкой, крыша повернётся вместе с ней.'
+            : 'Высота объекта — до конька; если при заданном уклоне столбы выходят ниже 1,8 м, конёк поднимается. Направления — относительно самой постройки.'));
     };
     if (BLD_ROOF_SHAPES.has(def.shape)) body.append(roofSection());
     if (BLD_ROOF_SHAPES.has(def.shape) || def.shape === 'gazebo') {
@@ -798,6 +813,9 @@ const UI = {
       const sh = bldShell(it, it.w, it.d);
       body.append(F.section('Стены',
         F.num('Толщина стен', sh.t, (v) => { it.wallT = U.clamp(v, 3, 60); Model.commit(); }, { min: 3, max: 60, field: 'wallT' }),
+        F.check('Отмостка', it.blind > 0, (v) => { if (v) it.blind = Math.max(80, bldRoof(it).over + 20); else delete it.blind; Model.commit(); }),
+        it.blind > 0 ? F.num('Ширина отмостки', it.blind, (v) => { it.blind = U.clamp(v, 30, 300); Model.commit(); }, { min: 30, max: 300 }) : null,
+        it.blind > 0 && bldRoof(it).type !== 'none' && it.blind < bldRoof(it).over + 20 ? F.note(`<b style="color:var(--danger)">Отмостка должна быть шире свеса крыши (${U.fmtLen(bldRoof(it).over)}) минимум на 20 см.</b>`) : null,
         F.info('Внутри', `${U.fmtLen(sh.inner.x1 - sh.inner.x0)} × ${U.fmtLen(sh.inner.y1 - sh.inner.y0)}`),
         F.note('Внутри постройки видно всё, что в ней стоит: погреб, смотровую яму, машину, верстак. Крыша рисуется в слое «Крыша» — выключите его (на плане или в 3D), чтобы посмотреть сверху. В 3D пол вырезается под открытую яму.')));
       const edit = (i, fn) => UI.bldOpEdit(it, i, fn);
@@ -1198,6 +1216,7 @@ const UI = {
       F.btns([['Создать участок', () => App.createPlot(U.num(wIn.value, 20) * 100, U.num(dIn.value, 30) * 100), 'primary']]),
       F.note('6 соток ≈ 20×30 м, 10 соток ≈ 25×40 м, 15 соток ≈ 30×50 м.')));
     body.append(UI.checksSection());
+    body.append(UI.netsSection());
     // дата и время
     const date = U.el('input', { type: 'date', value: st.date });
     date.addEventListener('change', () => { if (date.value) { st.date = date.value; if (App.heat) App.heat.stale = true; App.saveSoon(); UI.refresh(); App.redraw(); } });
@@ -1259,6 +1278,27 @@ const UI = {
       roomsSec.append(F.info('Дата', dd.split('-').reverse().join('.')), tbl);
     }
     body.append(roomsSec);
+  },
+  /** Трассы сетей: длины и нормы */
+  netsSection() {
+    const ch = App.checks || Checks.run(), nets = ch.nets || [];
+    const sec = F.section('Сети: длины и нормы');
+    if (!nets.length) { sec.append(F.note('Трасс нет. Нарисуйте сети инструментом «Сети» или из библиотеки («Сети и коммуникации») — здесь появятся длины и проверка норм.')); return sec; }
+    const bad = nets.filter(n => n.ok === false).length;
+    sec.append(U.el('div', { class: 'check-sum ' + (bad ? 'bad' : 'ok') }, bad ? `✗ Замечаний: ${bad}` : '✓ Замечаний нет'));
+    const byLine = new Map();
+    for (const n of nets) { if (!byLine.has(n.line)) byLine.set(n.line, []); byLine.get(n.line).push(n); }
+    for (const [l, list] of byLine) {
+      const b = U.el('button', { type: 'button', class: 'check-item ' + (list.some(n => n.ok === false) ? 'bad' : 'ok') },
+        U.el('b', {}, list[0].text.replace('длина ', '')), U.el('span', {}, list[0].title),
+        ...list.slice(1).map(n => U.el('em', { title: n.src || '' }, (n.ok === false ? '✗ ' : n.ok ? '✓ ' : '') + n.text)));
+      b.onclick = () => { App.sel.clear(); for (const x of l.parts || [l]) App.sel.add(x.id); App.selChanged(); const p = (list.find(n => n.ok === false) || list[0]).at; if (p) { View.ox = p.x - App.cw / 2 / View.scale; View.oy = p.y - App.ch / 2 / View.scale; App.redraw(); } };
+      sec.append(b);
+    }
+    const tot = {};
+    for (const n of nets) if (n.len) tot[n.kind] = (tot[n.kind] || 0) + n.len;
+    sec.append(F.note('Итого: ' + Object.entries(tot).map(([k, v]) => `${LINE_KINDS[k].code} ${(v / 100).toFixed(1)} м`).join(' · ') + '. Нормы: канализация — уклон ≥ 2% (Ø110), выпуск до колодца ≤ 12 м, колодцы на поворотах; газ под землёй — ≥ 2 м до фундаментов; кабель в земле — ≥ 0,6 м; ответвление ВЛ к дому — ≤ 25 м.'));
+    return sec;
   },
   checksSection() {
     const s = App.doc.settings;
@@ -1441,6 +1481,15 @@ const UI = {
       tbl.append(U.el('tr', {}, U.el('td', {}, v.name), U.el('td', { class: 'td-sel' }, ms), U.el('td', {}, th), U.el('td', {}, hh)));
     }
     body.append(UI.floorsSection());
+    // отмостка вокруг дома
+    const bl = s.blind || {}, blinds = Model.blindAreas().filter(b => b.id.startsWith('house'));
+    const narrow = blinds.filter(b => b.w < b.over + 20);
+    body.append(F.section('Отмостка дома',
+      F.check('Отмостка вокруг дома', bl.w > 0, (v) => { s.blind = { w: v ? (bl.last || 100) : 0, last: bl.w || bl.last || 100 }; Model.commit(); }),
+      bl.w > 0 ? F.num('Ширина', bl.w, (v) => { s.blind = { w: U.clamp(v, 30, 300), last: U.clamp(v, 30, 300) }; Model.commit(); }, { min: 30, max: 300 }) : null,
+      bl.w > 0 && blinds.length ? F.info('Площадь', U.fmtArea(blinds.reduce((a, b) => a + b.area, 0))) : null,
+      narrow.length ? F.note(`<b style="color:var(--danger)">Свес крыши ${U.fmtLen(narrow[0].over)} — отмостка должна быть шире свеса минимум на 20 см (≥ ${U.fmtLen(narrow[0].over + 20)}).</b>`) : null,
+      F.note('Норма: ширина не менее 0,8–1 м и на 20 см больше свеса кровли, уклон от стены 1–3% (СП 82.13330, СП 22.13330). Отмостка гаража, бани, сарая — в свойствах постройки. Попадает в смету.')));
     body.append(F.section('Стены по типам', tbl,
       F.check('Применять к уже нарисованным стенам', s.wallDefaultsLive !== false, (v) => { s.wallDefaultsLive = v; App.saveSoon(); }),
       F.btns([['Применить сейчас ко всем стенам', () => { for (const w of d.walls) { const dd = d.defaults.wall[w.kind]; w.th = dd.th + (w.ins || 0); w.h = dd.h; w.mat = dd.mat; } Model.commit(); UI.toast('Материал, толщина и высота стен обновлены (Ctrl+Z — отменить)'); }]]),

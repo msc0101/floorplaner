@@ -164,8 +164,106 @@ const Checks = {
       }
     }
     out.sort((x, y) => (x.ok - y.ok) || (x.d - x.rule.min) - (y.d - y.rule.min));
-    App.checks = { results: out, fails: out.filter(x => !x.ok).length };
+    const nets = Checks.nets();
+    App.checks = { results: out, nets, fails: out.filter(x => !x.ok).length + nets.filter(x => x.ok === false).length };
     return App.checks;
+  },
+  /** Трассы сетей: длина и нормы. Результат: { line, kind, title, text, ok (true / false / null — справка), at (точка на плане) } */
+  nets() {
+    const out = [], f1 = App.doc.floors[0].id;
+    const fd = (App.floorData || [])[0], outlines = fd ? fd.outlines.map(o => o.outer) : [];
+    const blds = outlines.concat(App.doc.items.filter(it => (it.floor || f1) === f1 && BLD_HOLLOW.has(catItem(it.key).shape)).map(it => Model.itemPts(it)));
+    const wells = App.doc.items.filter(it => ['drainWell', 'septicRing', 'septic2', 'septic3', 'cesspool', 'well'].includes(it.key));
+    const nearWell = (p) => wells.some(w => G.dist(w, p) <= Math.max(w.w, w.d) / 2 + 30);
+    // ближайшее расстояние трассы до фундаментов, без участков у концов (там ввод в здание)
+    const clearance = (l, skip) => {
+      let best = { d: Infinity };
+      const L = G.polyPerimeter(l.pts, false);
+      let run = 0;
+      for (let i = 0; i + 1 < l.pts.length; i++) {
+        const a = l.pts[i], b = l.pts[i + 1], sl = G.dist(a, b), n = Math.max(1, Math.ceil(sl / 20));
+        for (let k = 0; k <= n; k++) {
+          const s = run + sl * k / n;
+          if (s < skip || s > L - skip) continue;
+          const p = G.add(a, G.mul(G.sub(b, a), k / n));
+          for (const poly of blds) {
+            const d = G.pointInPoly(p, poly) ? 0 : Math.min(...poly.map((q, j) => G.distSeg(p, q, poly[(j + 1) % poly.length])));
+            if (d < best.d) best = { d, p };
+          }
+        }
+        run += sl;
+      }
+      return best;
+    };
+    const m = (v) => (v / 100).toFixed(1) + ' м';
+    // трассы одного вида, продолжающие друг друга (конец у начала, зазор до 60 см), — одна трасса
+    const routes = [], used = new Set(), lines = App.doc.lines.filter(l => (l.floor || f1) === f1 && l.pts.length >= 2);
+    for (const l0 of lines) {
+      if (used.has(l0)) continue;
+      used.add(l0);
+      let pts = l0.pts.slice(), parts = [l0], grown = true;
+      while (grown) {
+        grown = false;
+        for (const x of lines) {
+          if (used.has(x) || x.kind !== l0.kind) continue;
+          const a = x.pts[0], b = x.pts[x.pts.length - 1], s0 = pts[0], s1 = pts[pts.length - 1];
+          if (G.dist(s1, a) <= 60) pts = pts.concat(x.pts);
+          else if (G.dist(s1, b) <= 60) pts = pts.concat(x.pts.slice().reverse());
+          else if (G.dist(s0, b) <= 60) pts = x.pts.concat(pts);
+          else if (G.dist(s0, a) <= 60) pts = x.pts.slice().reverse().concat(pts);
+          else continue;
+          used.add(x); parts.push(x); grown = true;
+        }
+      }
+      routes.push({ ...l0, pts, parts, id: l0.id });
+    }
+    for (const l of routes) {
+      const k = LINE_KINDS[l.kind], L = G.polyPerimeter(l.pts, false), mid = l.pts[Math.floor(l.pts.length / 2) - (l.pts.length % 2 ? 0 : 1)];
+      const title = (l.label || k.code) + ' — ' + k.name.toLowerCase() + (l.parts.length > 1 ? ` (${l.parts.length} участка)` : '');
+      out.push({ line: l, kind: l.kind, title, text: `длина ${m(L)}`, ok: null, at: mid, len: L });
+      if (l.kind === 'sewer' || l.kind === 'drain') {
+        const slope = l.kind === 'sewer' ? ((l.dia || 110) <= 110 ? 0.02 : 0.008 * 1.25) : 0.005;
+        const depth = l.depth || 0;
+        out.push({ line: l, kind: l.kind, title, text: `уклон ≥ ${(slope * 100).toFixed(1)}% → перепад ${m(L * slope)}${depth ? `, в конце глубина ≈ ${m(depth + L * slope)}` : ''}`, ok: null, at: l.pts[l.pts.length - 1], src: 'СП 30.13330 / СП 32.13330' });
+      }
+      if (l.kind === 'sewer') {
+        // выпуск до колодца: Ø до 110 — не длиннее 12 м, Ø150 — 15 м; на поворотах трассы — колодец
+        const maxRun = (l.dia || 110) <= 110 ? 1200 : 1500;
+        let run = 0, worst = 0, at = null;
+        for (let i = 0; i + 1 < l.pts.length; i++) {
+          run += G.dist(l.pts[i], l.pts[i + 1]);
+          if (nearWell(l.pts[i + 1]) || i + 1 === l.pts.length - 1) { if (run > worst) { worst = run; at = G.mid(l.pts[i], l.pts[i + 1]); } run = 0; }
+        }
+        out.push({ line: l, kind: l.kind, title, text: worst > maxRun ? `участок без колодца ${m(worst)} > ${m(maxRun)} — нужен ревизионный колодец` : `участки между колодцами ≤ ${m(maxRun)}`, ok: worst <= maxRun, at, src: 'СП 30.13330: выпуск Ø100 — до 12 м, Ø150 — до 15 м' });
+        const bends = [];
+        for (let i = 1; i + 1 < l.pts.length; i++) {
+          const u1 = G.unit(G.sub(l.pts[i], l.pts[i - 1])), u2 = G.unit(G.sub(l.pts[i + 1], l.pts[i]));
+          if (G.dot(u1, u2) < Math.cos(U.rad(30)) && !nearWell(l.pts[i])) bends.push(l.pts[i]);
+        }
+        if (bends.length) out.push({ line: l, kind: l.kind, title, text: `поворотов без колодца: ${bends.length} — на поворотах ставят поворотный / ревизионный колодец`, ok: false, at: bends[0], src: 'СП 32.13330' });
+      }
+      if (l.kind === 'gas' && (l.depth || 0) > 0) {
+        const c = clearance(l, 250);
+        if (c.p) out.push({ line: l, kind: l.kind, title, text: `до фундаментов ${m(c.d)} (норма ≥ 2 м, кроме ввода)`, ok: c.d >= 199, at: c.p, src: 'СП 62.13330, прил. Б (газопровод низкого давления)' });
+      }
+      if (l.kind === 'power' && (l.depth || 0) > 0) {
+        const c = clearance(l, 100);
+        if (c.p) out.push({ line: l, kind: l.kind, title, text: `до фундаментов ${m(c.d)} (норма ≥ 0,6 м, кроме ввода)`, ok: c.d >= 59, at: c.p, src: 'ПУЭ п. 2.3.86' });
+        if (L > 5000) out.push({ line: l, kind: l.kind, title, text: `длинная трасса ${m(L)} — проверьте сечение по падению напряжения`, ok: null, at: mid });
+      }
+      if (l.kind === 'overhead') {
+        const poles = overheadPoles(l, App.doc.items.filter(it => (it.floor || f1) === f1), App.doc.walls.filter(w => (w.floor || f1) === f1));
+        const low = poles.filter(q => q.item && q.item.h - 45 < 500);
+        if (low.length) out.push({ line: l, kind: l.kind, title, text: `провод на опоре ${m(low[0].item.h - 45)} над землёй (норма ≥ 5 м; над проездом ≥ 6 м)`, ok: false, at: low[0].p, src: 'ПУЭ п. 2.4.55' });
+        for (let i = 0; i + 1 < poles.length; i++) {
+          const a = poles[i], b = poles[i + 1];
+          if (!a.wall && !b.wall) continue;
+          const d = G.dist(a.p, b.p);
+          out.push({ line: l, kind: l.kind, title, text: `ответвление к вводу ${m(d)} (норма ≤ 25 м)`, ok: d <= 2500, at: G.mid(a.p, b.p), src: 'ПУЭ гл. 2.4: при большей длине — дополнительная опора' });
+        }
+      }
+    }
+    return out;
   },
   draw(env) {
     if (!App.doc.settings.showChecks || Model.floorIdx(App.floor) !== 0) return;
@@ -189,6 +287,11 @@ const Checks = {
         Render.label(env, { street: 'красная линия улицы', lane: 'красная линия проезда', neighbor: 'граница с соседом' }[type], G.add(G.mid(a, b), inward), G.angle(a, b),
           { size: 9.5, color: red ? '#d0312d' : '#6b7482', prio: 2 });
       });
+    }
+    // нарушения по трассам сетей — подпись у места
+    for (const n of (App.checks || {}).nets || []) {
+      if (n.ok !== false || !n.at || env.layers[LINE_KINDS[n.kind].layer] === false) continue;
+      Render.label(env, n.text, n.at, 0, { size: 10.5, bold: true, color: '#d33a3a', bg: true, pad: 2, border: '#d33a3a', prio: 8 });
     }
     for (const r of res) {
       if (r.ok && !App.doc.settings.showChecksOk) continue;

@@ -267,6 +267,8 @@ const View3D = {
       const fd = (App.floorData || []).find(x => x.floor.id === f.id);
       if (fd) {
         for (const o of fd.outlines) prism(o.outer, e - (first ? 0 : 25), e + 2, View3D.hex(first ? '#b9b4ab' : '#d8d2c6'), { noSides: first });
+        // отмостка вокруг дома и построек
+        if (first) for (const b of Model.blindAreas()) for (const q of b.quads) prism(q, e, e + 6, View3D.hex('#bdbab2'));
         for (const r of fd.rooms) {
           const nm = (r.name || '').toLowerCase();
           const tile = /сануз|ванн|туалет|котел|котёл|душ/.test(nm), kitchen = /кухн|прихож|холл|коридор/.test(nm);
@@ -310,6 +312,7 @@ const View3D = {
           const sill = win ? (op.sill || 0) : 0;
           const oh = Math.min(op.h || 200, w.h - sill);
           if (sill > 0) body(rect(0, g.width, -t, t), e, e + sill);
+          else prism(rect(0, g.width, -t, t), e, e + 3, View3D.hex('#8f887d'));      // порог: в проёме не видно земли
           if (sill + oh < w.h) body(rect(0, g.width, -t, t), e + sill + oh, top);
           const white = [0.95, 0.95, 0.94], fr = 6;
           const ang = U.deg(Math.atan2(g.u.y, g.u.x));
@@ -563,12 +566,13 @@ const View3D = {
   },
   /** Постройка с крышей: стены или столбы до карниза, крыша выбранного типа; высота объекта — до конька */
   /** Геометрия крыши объекта: top — верх (конёк), minEave — ниже карниза не опускаемся (уклон тогда меньше) */
-  roofGeom(it, top, minEave) {
+  /** Геометрия крыши объекта: уклон соблюдается всегда; карниз — top − подъём, но не ниже minEave
+   *  (тогда конёк выше top); eaveFix — карниз задан явно (высота стен постройки) */
+  roofGeom(it, top, minEave, eaveFix) {
     const R = bldRoof(it), r = bldRoofRect(it, it.w, it.d);
     const run = r.type === 'gable' ? r.d / 2 : r.type === 'hip' ? Math.min(r.w, r.d) / 2 : r.type === 'shed' ? r.d : 0;
-    let rise = r.type === 'arch' ? r.d / 2 : r.type === 'flat' ? 20 : run * Math.tan(U.rad(R.pitch));
-    rise = Math.min(rise, Math.max(10, top - minEave));
-    const eave = top - rise;
+    const rise = bldRoofRise(it);
+    const eave = U.isNum(eaveFix) ? eaveFix : Math.max(top - rise, minEave);
     // высота низа крыши над точкой плана (локальные координаты объекта) — для столбов
     const roofZ = (q) => {
       const v = G.toLocal(q, r.x, r.y, r.rot), D = r.d / 2;
@@ -580,7 +584,7 @@ const View3D = {
   },
   /** Построить крышу объекта по roofGeom; opt: gableGlass, endCol, endGlass */
   itemRoof(it, g, opt = {}) {
-    if (!View3D.opts.roof) return;                                    // «Крыша» выключена — видно, что внутри
+    if (!View3D.opts.roof || g.R.type === 'none') return;            // «Крыша» выключена или её нет — видно, что внутри
     const { face } = View3D._g, C = View3D.hex, { R, r, eave, rise } = g, rot = it.rot || 0, rotW = rot + r.rot;
     const c = G.toWorld({ x: r.x, y: r.y }, it.x, it.y, rot);
     const glassRoof = !!(ROOF_MATERIALS[R.mat] || {}).glass;
@@ -630,9 +634,10 @@ const View3D = {
   building(it, def, e) {
     const { box } = View3D._g, C = View3D.hex, sh = def.shape, rot = it.rot || 0, H = it.h || 250;
     // карниз не ниже 1.5 м (у навесов 1.8 м) — иначе уклон уменьшаем
-    const g = View3D.roofGeom(it, e + H, e + (bldRoof(it).open ? 180 : 150));
+    const hollow = BLD_HOLLOW.has(sh);
+    const g = View3D.roofGeom(it, e + H, e + (bldRoof(it).open ? 180 : 150), hollow ? e + bldWallH(it) : undefined);
     const { eave, roofZ } = g;
-    if (BLD_HOLLOW.has(sh)) {
+    if (hollow) {
       // «как дом»: пол, стены с толщиной, ворота/дверь; внутри — пусто (погреб, яма, машина, мебель видны без крыши)
       const s = bldShell(it, it.w, it.d);
       const bx = (r, z0, z1, col, opt) => { const q = bldWorld(it, { x: (r.x0 + r.x1) / 2, y: (r.y0 + r.y1) / 2 }); box(q.x, q.y, r.x1 - r.x0, r.y1 - r.y0, rot, z0, z1, col, opt); };
@@ -658,6 +663,7 @@ const View3D = {
           const along = Math.abs(F.u.x) > 0.5, gate = o.type === 'gate';
           const q = (hw, hd, off = 0) => { const c2 = G.add(m, G.mul(F.n, off)); return along ? { x0: c2.x - hw, y0: c2.y - hd, x1: c2.x + hw, y1: c2.y + hd } : { x0: c2.x - hd, y0: c2.y - hw, x1: c2.x + hd, y1: c2.y + hw }; };
           bx(q(half, 2), F0, top, C(gate ? '#b9c0c7' : '#6b4a33'));
+          bx(o.rect, e, F0, C('#9b958b'));                                                    // порог
           if (gate) for (let z = e + 50; z < top - 10; z += 50) bx(q(half - 3, 1, -s.t / 2 + 1), z, z + 1.5, C('#9aa3ab'));
         }
       }

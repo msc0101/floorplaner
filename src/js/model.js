@@ -176,6 +176,38 @@ const Model = {
     }
     App.changed();
   },
+  /** Отмостка: вокруг дома (настройка проекта) и капитальных построек (у каждой своя ширина).
+   *  [{ id, name, w, inner, outer, quads (куски по сторонам), area (см²), over (свес крыши, см) }] */
+  blindAreas() {
+    const res = [], f1 = App.doc.floors[0].id, s = App.doc.settings.blind;
+    if (s && s.w > 0) {
+      const fd = (App.floorData || [])[0];
+      for (const [i, o] of (fd ? fd.outlines : []).entries()) {
+        // свес крыши над этим контуром: насколько крыша выходит за стены (по серединам сторон)
+        let over = 0;
+        for (const r of App.doc.roofs) {
+          const rp = G.rectPts(r.x, r.y, r.w, r.d, r.rot || 0);
+          o.outer.forEach((a, k) => {
+            const b = o.outer[(k + 1) % o.outer.length], m = G.mid(a, b), u = G.unit(G.sub(b, a));
+            let nn = G.perp(u); if (G.pointInPoly(G.add(m, G.mul(nn, 0.5)), o.outer)) nn = G.mul(nn, -1);
+            let t = 0; while (t < 200 && G.pointInPoly(G.add(m, G.mul(nn, t + 5)), rp)) t += 5;
+            if (t < 200) over = Math.max(over, t);          // дальше 2 м — крыша над крыльцом / террасой, не свес
+          });
+        }
+        res.push(Model._blind('house' + i, 'Дом', o.outer, s.w, over));
+      }
+    }
+    for (const it of App.doc.items) {
+      if ((it.floor || f1) !== f1 || !(it.blind > 0) || !BLD_HOLLOW.has(catItem(it.key).shape)) continue;
+      res.push(Model._blind(it.id, it.label || catItem(it.key).name, Model.itemPts(it), it.blind, bldRoof(it).type === 'none' ? 0 : bldRoof(it).over));
+    }
+    return res;
+  },
+  _blind(id, name, inner, w, over) {
+    const outer = G.offsetPoly(inner, w), n = inner.length;
+    const quads = inner.map((p, i) => [p, inner[(i + 1) % n], outer[(i + 1) % n], outer[i]]);
+    return { id, name, w, inner, outer, quads, area: Math.abs(G.polyArea(outer)) - Math.abs(G.polyArea(inner)), over };
+  },
   wallMap(walls) { return new Map(walls.map(w => [w.id, { th: w.th, ins: w.ins || 0, mat: w.mat, kind: w.kind, floor: w.floor, a: { ...w.a }, b: { ...w.b } }])); },
   /** Наружные стены утолщаются наружу: если у стены изменилась только толщина (материал, утеплитель, тип размера),
    *  её ось сдвигается наружу на половину прироста — внутренняя грань и планировка остаются на месте.

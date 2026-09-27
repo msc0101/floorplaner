@@ -41,7 +41,7 @@ const PRICE_DEFAULTS = {
   'item:canopy': 200000, 'item:shed': 250000, 'item:bathhouse': 1200000, 'item:gazebo': 250000, 'item:greenhouse': 70000,
   'item:woodshed': 60000, 'item:outhouse': 60000, 'item:showerOut': 40000, 'item:pool': 900000, 'item:terrace': 350000,
   // благоустройство участка (за м²)
-  'site:asphalt': 1500, 'site:concrete': 2500, 'site:paving': 2200, 'site:gravel': 600, 'site:lawn': 350,
+  'site:blind': 2200, 'site:asphalt': 1500, 'site:concrete': 2500, 'site:paving': 2200, 'site:gravel': 600, 'site:lawn': 350,
   'item:cellar': 350000, 'item:cellarHouse': 450000, 'item:podpol': 90000, 'item:inspPit': 120000, 'item:pitOpen': 40000,
   'item:gate': 120000, 'item:wicket': 25000, 'item:bbq': 40000,
 };
@@ -106,6 +106,8 @@ const Estimate = {
     const byKind = {};
     for (const a of d.areas) if (cover[a.kind]) byKind[a.kind] = (byKind[a.kind] || 0) + Math.abs(G.polyArea(a.pts)) / 1e4;
     for (const [k, m2] of Object.entries(byKind)) add('Благоустройство участка', 'site:' + k, cover[k], 'м²', m2);
+    const blind = Model.blindAreas().reduce((s, b) => s + b.area / 1e4, 0);
+    if (blind) add('Благоустройство участка', 'site:blind', 'Отмостка бетонная (с подготовкой и утеплением)', 'м²', blind);
     // сети
     const net = {};
     for (const l of d.lines) net[l.kind] = (net[l.kind] || 0) + G.polyPerimeter(l.pts, false) / 100;

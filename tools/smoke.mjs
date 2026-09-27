@@ -395,6 +395,28 @@ const chk = await page.evaluate(() => {
 });
 console.log('checks', JSON.stringify(chk));
 if (chk.edges !== 'neighbor,neighbor,street,neighbor' || !chk.coop4 || !chk.coopNoDup || !chk.shedStreet || !chk.outside || !chk.none) errors.push('Нормы отступов: ' + JSON.stringify(chk));
+// постройки: стены не ниже проёмов, уклон соблюдается, «без крыши»; отмостка; трассы сетей
+const bld2 = await page.evaluate(() => {
+  const f = App.doc.floors[0].id;
+  const g = Model.add('items', { key: 'garage2', x: 160000, y: 0, w: 750, d: 650, h: 320, rot: 0, floor: f, roofType: 'shed' });
+  Model.commit();
+  const r = { wallH: Math.round(bldWallH(g)), rise: Math.round(bldRoofRise(g)) };
+  const geo = View3D.roofGeom(g, 320, 150, bldWallH(g)); r.pitchKept = Math.abs(geo.pitch - 12) < 0.5;
+  g.roofType = 'none'; r.none = bldRoofRise(g) === 0 && bldRoof(g).over === 0; delete g.roofType;
+  App.doc.settings.blind = { w: 100 }; g.blind = 80; Model.commit();
+  const bl = Model.blindAreas(), gb = bl.find(b => b.id === g.id);
+  r.blind = !!gb && Math.round(gb.area) === Math.round((910 * 810) - 750 * 650) && Estimate.rows().some(x => x.key === 'site:blind');
+  // канализация двумя кусками с зазором 30 см: одна трасса, 18 м без колодца — замечание
+  Model.add('lines', { kind: 'sewer', pts: [{ x: 170000, y: 0 }, { x: 170800, y: 0 }], dia: 110, depth: 120, floor: f });
+  Model.add('lines', { kind: 'sewer', pts: [{ x: 170830, y: 0 }, { x: 171800, y: 0 }], dia: 110, depth: 120, floor: f });
+  Model.commit();
+  const n = Checks.run().nets.filter(x => x.kind === 'sewer' && x.line.pts.some(p => p.x === 171800));
+  r.route = n.length && /2 участка/.test(n[0].title) && n.some(x => x.ok === false && /без колодца/.test(x.text));
+  Model.undo(); Model.undo(); Model.undo();
+  return r;
+});
+console.log('bld2', JSON.stringify(bld2));
+if (bld2.wallH !== 235 || !bld2.pitchKept || !bld2.none || !bld2.blind || !bld2.route) errors.push('Постройки / отмостка / трассы: ' + JSON.stringify(bld2));
 // заголовок вкладки — имя открытого файла
 const ttl = await page.evaluate(() => { const f0 = App.fileName; IO.setFile('Дача.json'); const t = document.title; IO.setFile(f0); return t; });
 console.log('title', ttl);

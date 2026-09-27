@@ -528,6 +528,7 @@ const ITEM_ROOF_TYPES = {
   shed:  { name: 'Односкатная', pitch: 12 },
   flat:  { name: 'Плоская', pitch: 0 },
   arch:  { name: 'Арочная (полукруглая)', pitch: 0 },
+  none:  { name: 'Без крыши', pitch: 0 },
 };
 /** Крыша постройки: тип, материал, уклон, направление конька/ската; значения по умолчанию — от вида постройки */
 function bldRoof(it) {
@@ -540,7 +541,7 @@ function bldRoof(it) {
   const pitch = U.isNum(it.roofPitch) ? U.clamp(it.roofPitch, 0, 60) : sh === 'greenhouse' && type === 'gable' ? 35 : ITEM_ROOF_TYPES[type].pitch;
   const open = sh === 'canopy' || sh === 'canopyLean' || (po && (po.encl === 'open' || po.encl === 'rail'));
   // свесы по сторонам: у пристроенной веранды со стороны дома свеса нет
-  const over = sh === 'canopy' || sh === 'canopyLean' ? 10 : sh === 'greenhouse' ? 5 : 25;
+  const over = type === 'none' ? 0 : U.isNum(it.roofOver) ? U.clamp(it.roofOver, 0, 150) : sh === 'canopy' || sh === 'canopyLean' ? 10 : sh === 'greenhouse' ? 5 : 25;
   const sides = { l: over, r: over, f: over, b: po && po.attached ? 0 : over };
   return { type, mat, pitch, ridge: it.roofRidge === 'short' ? 'short' : 'long', shedDir: ['back', 'front', 'left', 'right'].includes(it.roofShed) ? it.roofShed : 'back', over, sides, open, veranda: !!po };
 }
@@ -556,6 +557,23 @@ function bldRoofRect(it, w, d) {
   }
   const alongW = (w >= d) === (R.ridge === 'long');
   return { x, y, rot: alongW ? 0 : 90, w: alongW ? W : D, d: alongW ? D : W, type: R.type, pitch: R.pitch };
+}
+
+/** Подъём крыши постройки (от карниза до конька), см — строго по уклону */
+function bldRoofRise(it) {
+  const R = bldRoof(it), r = bldRoofRect(it, it.w, it.d);
+  if (R.type === 'none') return 0;
+  if (R.type === 'arch') return r.d / 2;
+  if (R.type === 'flat') return 20;
+  const run = R.type === 'gable' ? r.d / 2 : R.type === 'hip' ? Math.min(r.w, r.d) / 2 : r.d;
+  return run * Math.tan(U.rad(R.pitch));
+}
+/** Высота стен (до карниза) гаража / сарая / бани: задана вручную или из общей высоты минус подъём крыши,
+ *  но не ниже проёмов (ворота, двери) + 15 см */
+function bldWallH(it) {
+  if (U.isNum(it.wallH)) return U.clamp(it.wallH, 100, 1000);
+  const ops = bldShell(it, it.w, it.d).ops, opTop = ops.reduce((m, o) => Math.max(m, (o.sill || 0) + o.h), 0);
+  return Math.max((it.h || 250) - bldRoofRise(it), 150, opTop + 15);
 }
 
 /* ===================== ПОСТРОЙКИ «КАК ДОМ»: стены с толщиной, внутри — пусто ===================== */
@@ -1147,6 +1165,7 @@ const Painters = (() => {
   /** Линии крыши постройки на плане: конёк, рёбра вальм, стрелки ската, рёбра арки; контур свеса */
   const roofPlan = (P, w, d) => {
     const r = bldRoofRect(P.it, w, d), R = bldRoof(P.it), c = P.ctx;
+    if (R.type === 'none') return;
     c.save(); c.strokeStyle = P.C.inkSoft; lw(P, 1); c.setLineDash([9 * P.px, 5 * P.px]);
     if (R.over > 5) { const q = G.rectPts(r.x, r.y, r.w, r.d, r.rot); line(P, [q[0].x, q[0].y, q[1].x, q[1].y, q[2].x, q[2].y, q[3].x, q[3].y], true); }
     c.setLineDash([]);

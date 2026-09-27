@@ -145,6 +145,23 @@ const G = {
     const t = G.cross(G.sub(c, a), s) / den;
     return { x: a.x + r.x * t, y: a.y + r.y * t, t };
   },
+  /** Контур, раздвинутый наружу на d (углы — со скосом по биссектрисе) */
+  offsetPoly(pts, d) {
+    const n = pts.length, out = [];
+    const norm = (i) => {
+      const a = pts[i], b = pts[(i + 1) % n], u = G.unit(G.sub(b, a));
+      let nn = G.perp(u);
+      if (G.pointInPoly(G.add(G.mid(a, b), G.mul(nn, 0.5)), pts)) nn = G.mul(nn, -1);
+      return { a, b, nn };
+    };
+    const E = pts.map((_, i) => norm(i));
+    for (let i = 0; i < n; i++) {
+      const e0 = E[(i - 1 + n) % n], e1 = E[i];
+      const p = G.lineInter(G.add(e0.a, G.mul(e0.nn, d)), G.add(e0.b, G.mul(e0.nn, d)), G.add(e1.a, G.mul(e1.nn, d)), G.add(e1.b, G.mul(e1.nn, d)));
+      out.push(p && G.dist(p, pts[i]) < d * 4 ? { x: p.x, y: p.y } : G.add(pts[i], G.mul(e1.nn, d)));
+    }
+    return out;
+  },
   /** Луч p + dir*t (t>0) против отрезка c-d → t или null */
   raySeg(p, dir, c, d) {
     const s = G.sub(d, c);
