@@ -426,6 +426,26 @@ const an = await page.evaluate(() => {
 });
 console.log('analysis', JSON.stringify(an));
 if (!/Участок/.test(an.stats) || !/Дом/.test(an.stats) || !an.rooms || !an.text || !an.shown || !an.btn) errors.push('Анализ проекта: ' + JSON.stringify(an));
+// вентиляция, печи, водопровод: в примере всё по норме; убрали дымоход и вентблок — замечания; мелкий водопровод — нарушение
+const vent = await page.evaluate(() => {
+  IO.loadDemo();
+  const r = {}, iss = () => Analysis.run().issues;
+  r.clean = !iss().some(i => /Вентиляция|Печь/.test(i.group));
+  const ch = App.doc.items.find(i => i.key === 'chimney'), st = Checks.stack(ch);
+  r.auto = !!st && st.e + Checks.stackH(ch) >= st.need;
+  ch.autoH = false; ch.h = 200; Model.commit();
+  r.low = iss().some(i => i.group === 'Печь' && /поднять/.test(i.text));
+  App.doc.items = App.doc.items.filter(i => i.key !== 'chimney' && !(i.key === 'ventShaft2' && i.y > 2000)); Model.reindex(); Model.commit();
+  const t = iss();
+  r.noFlue = t.some(i => /нет дымохода/.test(i.text)); r.noExh = t.some(i => /Кухня: нет вытяжки/.test(i.text));
+  const w = App.doc.lines.find(l => l.kind === 'water'); w.depth = 120; Model.commit();
+  r.shallow = Checks.run().nets.some(n => n.kind === 'water' && n.ok === false && /промерзание/.test(n.text));
+  w.heated = true; Model.commit();
+  r.heated = !Checks.run().nets.some(n => n.kind === 'water' && n.ok === false);
+  return r;
+});
+console.log('vent', JSON.stringify(vent));
+if (Object.values(vent).some(v => !v)) errors.push('Вентиляция / печи / водопровод: ' + JSON.stringify(vent));
 // ворота: зона отката откатных, разрыв забора под воротами; надземный газ над проездом
 const gt = await page.evaluate(() => {
   const f = App.doc.floors[0].id, X = 400000;

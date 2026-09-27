@@ -224,7 +224,8 @@ const Analysis = {
       if (soft) add('warn', 'Печь', `${name(it)}: «${name(soft)}» ближе 1,25 м перед топкой — отодвиньте мягкую мебель от дверки`, 'СП 7.13130.2013, разд. 5', front, it.id);
     }
     const shafts = d.items.filter(SHAFT), sups = d.items.filter(it => it.key === 'ventSupply');
-    if (need || shafts.length || sups.length) stats.push({ title: 'Вентиляция', rows: [
+    const at = stats.findIndex(x => /Смета/.test(x.title));
+    if (need || shafts.length || sups.length) stats.splice(at < 0 ? stats.length : at, 0, { title: 'Вентиляция', rows: [
       ['Вытяжка по нормам', `${need} м³/ч`],
       ...rowsOf.map(([a, b]) => ['— ' + a, b]),
       ['Приток в жилые комнаты (3 м³/ч на 1 м²)', `${supplyNeed} м³/ч`],

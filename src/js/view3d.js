@@ -1108,7 +1108,24 @@ const View3D = {
       // навесные шкафы над рядом у стены — у задней кромки
       if (r.wall && !r.h) {
         const b = { down: [r.x0, r.y0, r.x1, r.y0 + 35], up: [r.x0, r.y1 - 35, r.x1, r.y1], left: [r.x1 - 35, r.y0, r.x1, r.y1], right: [r.x0, r.y0, r.x0 + 35, r.y1] }[r.front];
-        if (b) bx(b[0], b[1], b[2], b[3], e + 145, e + 215, upper);
+        if (!b) continue;
+        // над окном в стене за рядом шкафов не вешаем: режем ленту по ширине окна (+5 см)
+        const alongX = r.front === 'down' || r.front === 'up', back = { down: r.y0, up: r.y1, left: r.x1, right: r.x0 }[r.front];
+        const cuts = [];
+        for (const o of App.V.openings) {
+          if ((OPENING_TYPES[o.type] || {}).cat !== 'window' || (o.sill || 0) >= 215) continue;
+          const g = Model.opGeom(o);
+          if (!g) continue;
+          const pa = G.toLocal(g.a, it.x, it.y, rot), pb = G.toLocal(g.b, it.x, it.y, rot);
+          pa.x *= fx; pb.x *= fx;
+          const off = (p) => Math.abs((alongX ? p.y : p.x) - back);
+          if (off(pa) > g.th / 2 + 15 || off(pb) > g.th / 2 + 15) continue;
+          const [c0, c1] = alongX ? [Math.min(pa.x, pb.x), Math.max(pa.x, pb.x)] : [Math.min(pa.y, pb.y), Math.max(pa.y, pb.y)];
+          cuts.push([c0 - 5, c1 + 5]);
+        }
+        let segs = [[alongX ? b[0] : b[1], alongX ? b[2] : b[3]]];
+        for (const [c0, c1] of cuts) segs = segs.flatMap(([s0, s1]) => (c1 <= s0 || c0 >= s1) ? [[s0, s1]] : [[s0, Math.max(s0, c0)], [Math.min(s1, c1), s1]].filter(q => q[1] - q[0] > 8));
+        for (const [s0, s1] of segs) alongX ? bx(s0, b[1], s1, b[3], e + 145, e + 215, upper) : bx(b[0], s0, b[2], s1, e + 145, e + 215, upper);
       }
     }
     for (const r of K.tall || []) bx(r.x0, r.y0, r.x1, r.y1, e, e + 215, facade);
