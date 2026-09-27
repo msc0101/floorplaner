@@ -26,11 +26,13 @@ const CHECK_RULES = [
   { id: 'filter_well', a: 'filter', b: 'well', min: 5000, name: 'Поле фильтрации — колодец / скважина', src: 'СанПиН 2.1.3684-21, СП 32.13330' },
   { id: 'well_house', a: 'well', b: 'house', min: 300, name: 'Колодец / скважина — фундамент дома', src: 'рекомендация: не подмывать фундамент, подъезд буровой' },
   { id: 'well_animals', a: 'well', b: 'animals', min: 2000, name: 'Колодец / скважина — постройка для скота и птицы', src: 'рекомендация; для общественных колодцев — 50 м (СанПиН 2.1.3684-21)' },
+  { id: 'bbq_house', a: 'bbq', b: 'house', min: 500, name: 'Мангал, барбекю — дом', src: 'Правила противопожарного режима (ПП РФ № 1479), прил. 4: мангал — не ближе 5 м от зданий и сооружений' },
+  { id: 'bbq_outb', a: 'bbq', b: 'outbuilding', min: 500, name: 'Мангал, барбекю — постройки (беседка, баня, сарай)', src: 'Правила противопожарного режима (ПП РФ № 1479), прил. 4' },
   { id: 'septic_neighbor', a: 'septic', b: 'bound:neighbor', min: 200, name: 'Септик — граница соседа', src: 'рекомендация' },
 ];
 const CHECK_GROUPS = {
   house: 'Дом', outbuilding: 'Хозпостройка', animals: 'Постройка для скота и птицы', bath: 'Баня / душ', toilet: 'Уборная / выгребная яма / компост',
-  cellar: 'Погреб', septic: 'Септик', filter: 'Поле фильтрации', well: 'Колодец / скважина', treeTall: 'Высокорослое дерево', treeMid: 'Среднерослое дерево', shrub: 'Кустарник',
+  cellar: 'Погреб', bbq: 'Мангал / барбекю', septic: 'Септик', filter: 'Поле фильтрации', well: 'Колодец / скважина', treeTall: 'Высокорослое дерево', treeMid: 'Среднерослое дерево', shrub: 'Кустарник',
 };
 /** Назначение постройки для проверки норм (вручную в свойствах): '' — по виду из библиотеки */
 const CHECK_AS = { '': 'по виду постройки', house: 'жилой дом', outb: 'хозпостройка (гараж, сарай…)', animals: 'для скота и птицы (курятник, хлев)', bath: 'баня / душ', toilet: 'уборная', none: 'не учитывать' };
@@ -49,6 +51,7 @@ const Checks = {
     if (['outhouse', 'cesspool', 'compost'].includes(k)) g.push('toilet');
     if (['cellar', 'cellarHouse', 'podpol'].includes(k)) g.push('cellar');
     if (['septic2', 'septic3', 'septicRing', 'filterField'].includes(k)) g.push('septic');
+    if (k === 'bbq') g.push('bbq');
     if (k === 'filterField') g.push('filter');
     if (['well', 'borehole', 'boreholeArt'].includes(k)) g.push('well');
     if (['tree', 'fruitTree', 'conifer', 'thuja'].includes(k) || sh === 'tree' || sh === 'conifer') g.push(it.h >= 1000 ? 'treeTall' : it.h >= 400 ? 'treeMid' : 'shrub');

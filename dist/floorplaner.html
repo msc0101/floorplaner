@@ -4192,11 +4192,13 @@ const CHECK_RULES = [
   { id: 'filter_well', a: 'filter', b: 'well', min: 5000, name: 'Поле фильтрации — колодец / скважина', src: 'СанПиН 2.1.3684-21, СП 32.13330' },
   { id: 'well_house', a: 'well', b: 'house', min: 300, name: 'Колодец / скважина — фундамент дома', src: 'рекомендация: не подмывать фундамент, подъезд буровой' },
   { id: 'well_animals', a: 'well', b: 'animals', min: 2000, name: 'Колодец / скважина — постройка для скота и птицы', src: 'рекомендация; для общественных колодцев — 50 м (СанПиН 2.1.3684-21)' },
+  { id: 'bbq_house', a: 'bbq', b: 'house', min: 500, name: 'Мангал, барбекю — дом', src: 'Правила противопожарного режима (ПП РФ № 1479), прил. 4: мангал — не ближе 5 м от зданий и сооружений' },
+  { id: 'bbq_outb', a: 'bbq', b: 'outbuilding', min: 500, name: 'Мангал, барбекю — постройки (беседка, баня, сарай)', src: 'Правила противопожарного режима (ПП РФ № 1479), прил. 4' },
   { id: 'septic_neighbor', a: 'septic', b: 'bound:neighbor', min: 200, name: 'Септик — граница соседа', src: 'рекомендация' },
 ];
 const CHECK_GROUPS = {
   house: 'Дом', outbuilding: 'Хозпостройка', animals: 'Постройка для скота и птицы', bath: 'Баня / душ', toilet: 'Уборная / выгребная яма / компост',
-  cellar: 'Погреб', septic: 'Септик', filter: 'Поле фильтрации', well: 'Колодец / скважина', treeTall: 'Высокорослое дерево', treeMid: 'Среднерослое дерево', shrub: 'Кустарник',
+  cellar: 'Погреб', bbq: 'Мангал / барбекю', septic: 'Септик', filter: 'Поле фильтрации', well: 'Колодец / скважина', treeTall: 'Высокорослое дерево', treeMid: 'Среднерослое дерево', shrub: 'Кустарник',
 };
 /** Назначение постройки для проверки норм (вручную в свойствах): '' — по виду из библиотеки */
 const CHECK_AS = { '': 'по виду постройки', house: 'жилой дом', outb: 'хозпостройка (гараж, сарай…)', animals: 'для скота и птицы (курятник, хлев)', bath: 'баня / душ', toilet: 'уборная', none: 'не учитывать' };
@@ -4215,6 +4217,7 @@ const Checks = {
     if (['outhouse', 'cesspool', 'compost'].includes(k)) g.push('toilet');
     if (['cellar', 'cellarHouse', 'podpol'].includes(k)) g.push('cellar');
     if (['septic2', 'septic3', 'septicRing', 'filterField'].includes(k)) g.push('septic');
+    if (k === 'bbq') g.push('bbq');
     if (k === 'filterField') g.push('filter');
     if (['well', 'borehole', 'boreholeArt'].includes(k)) g.push('well');
     if (['tree', 'fruitTree', 'conifer', 'thuja'].includes(k) || sh === 'tree' || sh === 'conifer') g.push(it.h >= 1000 ? 'treeTall' : it.h >= 400 ? 'treeMid' : 'shrub');
@@ -6277,13 +6280,6 @@ const View3D = {
     // растения, колодцы, септики, скважины — детальные модели в fixture
     // --- постройки: гараж, сарай, баня, навесы, теплица — крыша по выбору (тип, уклон, материал) ---
     if (BLD_ROOF_SHAPES.has(sh)) { View3D.building(it, def, e); return; }
-    if (sh === 'gazebo') {
-      const pw = 14;
-      for (const c of G.rectPts(it.x, it.y, it.w - 20, it.d - 20, rot)) box(c.x, c.y, pw, pw, rot, e, e + H * 0.7, wood);
-      box(it.x, it.y, it.w, it.d, rot, e, e + 15, wood);
-      View3D.roof({ x: it.x, y: it.y, w: it.w + 60, d: it.d + 60, rot, type: 'hip', pitch: 30, base: e + H * 0.7, mat: 'soft', floor: null });
-      return;
-    }
     if (sh === 'pool') { box(it.x, it.y, it.w + 60, it.d + 60, rot, e, e + 8, C('#e5e1d6')); box(it.x, it.y, it.w, it.d, rot, e + 8, e + 9, C('#3f97d8')); return; }
     if (sh === 'veranda') { View3D.veranda(it, e); return; }
     if (sh === 'pit') { View3D.pit(it, e); return; }
@@ -6870,6 +6866,75 @@ const View3D = {
         const x = -W + (k + 0.5) * w / n, q = L(x, 0);
         blob(q.x, q.y, e + Ht * (0.55 + rnd(k) * 0.08), Math.max(D, w / n * 0.62), Ht * 0.48, tint(green, k), q.x + k);
       }
+      return true;
+    }
+    // --- беседка: восьмигранная, на фундаменте с настилом, столбы, перила с балясинами, скамьи и стол внутри,
+    //     шатровая восьмискатная крыша со свесом и навершием; вход — спереди (+d/2) ---
+    if (sh === 'gazebo') {
+      const n = 8, sec = 1 / Math.cos(Math.PI / n), Ht = H || 300;
+      const vx = (i, k = 1) => { const a = (i + 0.5) * Math.PI * 2 / n; return { x: Math.cos(a) * W * sec * k, y: Math.sin(a) * D * sec * k }; };
+      const wood = [0.62, 0.44, 0.27], dk = wood.map(x => x * 0.78), deckC = [0.7, 0.53, 0.35], stone = [0.62, 0.6, 0.56];
+      const eave = e + Math.max(220, Ht * 0.7), fl = e + 17;
+      const oct = (k) => Array.from({ length: n }, (_, i) => { const p = vx(i, k); return L(p.x, p.y); });
+      prism(oct(1.03), e, e + 12, stone);                                                              // фундамент
+      prism(oct(1), e + 12, fl, deckC);                                                                 // настил
+      // брус от a до b (локальные точки) — повёрнут по направлению в плане
+      const beam = (a, b, z0, zz, t, col) => { const qa = L(a.x, a.y), qb = L(b.x, b.y); View3D._g.box((qa.x + qb.x) / 2, (qa.y + qb.y) / 2, G.dist(qa, qb), t, U.deg(Math.atan2(qb.y - qa.y, qb.x - qa.x)), z0, zz, col); };
+      const posts = Array.from({ length: n }, (_, i) => vx(i, 0.95));
+      for (const p of posts) { const q = L(p.x, p.y); View3D._g.box(q.x, q.y, 12, 12, rot + U.deg(Math.atan2(p.y, p.x)), fl, eave, wood); }
+      const entry = 1;                                                                                  // сторона между вершинами 1 и 2 — спереди
+      for (let i = 0; i < n; i++) {
+        const a = posts[i], b = posts[(i + 1) % n];
+        beam(a, b, eave - 16, eave, 11, wood);                                                          // обвязка
+        beam(a, b, eave - 34, eave - 30, 4, dk);                                                        // фриз
+        const len = G.dist(a, b), u = { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+        for (const t of [0.12, 0.88]) { const p = { x: a.x + u.x * len * t, y: a.y + u.y * len * t }; beam(p, p, eave - 30, eave - 16, 3, dk); }   // стойки фриза
+        if (i === entry) { const s2 = { x: 0, y: D * 1.02 }; beam({ x: -45, y: s2.y + 15 }, { x: 45, y: s2.y + 15 }, e, e + 8, 30, stone); continue; }   // ступень у входа
+        beam(a, b, fl + 8, fl + 14, 6, dk); beam(a, b, fl + 78, fl + 86, 8, wood);                   // низ и поручень
+        const nb = Math.max(2, Math.floor(len / 13));
+        for (let k = 1; k < nb; k++) { const p = { x: a.x + u.x * len * k / nb, y: a.y + u.y * len * k / nb }; const q = L(p.x, p.y); View3D._g.box(q.x, q.y, 3.5, 3.5, rot, fl + 14, fl + 78, wood); }   // балясины
+        // скамья вдоль стороны, внутри
+        const inn = { x: -(u.y), y: u.x }, m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const sgn = (m.x * inn.x + m.y * inn.y) > 0 ? -1 : 1, off = 24 * sgn;
+        const sa = { x: a.x + u.x * 14 + inn.x * off, y: a.y + u.y * 14 + inn.y * off }, sb = { x: b.x - u.x * 14 + inn.x * off, y: b.y - u.y * 14 + inn.y * off };
+        beam(sa, sb, fl + 40, fl + 45, 36, deckC);
+        for (const p of [sa, sb]) beam(p, p, fl, fl + 40, 5, dk);
+      }
+      // стол по центру
+      View3D._g.prism(Array.from({ length: n }, (_, i) => { const p = vx(i, 0.3); return L(p.x, p.y); }), fl + 71, fl + 75, deckC);
+      View3D._g.cyl(it.x, it.y, 6, fl, fl + 71, dk, 8);
+      View3D._g.prism(Array.from({ length: n }, (_, i) => { const p = vx(i, 0.14); return L(p.x, p.y); }), fl, fl + 3, dk);
+      // крыша: восемь скатов от карниза со свесом к навершию
+      const R2 = 1.22, apex = eave + Math.max(W, D) * sec * R2 * Math.tan(U.rad(33));
+      const roofC = View3D.hex((ROOF_MATERIALS.soft || { color: '#7d4b3a' }).color), under = [0.72, 0.58, 0.42];
+      for (let i = 0; i < n; i++) {
+        const a = vx(i, R2), b = vx((i + 1) % n, R2);
+        face([V(a.x, a.y, eave), V(b.x, b.y, eave), V(0, 0, apex)], roofC, V(0, 0, eave - 60));
+        face([V(a.x, a.y, eave - 3), V(b.x, b.y, eave - 3), V(0, 0, apex - 3)], under, V(0, 0, apex + 80));     // подшивка изнутри
+        beam(a, b, eave - 12, eave - 2, 3, dk);                                                         // лобовая доска
+      }
+      View3D._g.cyl(it.x, it.y, 4, apex - 6, apex + 28, dk, 8); View3D._g.cyl(it.x, it.y, 7, apex + 28, apex + 36, dk, 10);   // навершие
+      return true;
+    }
+    // --- мангал: короб на ножках с поддувалами, угли с отсветом, шампуры с мясом, полка внизу ---
+    if (sh === 'bbq') {
+      const top = e + (H || 90), zt = top - 20, steel = [0.17, 0.17, 0.18];
+      for (const [px, py] of [[-W + 3, -D + 3], [W - 3, -D + 3], [W - 3, D - 3], [-W + 3, D - 3]]) bx(px - 1.5, py - 1.5, px + 1.5, py + 1.5, e, zt, steel);
+      bx(-W + 3, -D + 3, W - 3, D - 3, e + 22, e + 23.5, steel);                                       // полка для дров
+      for (let x = -W + 10; x < W - 8; x += 11) bx(x, -D + 6, x + 8, D - 6, e + 23.5, e + 29, [0.52, 0.36, 0.22]);   // поленья
+      bx(-W, -D, W, D, zt, zt + 1.5, steel);                                                            // дно
+      for (const [x0, y0, x1, y1] of [[-W, -D, W, -D + 1.2], [-W, D - 1.2, W, D], [-W, -D, -W + 1.2, D], [W - 1.2, -D, W, D]]) bx(x0, y0, x1, y1, zt, top, steel);
+      for (let x = -W + 8; x < W - 5; x += 10) for (const y of [-D - 0.1, D - 0.1]) bx(x, y, x + 5, y + 0.3, zt + 4, zt + 8, [0.05, 0.05, 0.05]);   // поддувала
+      bx(-W + 2, -D + 2, W - 2, D - 2, zt + 1.5, zt + 6, [0.16, 0.1, 0.08]);                           // угли
+      for (let k = 0; k < 9; k++) { const x = -W + 6 + (w - 12) * View3D.noise(it.x + k, it.y), y = -D + 5 + (d - 10) * View3D.noise(it.y + k, it.x); bx(x - 2, y - 2, x + 2, y + 2, zt + 6, zt + 6.5, [0.95, 0.42, 0.12]); }   // жар
+      const n2 = Math.max(3, Math.floor((w - 12) / 10)), meat = [0.55, 0.28, 0.17];
+      for (let k = 0; k < n2; k++) {
+        const x = -W + 8 + k * (w - 16) / Math.max(1, n2 - 1);
+        bx(x - 0.35, -D - 4, x + 0.35, D + 4, top + 1, top + 1.6, chrome);                              // шампур
+        bx(x - 1, -D - 14, x + 1, -D - 4, top + 0.5, top + 2.2, [0.45, 0.3, 0.18]);                     // ручка
+        for (const t of [-0.25, 0, 0.25]) bx(x - 2.2, t * d - 2.5, x + 2.2, t * d + 2.5, top - 0.5, top + 3.5, meat);
+      }
+      for (const s2 of [-1, 1]) bx(s2 > 0 ? W : -W - 4, -5, s2 > 0 ? W + 4 : -W, 5, top - 6, top - 4, steel);   // ручки по бокам
       return true;
     }
     // --- колодцы и ёмкости на участке ---
@@ -12572,7 +12637,7 @@ const IO = {
     I('septic2', 2250, 2700, 90); I('manhole', 1900, 2450);
     I('well', 400, 3150); I('pole', 2400, 60); I('lightPole', 1650, 250);
     I('tree', 300, 700); I('fruitTree', 500, 2250); I('fruitTree', 1000, 3120); I('conifer', 150, 1500); I('conifer', 150, 1900); I('bush', 1300, 700); I('hedge', 1050, 150, 0, { w: 700 });
-    I('car', 2050, 1100, 180); I('bbq', 1300, 2450, 0); I('terrace', 925, 2300, 0, { w: 450, d: 250, label: 'Терраса' });
+    I('car', 2050, 1100, 180); I('bbq', 1150, 2650, 0); I('terrace', 925, 2300, 0, { w: 450, d: 250, label: 'Терраса' });
     // сети
     Ln('sewer', [[1412, 1330], [1412, 1470], [1800, 1470], [1800, 2450], [2150, 2450], [2150, 2700]], { depth: 120 });
     Ln('water', [[400, 3150], [400, 1100], [1600, 1100], [1600, 1215]], { depth: 180 });
