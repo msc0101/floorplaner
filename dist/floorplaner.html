@@ -5951,6 +5951,16 @@ const View3D = {
             prism(rect(0, 5, -t, t), z0, z1, white); prism(rect(g.width - 5, g.width, -t, t), z0, z1, white); prism(rect(0, g.width, -t, t), z1 - 5, z1, white);
             const leafCol = op.type === 'gate' ? View3D.hex('#9aa3ab') : w.kind === 'ext' ? View3D.hex('#6b4a33') : View3D.hex('#b08a64');
             prism(rect(5, g.width - 5, -2, 2), z0, z1 - 5, leafCol);
+            // ручки с обеих сторон полотна (у двустворчатых — у притвора)
+            if (op.type !== 'gate' && op.type !== 'slide') {
+              const W2 = g.width, hs = op.type === 'door2' ? [W2 / 2 - 9, W2 / 2 + 9] : op.type === 'door15' ? [op.hinge ? W2 / 3 - 9 : W2 * 2 / 3 - 9] : [op.hinge ? 14 : W2 - 14];
+              const chrome = [0.78, 0.8, 0.82];
+              for (const sh of hs) for (const k of [-1, 1]) {
+                prism(rect(sh - 1.5, sh + 1.5, k * 2, k * 4.5), z0 + 98, z0 + 104, chrome);                          // шток
+                const dir = sh > W2 / 2 ? -1 : 1;
+                prism(rect(Math.min(sh, sh + dir * 13), Math.max(sh, sh + dir * 13), k * 4.5, k * 6.5), z0 + 99, z0 + 103, chrome);   // рычаг
+              }
+            } else if (op.type === 'slide') prism(rect(g.width - 16, g.width - 12, -3.5, 3.5), z0 + 80, z0 + 120, [0.78, 0.8, 0.82]);
             if (op.type === 'gate') for (let z = z0 + 45; z < z1 - 10; z += 45) prism(rect(5, g.width - 5, -2.5, 2.5), z, z + 1.5, View3D.hex('#7d858d'));
           }
         }
@@ -6161,6 +6171,7 @@ const View3D = {
       sink: white, vanity: C('#e8e2d8'), radiator: white, stoveHeat: C('#b5654a'), fireplace: C('#9c8f86'), fireplaceCorner: C('#9c8f86'), stoveMetal: dark,
       chimney: C('#8f5a45'), column: C('#d6d2ca'), septic: C('#5e7d4f'), capsule: C('#dfe3e6'), bbq: dark, gateSlide: metal, wicket: metal, labelbox: C('#d0ccc4'),
     }[sh] || (def.layer === 'furniture' ? wood : C('#d0ccc4'));
+    if (View3D.fixture(it, def, e, z0, z1)) return;
     if (sh === 'bed') {
       box(it.x, it.y, it.w, it.d, rot, z0, z0 + 28, C('#9a7550'));
       box(it.x, it.y, it.w - 6, it.d - 10, rot, z0 + 28, z0 + Math.max(45, H), colorOf);
@@ -6239,6 +6250,137 @@ const View3D = {
     };
     const s = (p) => G.dot(G.sub(p, o), u);
     return clip(clip(poly, p => s(p) - a), p => b - s(p));
+  },
+  /** Сантехника, техника, ТВ, стол со стульями — детальнее, чем «коробка». Перед — сторона +d/2, у стены — −d/2.
+   *  Возвращает true, если объект нарисован */
+  fixture(it, def, e, z0, z1) {
+    const { box, cyl, face } = View3D._g, C = View3D.hex, sh = def.shape, rot = it.rot || 0, w = it.w, d = it.d, H = it.h || 0;
+    const fx = it.flip ? -1 : 1;
+    const L = (x, y) => G.toWorld({ x: x * fx, y }, it.x, it.y, rot);
+    const V = (x, y, z) => { const q = L(x, y); return [q.x / 100, z / 100, q.y / 100]; };
+    const bx = (x0, y0, x1, y1, za, zb, col, opt) => { const q = L((x0 + x1) / 2, (y0 + y1) / 2); box(q.x, q.y, Math.abs(x1 - x0), Math.abs(y1 - y0), rot, za, zb, col, opt); };
+    const cy = (x, y, r, za, zb, col, n = 16) => { const q = L(x, y); cyl(q.x, q.y, r, za, zb, col, n); };
+    // «овал» — призма по эллипсу (чаша унитаза, раковины)
+    const oval = (cx, cy2, rx, ry, za, zb, col, n = 18) => View3D._g.prism(Array.from({ length: n }, (_, k) => { const a = k / n * Math.PI * 2; return L(cx + Math.cos(a) * rx, cy2 + Math.sin(a) * ry); }), za, zb, col);
+    const white = [0.96, 0.96, 0.95], chrome = [0.8, 0.82, 0.84], water = [0.74, 0.84, 0.9], black = [0.08, 0.08, 0.09];
+    const W = w / 2, D = d / 2;
+    if (sh === 'tv') {
+      // на тумбе — стоит на ней, иначе — на стене (центр экрана ~115 см)
+      const f1 = it.floor || App.doc.floors[0].id;
+      const stand = App.doc.items.find(o => o !== it && (o.floor || f1) === f1 && ['tvstand', 'cabinet', 'shelf', 'counter'].includes(catItem(o.key).shape) && G.pointInPoly(it, Model.itemPts(o)));
+      const hScr = Math.min(H || 75, w * 0.6), base = stand ? e + stand.h + 8 : e + 115 - hScr / 2;
+      bx(-W, -2, W, 2, base, base + hScr, [0.12, 0.12, 0.13]);                                     // корпус
+      face([V(-W + 2, 2.2, base + 2), V(W - 2, 2.2, base + 2), V(W - 2, 2.2, base + hScr - 2), V(-W + 2, 2.2, base + hScr - 2)], [0.1, 0.13, 0.18], V(0, -10, base + hScr / 2));   // экран
+      if (stand) { bx(-12, -8, 12, 8, base - 8, base - 6, [0.2, 0.2, 0.22]); bx(-3, -2, 3, 1, base - 6, base + 4, [0.2, 0.2, 0.22]); }
+      else bx(-W * 0.4, -4, W * 0.4, -2, base + hScr * 0.3, base + hScr * 0.7, [0.25, 0.25, 0.27]);   // кронштейн
+      return true;
+    }
+    if (sh === 'tvstand') { bx(-W, -D, W, D, e + 8, e + H, C('#8a6a4c')); for (const s of [-1, 1]) bx(s * (W - 4) - 2, -D + 3, s * (W - 4) + 2, D - 3, e, e + 8, black); bx(-W + 3, D - 0.5, -1, D + 0.3, e + 14, e + H - 6, C('#9c7a58')); bx(1, D - 0.5, W - 3, D + 0.3, e + 14, e + H - 6, C('#9c7a58')); return true; }
+    if (sh === 'toilet') {
+      bx(-W * 0.35, -D * 0.95, W * 0.35, -D * 0.1, e, e + 38, white);                              // основание
+      oval(0, D * 0.12, W * 0.92, D * 0.62, e + 20, e + 40, white);                                  // чаша
+      oval(0, D * 0.12, W * 0.62, D * 0.42, e + 40, e + 40.6, water);                              // вода
+      oval(0, D * 0.14, W * 0.95, D * 0.66, e + 40.6, e + 43, [0.93, 0.93, 0.92]);                // сиденье
+      bx(-W, -D, W, -D + 18, e + 38, e + H, white);                                                // бачок
+      cy(0, -D + 9, 3.5, e + H, e + H + 1, chrome, 10);                                              // кнопка
+      return true;
+    }
+    if (sh === 'bidet') {
+      bx(-W * 0.35, -D * 0.9, W * 0.35, 0, e, e + 30, white);
+      oval(0, D * 0.05, W * 0.95, D * 0.7, e + 15, e + 40, white);
+      oval(0, D * 0.05, W * 0.62, D * 0.45, e + 40, e + 40.5, water);
+      cy(0, -D * 0.55, 2, e + 40, e + 50, chrome, 8);
+      return true;
+    }
+    if (sh === 'sink') {
+      const top = e + (H || 85);
+      cy(0, -D * 0.25, 10, e, top - 14, white, 14);                                                 // пьедестал
+      oval(0, 0, W, D * 0.95, top - 16, top, white);                                               // чаша
+      oval(0, D * 0.08, W * 0.78, D * 0.65, top, top + 0.4, water);
+      cy(0, -D * 0.78, 2.2, top, top + 18, chrome, 8); bx(-1.5, -D * 0.78, 1.5, -D * 0.3, top + 15, top + 18, chrome);   // смеситель
+      return true;
+    }
+    if (sh === 'vanity') {
+      const top = e + (H || 85);
+      bx(-W, -D, W, D - 2, e + 10, top - 4, C('#e8e2d8'));
+      bx(-W + 2, D - 2, -1, D, e + 14, top - 8, C('#efeae2')); bx(1, D - 2, W - 2, D, e + 14, top - 8, C('#efeae2'));
+      bx(-W, -D, W, D, top - 4, top, white);
+      oval(0, D * 0.1, W * 0.55, D * 0.55, top, top + 0.4, water);
+      cy(0, -D * 0.7, 2.2, top, top + 20, chrome, 8); bx(-1.5, -D * 0.7, 1.5, -D * 0.2, top + 17, top + 20, chrome);
+      return true;
+    }
+    if (sh === 'bath' || sh === 'bathCorner') {
+      const top = e + (H || 58);
+      bx(-W, -D, W, D, e, top - 8, white);                                                          // экран
+      for (const [x0, y0, x1, y1] of [[-W, -D, W, -D + 7], [-W, D - 7, W, D], [-W, -D + 7, -W + 9, D - 7], [W - 9, -D + 7, W, D - 7]]) bx(x0, y0, x1, y1, top - 8, top, white);   // борта
+      bx(-W + 9, -D + 7, W - 9, D - 7, top - 20, top - 19, water);                                 // вода внутри
+      cy(W - 16, -D + 3.5, 2, top, top + 14, chrome, 8); bx(W - 18, -D + 3, W - 14, -D + 14, top + 11, top + 14, chrome);
+      return true;
+    }
+    if (sh === 'shower') {
+      bx(-W, -D, W, D, e, e + 4, [0.9, 0.92, 0.93]);                                                // поддон / трап
+      cy(0, 0, 3, e + 4, e + 4.4, [0.5, 0.52, 0.55], 10);
+      bx(-W, D - 1, W * 0.3, D, e + 4, e + 200, [0.8, 0.9, 0.95], { glass: true });                 // стеклянная перегородка
+      cy(0, -D + 4, 1.5, e + 90, e + 205, chrome, 8); bx(-8, -D + 2, 8, -D + 18, e + 205, e + 207, chrome);   // стойка и лейка
+      return true;
+    }
+    if (sh === 'washer') {
+      const top = e + (H || 85);
+      bx(-W, -D, W, D, e, top, white);
+      bx(-W, D - 0.3, W, D, top - 14, top - 2, [0.88, 0.88, 0.88]);                               // панель
+      const n = 22, R = Math.min(W, (H || 85) / 2) * 0.62, zc = e + (H || 85) * 0.45;
+      face(Array.from({ length: n }, (_, k) => { const a = k / n * Math.PI * 2; return V(Math.cos(a) * R, D + 0.4, zc + Math.sin(a) * R); }), [0.55, 0.57, 0.6], V(0, 0, zc));
+      face(Array.from({ length: n }, (_, k) => { const a = k / n * Math.PI * 2; return V(Math.cos(a) * R * 0.72, D + 0.8, zc + Math.sin(a) * R * 0.72); }), [0.3, 0.38, 0.46], V(0, 0, zc), true);
+      cy(W * 0.55, D - 4, 3, top - 11, top - 5, [0.6, 0.6, 0.62], 10);
+      return true;
+    }
+    if (sh === 'fridge' || sh === 'fridge2') {
+      const top = e + (H || 180), col = sh === 'fridge2' ? [0.78, 0.8, 0.82] : white;
+      bx(-W, -D, W, D - 2, e, top, col);
+      if (sh === 'fridge2') { bx(-W, D - 2, -0.5, D, e + 2, top - 2, col); bx(0.5, D - 2, W, D, e + 2, top - 2, col); for (const s of [-1, 1]) bx(s * 4 - 1, D, s * 4 + 1, D + 3, e + 70, e + 150, chrome); }
+      else { bx(-W, D - 2, W, D, e + 2, e + (H || 180) * 0.62, col); bx(-W, D - 2, W, D, e + (H || 180) * 0.63, top - 2, col); for (const [za, zb] of [[e + 40, e + 100], [e + 125, e + 160]]) bx(W - 8, D, W - 6, D + 3, za, zb, chrome); }
+      return true;
+    }
+    if (sh === 'stove') {
+      const top = e + (H || 85);
+      bx(-W, -D, W, D, e, top - 2, white);
+      bx(-W, -D, W, D, top - 2, top, black);
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) cy(sx * W * 0.45, sy * D * 0.4, 8, top, top + 0.6, [0.2, 0.2, 0.22], 12);
+      face([V(-W + 6, D + 0.3, e + 15), V(W - 6, D + 0.3, e + 15), V(W - 6, D + 0.3, top - 25), V(-W + 6, D + 0.3, top - 25)], [0.15, 0.15, 0.17], V(0, 0, e + 40), true);
+      bx(-W + 8, D, W - 8, D + 3, top - 22, top - 19, chrome);
+      return true;
+    }
+    if (sh === 'diningtable') {
+      // стол и стулья вокруг — как на плане
+      bx(-W, -D, W, D, e + (H || 75) - 4, e + (H || 75), C('#b88a5a'));
+      for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) bx(sx * (W - 6) - 2.5, sy * (D - 6) - 2.5, sx * (W - 6) + 2.5, sy * (D - 6) + 2.5, e, e + (H || 75) - 4, C('#9a7550'));
+      const seats = def.seats || 4, per = Math.max(1, Math.round((seats - (w > 140 ? 2 : 0)) / 2));
+      const chair = (x, y, dir) => {
+        // dir — куда смотрит спинка (наружу от стола): вектор в локальных осях стола
+        const cw = 44, cd = 42, ch = C('#8a6a4c'), seat = C('#c2b5a0');
+        const along = Math.abs(dir.x) > 0.5;
+        const X0 = x - (along ? cd : cw) / 2, X1 = x + (along ? cd : cw) / 2, Y0 = y - (along ? cw : cd) / 2, Y1 = y + (along ? cw : cd) / 2;
+        for (const [px, py] of [[X0 + 3, Y0 + 3], [X1 - 3, Y0 + 3], [X1 - 3, Y1 - 3], [X0 + 3, Y1 - 3]]) bx(px - 1.5, py - 1.5, px + 1.5, py + 1.5, e, e + 44, ch);
+        bx(X0, Y0, X1, Y1, e + 44, e + 48, seat);
+        const bxX = dir.x > 0 ? [X1 - 3, X1] : dir.x < 0 ? [X0, X0 + 3] : [X0, X1], bxY = dir.y > 0 ? [Y1 - 3, Y1] : dir.y < 0 ? [Y0, Y0 + 3] : [Y0, Y1];
+        bx(bxX[0], bxY[0], bxX[1], bxY[1], e + 48, e + 92, ch);
+      };
+      for (let i = 0; i < per; i++) { const x = -W + w * (i + 0.5) / per; chair(x, -D - 21 + 12, { x: 0, y: -1 }); chair(x, D + 21 - 12, { x: 0, y: 1 }); }
+      if (w > 140) { chair(-W - 21 + 12, 0, { x: -1, y: 0 }); chair(W + 21 - 12, 0, { x: 1, y: 0 }); }
+      return true;
+    }
+    if (sh === 'chair') {
+      const ch = C('#8a6a4c');
+      for (const [px, py] of [[-W + 3, -D + 3], [W - 3, -D + 3], [W - 3, D - 3], [-W + 3, D - 3]]) bx(px - 1.5, py - 1.5, px + 1.5, py + 1.5, e, e + 44, ch);
+      bx(-W, -D, W, D, e + 44, e + 48, C('#c2b5a0')); bx(-W, -D, W, -D + 3, e + 48, e + (H || 90), ch);
+      return true;
+    }
+    if (sh === 'round' && it.key === 'barstool') {
+      cy(0, 0, 3, e, e + (H || 75) - 5, chrome, 8); cy(0, 0, 18, e, e + 2, chrome, 14); cy(0, 0, W, e + (H || 75) - 5, e + (H || 75), C('#5a4636'), 16); cy(0, 0, W * 0.8, e + 25, e + 27, chrome, 14);
+      return true;
+    }
+    void z0; void z1;
+    return false;
   },
   /** Ворота и калитка: столбы, рама, полотно с рёбрами; у откатных — противовес и рельс */
   gate(it, def, e) {
