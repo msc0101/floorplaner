@@ -548,6 +548,7 @@ const UI = {
         return;
       }
       const c = Model.coll(id), o = Model.get(id);
+      if (c === 'items' && App.subSel && App.subSel.id === id) { UI.propsBldOp(body, o, App.subSel.idx); return; }
       const fn = { roofs: UI.propsRoof, roads: UI.propsRoad, walls: UI.propsWall, openings: UI.propsOpening, items: UI.propsItem, lines: UI.propsLine, areas: UI.propsArea, dims: UI.propsDim, texts: UI.propsText, notes: UI.propsNote, roomTags: UI.propsTag }[c];
       if (fn) fn(body, o);
       if (o && o.grp) {
@@ -583,6 +584,7 @@ const UI = {
       F.info('Помещений', String(App.rooms.length)),
       F.info('Общая площадь', U.fmtArea(s.total)),
       s.footprint ? F.info('Площадь застройки дома', U.fmtArea(s.footprint)) : null,
+      s.outbInner ? F.info('Хозпостройки (внутри)', U.fmtArea(s.outbInner)) : null,
       s.plotArea ? F.info('Участок', `${(s.plotArea / 1e6).toFixed(2)} сот.`) : null,
       F.btns([['Все площади →', () => UI.showTab('summary')]])));
     body.append(UI.notesList());
@@ -726,6 +728,39 @@ const UI = {
       onclick: () => { if (set.has(k)) set.delete(k); else set.add(k); onChange(['front', 'left', 'right', 'back'].filter(x => set.has(x))); },
     }, PORCH_SIDES[k].name))));
   },
+  /** Изменить проём постройки: правим копию списка (по умолчанию у гаража — ворота, у сарая — дверь) */
+  bldOpEdit(it, i, fn) {
+    const ops = bldOps(it).map(o => ({ ...o }));
+    fn(ops, ops[i]); it.ops = ops;
+    if (App.subSel && App.subSel.id === it.id && App.subSel.idx >= ops.length) App.subSel = null;
+    Model.commit();
+  },
+  /** Строка редактора проёма постройки; pick — кнопка «Выделить на плане» */
+  bldOpRow(it, i, pick) {
+    const o = bldOps(it)[i], T = OPENING_TYPES[o.type] || OPENING_TYPES.door, win = T.cat === 'window';
+    const edit = (fn) => UI.bldOpEdit(it, i, fn);
+    const del = () => { if (App.subSel && App.subSel.id === it.id) App.subSel = null; edit((ops) => { ops.splice(i, 1); }); App.selChanged(); };
+    const sel = App.subSel && App.subSel.id === it.id && App.subSel.idx === i;
+    return U.el('div', { class: 'bld-op' + (sel ? ' on' : '') },
+      F.select('', o.type, Object.entries(OPENING_TYPES).map(([k, v]) => [k, v.name]), (v) => edit((ops, x) => { const N = OPENING_TYPES[v]; x.type = v; x.w = N.w; x.h = N.h; x.sill = N.cat === 'window' ? N.sill : 0; })),
+      F.select('Сторона', o.side, Object.entries(BLD_SIDES), (v) => edit((ops, x) => { x.side = v; x.pos = 0; })),
+      F.num('Смещение от центра', o.pos || 0, (v) => edit((ops, x) => { x.pos = v; })),
+      F.num('Ширина', o.w, (v) => edit((ops, x) => { x.w = U.clamp(v, 30, 1000); }), { min: 30 }),
+      F.num('Высота', o.h || T.h, (v) => edit((ops, x) => { x.h = U.clamp(v, 30, 600); }), { min: 30 }),
+      win ? F.num('Подоконник', o.sill ?? T.sill, (v) => edit((ops, x) => { x.sill = U.clamp(v, 0, 300); }), { min: 0 }) : null,
+      F.btns([pick ? ['Выделить', () => { App.subSel = { id: it.id, idx: i }; UI.refresh(); App.redraw(); }] : null,
+        !win && o.type !== 'gate' && o.type !== 'arch' ? ['Петли ⇄', () => edit((ops, x) => { x.hinge = x.hinge ? 0 : 1; })] : null,
+        ['Удалить', del, 'danger']]));
+  },
+  /** Выделен проём в стене гаража / сарая */
+  propsBldOp(body, it, i) {
+    const o = bldOps(it)[i];
+    if (!o) return UI.propsItem(body, it);
+    UI.head(body, (OPENING_TYPES[o.type] || OPENING_TYPES.door).name, `в постройке «${it.label || catItem(it.key).name}»`);
+    body.append(F.section('Проём', UI.bldOpRow(it, i, false),
+      F.note('Тяните проём мышью вдоль стены или на соседнюю стену. Синие цифры — расстояния до угла и соседних проёмов: кликните, чтобы задать точно. Del — удалить.'),
+      F.btns([['← Вся постройка', () => { App.subSel = null; UI.refresh(); App.redraw(); }]])));
+  },
   propsItem(body, it) {
     const def = catItem(it.key);
     UI.head(body, it.label || def.name, CATALOG.find(c => c.id === def.cat)?.name);
@@ -758,19 +793,8 @@ const UI = {
         F.num('Толщина стен', sh.t, (v) => { it.wallT = U.clamp(v, 3, 60); Model.commit(); }, { min: 3, max: 60, field: 'wallT' }),
         F.info('Внутри', `${U.fmtLen(sh.inner.x1 - sh.inner.x0)} × ${U.fmtLen(sh.inner.y1 - sh.inner.y0)}`),
         F.note('Внутри постройки видно всё, что в ней стоит: погреб, смотровую яму, машину, верстак. Крыша рисуется в слое «Крыша» — выключите его (на плане или в 3D), чтобы посмотреть сверху. В 3D пол вырезается под открытую яму.')));
-      // проёмы: правим копию списка (по умолчанию у гаража — ворота, у сарая — дверь)
-      const edit = (i, fn) => { const ops = bldOps(it).map(o => ({ ...o })); fn(ops, ops[i]); it.ops = ops; Model.commit(); };
-      const rows = bldOps(it).map((o, i) => {
-        const T = OPENING_TYPES[o.type] || OPENING_TYPES.door, win = T.cat === 'window';
-        return U.el('div', { class: 'bld-op' },
-          F.select('', o.type, Object.entries(OPENING_TYPES).map(([k, v]) => [k, v.name]), (v) => edit(i, (ops, x) => { const N = OPENING_TYPES[v]; x.type = v; x.w = N.w; x.h = N.h; x.sill = N.cat === 'window' ? N.sill : 0; })),
-          F.select('Сторона', o.side, Object.entries(BLD_SIDES), (v) => edit(i, (ops, x) => { x.side = v; x.pos = 0; })),
-          F.num('Смещение от центра', o.pos || 0, (v) => edit(i, (ops, x) => { x.pos = v; })),
-          F.num('Ширина', o.w, (v) => edit(i, (ops, x) => { x.w = U.clamp(v, 30, 1000); }), { min: 30 }),
-          F.num('Высота', o.h || T.h, (v) => edit(i, (ops, x) => { x.h = U.clamp(v, 30, 600); }), { min: 30 }),
-          win ? F.num('Подоконник', o.sill ?? T.sill, (v) => edit(i, (ops, x) => { x.sill = U.clamp(v, 0, 300); }), { min: 0 }) : null,
-          F.btns([!win && o.type !== 'gate' && o.type !== 'arch' ? ['Петли ⇄', () => edit(i, (ops, x) => { x.hinge = x.hinge ? 0 : 1; })] : null, ['Удалить', () => edit(i, (ops) => { ops.splice(i, 1); }), 'danger']]));
-      });
+      const edit = (i, fn) => UI.bldOpEdit(it, i, fn);
+      const rows = bldOps(it).map((o, i) => UI.bldOpRow(it, i, true));
       body.append(F.section('Ворота, двери и окна',
         ...rows,
         rows.length ? null : F.info('Проёмов нет', ''),
@@ -1359,7 +1383,11 @@ const UI = {
         F.info('Застроено (дом + постройки)', `${U.fmtArea(s.built)} · ${(s.built / s.plotArea * 100).toFixed(1)}%`),
         F.info('Свободно', U.fmtArea(Math.max(0, s.free))));
       for (const z of Object.values(s.zones)) sec.append(F.info(`${z.name}${z.count > 1 ? ' (' + z.count + ')' : ''}`, U.fmtArea(z.area)));
-      for (const it of s.outb) sec.append(F.info(it.label || catItem(it.key).name, `${U.fmtArea(it.w * it.d)} · ${(it.w / 100).toFixed(1)}×${(it.d / 100).toFixed(1)} м`));
+      for (const it of s.outb) {
+        const inner = BLD_HOLLOW.has(catItem(it.key).shape) ? `внутри ${U.fmtArea(bldInnerArea(it))} · ` : '';
+        sec.append(F.info(it.label || catItem(it.key).name, `${inner}${U.fmtArea(it.w * it.d)} по наружному · ${(it.w / 100).toFixed(1)}×${(it.d / 100).toFixed(1)} м`));
+      }
+      if (s.outbInner) sec.append(F.info('Хозпостройки: площадь внутри', U.fmtArea(s.outbInner)));
       body.append(sec);
     }
     // сети

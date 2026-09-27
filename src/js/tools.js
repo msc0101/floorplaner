@@ -258,6 +258,7 @@ const Tools = {
   /* ------------------------------- ручки --------------------------------- */
   handles() {
     if (Tools.cur !== 'select' || (Tools.st.mode && Tools.st.mode !== 'handle')) return Tools.cur === 'select' && Tools.st.mode === 'handle' ? Tools._handlesCache || [] : [];
+    if (App.subSel) return [];                          // выделен проём постройки — ручек самой постройки нет
     const ids = [...App.sel].filter(id => Model.get(id));
     const hs = [];
     const px = 1 / View.scale;
@@ -378,13 +379,23 @@ const Tools = {
   /* ------------------------------ выделение ------------------------------ */
   selDown(e, sp, p) {
     // цифра подсказки расстояния: задать расстояние точно
-    const h = Tools.handleAt(sp);
+    const h0 = Tools.handleAt(sp);
+    // проём в стене гаража / сарая важнее ручки размера в середине стороны (ручка поворота — нет)
+    const bo = !(e.shiftKey || e.ctrlKey || e.metaKey) && (!h0 || h0.kind !== 'rotate') && Tools.bldOpAt(p);
+    const h = bo ? null : h0;
     const gh = !h && !e.shiftKey && Render.guideAt(sp);
     if (gh) { Tools.guideEdit(gh.act); return; }
     if (h) { Tools.beginHandle(h, p, e); return; }
     // компас: вращение стрелки севера
     const cr = Render.compassRect();
     if (Math.hypot(sp.x - cr.x, sp.y - cr.y) <= cr.r) { Tools.st = { mode: 'north', start: sp }; return; }
+    // проём в стене гаража / сарая: выделить и тащить вдоль стены (или на соседнюю стену)
+    if (bo) {
+      App.sel.clear(); App.sel.add(bo.it.id); App.subSel = { id: bo.it.id, idx: bo.idx }; App.selChanged();
+      Tools.st = bo.it.locked ? {} : { mode: 'bldop', id: bo.it.id, idx: bo.idx, start: p, moved: false, orig: Tools.saveObjs([bo.it.id]) };
+      return;
+    }
+    App.subSel = null;
     const id = Tools.hitTest(p);
     const room = Tools.isRoom(id);
     // подпись помещения можно перетащить (дальше она остаётся на новом месте)
@@ -422,7 +433,7 @@ const Tools = {
       const hh = Tools.handleAt(sp);
       if (App.hover !== id) { App.hover = id; }
       UI.hoverTip(hh || (e.buttons & 1) ? null : id, sp);
-      App.canvas.style.cursor = hh || Render.guideAt(sp) ? (hh && hh.kind === 'rotate' ? 'grab' : 'pointer') : (id && !Tools.isRoom(id)) || (Tools.isRoom(id) && Tools.roomLabelAt(sp)) ? 'move' : 'default';
+      App.canvas.style.cursor = !hh && Tools.bldOpAt(p) ? 'move' : hh || Render.guideAt(sp) ? (hh && hh.kind === 'rotate' ? 'grab' : 'pointer') : (id && !Tools.isRoom(id)) || (Tools.isRoom(id) && Tools.roomLabelAt(sp)) ? 'move' : 'default';
       return;
     }
     if (st.mode === 'north') {
@@ -434,6 +445,22 @@ const Tools = {
     if (st.mode === 'box') { st.cur = p; st.moved = st.moved || G.dist(View.toScreen(st.start), sp) > 3; return; }
     if (st.mode === 'toggle') return;
     if (st.mode === 'handle') return Tools.dragHandle(e, p);
+    if (st.mode === 'bldop') {
+      if (!st.moved && G.dist(View.toScreen(st.start), sp) < 3) return;
+      st.moved = true;
+      const it = Model.get(st.id);
+      if (!it) return;
+      if (!Array.isArray(it.ops)) it.ops = bldOps(it).map(o => ({ ...o }));
+      const o = it.ops[st.idx], bh = Tools.bldWallAt(p, 80 / View.scale);
+      if (o && bh && bh.it === it) {
+        let pos = bh.s;
+        if (App.doc.settings.snap && !e.altKey) pos = U.round(pos, 5);
+        const ow = Math.min(o.w, bh.F.hi - bh.F.lo);
+        o.side = bh.side; o.pos = U.clamp(pos, bh.F.lo + ow / 2, bh.F.hi - ow / 2);
+      }
+      App.changedLive();
+      return;
+    }
     if (st.mode === 'opening') {
       if (!st.moved && G.dist(View.toScreen(st.start), sp) < 3) return;
       st.moved = true;
@@ -513,7 +540,7 @@ const Tools = {
       return;
     }
     if (st.mode === 'toggle') { for (const m of st.members || [st.id]) App.sel.delete(m); App.selChanged(); return; }
-    if (st.mode === 'handle' || st.mode === 'opening' || st.mode === 'move') {
+    if (st.mode === 'handle' || st.mode === 'opening' || st.mode === 'move' || st.mode === 'bldop') {
       // подпись помещения перетащили руками — дальше она остаётся там, где её оставили
       if (st.moved && st.mode === 'move') Tools.fixTags(st.ids);
       if (st.tempTag) {
@@ -737,6 +764,20 @@ const Tools = {
       },
     };
   },
+  /** Проём постройки под точкой: { it, idx } */
+  bldOpAt(p) {
+    const tol = Math.max(Tools.tol(), 4);
+    let best = null;
+    for (const it of App.V.items) {
+      if (!BLD_HOLLOW.has(catItem(it.key).shape) || App.doc.settings.layers[catItem(it.key).layer] === false) continue;
+      const q = bldLocal(it, p);
+      for (const o of bldShell(it, it.w, it.d).ops) {
+        const r = o.rect;
+        if (q.x >= r.x0 - tol && q.x <= r.x1 + tol && q.y >= r.y0 - tol && q.y <= r.y1 + tol) { const a = (r.x1 - r.x0) * (r.y1 - r.y0); if (!best || a < best.a) best = { it, idx: o.idx, a }; }
+      }
+    }
+    return best;
+  },
   /** Ближайшая к точке стена постройки «как дом»: {it, side, F, s (вдоль стены), dist} */
   bldWallAt(p, tol) {
     let best = null;
@@ -941,9 +982,13 @@ const Tools = {
     const o = Model.get(act.id);
     if (!o) return;
     const cur = Math.round(act.len * 10) / 10;
-    UI.promptNumber('Расстояние', act.kind === 'opening' ? 'От проёма до угла / соседнего проёма, см (или «1.2 м»):' : 'От объекта до стены, см (или «1.2 м»):', String(cur), (v) => {
+    UI.promptNumber('Расстояние', act.kind !== 'item' ? 'От проёма до угла / соседнего проёма, см (или «1.2 м»):' : 'От объекта до стены, см (или «1.2 м»):', String(cur), (v) => {
       if (!(v >= 0)) { UI.toast('Расстояние не может быть отрицательным', 'err'); return; }
-      if (act.kind === 'opening') {
+      if (act.kind === 'bldop') {
+        if (!Array.isArray(o.ops)) o.ops = bldOps(o).map(x => ({ ...x }));
+        const x = o.ops[act.idx], F = bldSide(x.side, o.w, o.d, bldWallT(o)), ow = Math.min(x.w, F.hi - F.lo);
+        x.pos = U.clamp((x.pos || 0) + act.sign * (v - act.len), F.lo + ow / 2, F.hi - ow / 2);
+      } else if (act.kind === 'opening') {
         const w = Model.get(o.wall), L = w ? Model.wallLen(w) : 0;
         o.pos = U.clamp(o.pos + act.sign * (v - act.len), o.w / 2, Math.max(o.w / 2, L - o.w / 2));
       } else {

@@ -254,7 +254,7 @@ const IO = {
       const zr = [];
       if (s.plotArea) zr.push(['Участок', `${(s.plotArea / 1e4).toFixed(1)} м² (${(s.plotArea / 1e6).toFixed(2)} сот.)`], ['Застроено', `${(s.built / 1e4).toFixed(1)} м² (${(s.built / s.plotArea * 100).toFixed(1)}%)`]);
       for (const z of Object.values(s.zones)) zr.push([z.name, (z.area / 1e4).toFixed(1) + ' м²']);
-      for (const it of s.outb) zr.push([it.label || catItem(it.key).name, `${(it.w * it.d / 1e4).toFixed(1)} м² (${(it.w / 100).toFixed(1)}×${(it.d / 100).toFixed(1)} м)`]);
+      for (const it of s.outb) zr.push([it.label || catItem(it.key).name, `${BLD_HOLLOW.has(catItem(it.key).shape) ? `внутри ${(bldInnerArea(it) / 1e4).toFixed(1)} м², ` : ''}${(it.w * it.d / 1e4).toFixed(1)} м² (${(it.w / 100).toFixed(1)}×${(it.d / 100).toFixed(1)} м)`]);
       if (zr.length) cols.append(table('Участок и постройки', ['Наименование', 'Площадь'], zr));
     }
     if (o.spec) {

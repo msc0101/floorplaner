@@ -591,6 +591,8 @@ function bldOps(it) {
   const T = OPENING_TYPES[gate ? 'gate' : 'door'];
   return [{ type: gate ? 'gate' : 'door', side: 'front', pos: 0, w, h: T.h, sill: 0, hinge: 0 }];
 }
+/** Площадь постройки внутри (по внутренним граням стен), см² */
+function bldInnerArea(it) { const t = bldWallT(it); return Math.max(0, it.w - 2 * t) * Math.max(0, it.d - 2 * t); }
 /** Локальные координаты постройки ↔ план (с учётом зеркального отражения, как на плане) */
 function bldWorld(it, q) { return G.toWorld({ x: it.flip ? -q.x : q.x, y: q.y }, it.x, it.y, it.rot || 0); }
 function bldLocal(it, p) { const q = G.toLocal(p, it.x, it.y, it.rot || 0); return { x: it.flip ? -q.x : q.x, y: q.y }; }
@@ -600,11 +602,11 @@ function bldShell(it, w, d) {
   const t = bldWallT(it);
   const R = (x0, y0, x1, y1) => ({ x0, y0, x1, y1 });
   const ops = [];
-  for (const o of bldOps(it)) {
+  for (const [idx, o] of bldOps(it).entries()) {
     const T = OPENING_TYPES[o.type] || OPENING_TYPES.door, S = BLD_SIDES[o.side] ? o.side : 'front', F = bldSide(S, w, d, t);
     const ow = Math.min(+o.w || T.w, F.hi - F.lo), c = U.clamp(+o.pos || 0, F.lo + ow / 2, F.hi - ow / 2);
     if (!(ow > 5)) continue;
-    ops.push({ ...o, type: OPENING_TYPES[o.type] ? o.type : 'door', side: S, cat: T.cat, w: ow, h: +o.h || T.h, sill: T.cat === 'door' ? 0 : (o.sill ?? T.sill), s0: c - ow / 2, s1: c + ow / 2, F, rect: F.rect(c - ow / 2, c + ow / 2) });
+    ops.push({ ...o, idx, type: OPENING_TYPES[o.type] ? o.type : 'door', side: S, cat: T.cat, w: ow, h: +o.h || T.h, sill: T.cat === 'door' ? 0 : (o.sill ?? T.sill), s0: c - ow / 2, s1: c + ow / 2, F, rect: F.rect(c - ow / 2, c + ow / 2) });
   }
   const walls = [];
   for (const side of Object.keys(BLD_SIDES)) {
@@ -1135,7 +1137,10 @@ const Painters = (() => {
     const across = Math.abs(v.x) > Math.abs(v.y) ? w : d, along = Math.abs(v.x) > Math.abs(v.y) ? d : w;
     const sz = Math.min(along / Math.max(6, name.length) * 1.4, across * 0.18, 60);
     text(P, name, -v.x * sz * 0.35, -v.y * sz * 0.35, sz, { bold: true });
-    text(P, (w / 100).toFixed(1).replace(/\.0$/, '') + '×' + (d / 100).toFixed(1).replace(/\.0$/, '') + ' м', v.x * sz * 0.8, v.y * sz * 0.8, sz * 0.75, { color: P.C.muted });
+    const dims = (w / 100).toFixed(1).replace(/\.0$/, '') + '×' + (d / 100).toFixed(1).replace(/\.0$/, '') + ' м';
+    // у гаража, сарая, бани — площадь внутри, как у помещений дома
+    const area = BLD_HOLLOW.has(P.def.shape) ? ' · ' + (bldInnerArea(P.it) / 1e4).toFixed(1) + ' м²' : '';
+    text(P, dims + area, v.x * sz * 0.8, v.y * sz * 0.8, sz * 0.75, { color: P.C.muted });
   };
   /** Линии крыши постройки на плане: конёк, рёбра вальм, стрелки ската, рёбра арки; контур свеса */
   const roofPlan = (P, w, d) => {

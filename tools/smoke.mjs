@@ -356,6 +356,22 @@ const net = await page.evaluate(() => {
 });
 console.log('networks', JSON.stringify(net));
 if (net.n !== 11 || net.poles !== 2 || !net.item || !net.wall || net.zRidge !== Math.round(440 + 510 * Math.tan(38 * Math.PI / 180)) || net.zOut !== null || !net.belowRoof) errors.push('Сети / ЛЭП / стены под крышей: ' + JSON.stringify(net));
+// проём постройки: выделяется отдельно, удаляется Del; площадь постройки внутри — в сводке
+const bop = await page.evaluate(() => {
+  const f = App.doc.floors[0].id;
+  const g = Model.add('items', { key: 'garage1', x: 150000, y: 0, w: 400, d: 600, h: 300, rot: 0, floor: f });
+  Model.commit();
+  const t = bldWallT(g), hit = Tools.bldOpAt(bldWorld(g, { x: 0, y: g.d / 2 - t / 2 }));
+  const r = { hit: !!hit && hit.it === g && hit.idx === 0 };
+  App.sel.clear(); App.sel.add(g.id); App.subSel = { id: g.id, idx: 0 }; App.selChanged();
+  App.deleteSel();
+  r.ops = bldOps(Model.get(g.id)).length; r.kept = !!Model.get(g.id); r.sub = App.subSel;
+  r.inner = Math.round(bldInnerArea(g)); r.sum = Rooms.summary().outbInner >= r.inner;
+  Model.undo(); Model.undo();
+  return r;
+});
+console.log('bldop', JSON.stringify(bop));
+if (!bop.hit || bop.ops !== 0 || !bop.kept || bop.sub !== null || bop.inner !== 350 * 550 || !bop.sum) errors.push('Проём постройки / площадь: ' + JSON.stringify(bop));
 // заголовок вкладки — имя открытого файла
 const ttl = await page.evaluate(() => { const f0 = App.fileName; IO.setFile('Дача.json'); const t = document.title; IO.setFile(f0); return t; });
 console.log('title', ttl);

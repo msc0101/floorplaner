@@ -89,7 +89,11 @@ const App = {
     App.redraw();
   },
   /** Выбран объект — показываем его свойства; сняли выделение — остаёмся на текущей вкладке */
-  selChanged() { App.hover = null; if (App.sel.size) UI.showTab('props'); else UI.refresh(); App.redraw(); },
+  /** Выделенный проём в стене гаража/сарая: { id постройки, idx проёма } — сама постройка при этом в App.sel */
+  subSel: null,
+  selChanged() {
+    if (App.subSel && !(App.sel.size === 1 && App.sel.has(App.subSel.id) && bldOps(Model.get(App.subSel.id) || {}).length > App.subSel.idx)) App.subSel = null;
+    App.hover = null; if (App.sel.size) UI.showTab('props'); else UI.refresh(); App.redraw(); },
   saveSoon: U.debounce(() => IO.autosave(), 700),
 
   undo() { if (Tools.st && Object.keys(Tools.st).length) Tools.cancel(true); if (Model.undo()) UI.toast('Отменено'); },
@@ -98,6 +102,11 @@ const App = {
   /* ------------------------------ команды -------------------------------- */
   selIds() { return [...App.sel].filter(id => Model.get(id)); },
   deleteSel() {
+    // выделен проём постройки — удаляем только его
+    if (App.subSel) {
+      const it = Model.get(App.subSel.id);
+      if (it) { it.ops = bldOps(it).filter((_, i) => i !== App.subSel.idx).map(o => ({ ...o })); App.subSel = null; Model.commit(); App.selChanged(); return; }
+    }
     const ids = App.selIds();
     const rooms = [...App.sel].filter(id => Tools.isRoom(id));
     // удаление «помещения» — удаляем только метку

@@ -997,7 +997,8 @@ const Render = {
     // направляющие расстояний до стен
     if (App.sel.size === 1 && App.doc.settings.showGuides !== false) {
       const id = [...App.sel][0];
-      if (Model.coll(id) === 'items') Render.itemGuides(env, Model.get(id), true);
+      if (App.subSel && App.subSel.id === id) Render.bldOpSel(env, Model.get(id), App.subSel.idx);
+      else if (Model.coll(id) === 'items') Render.itemGuides(env, Model.get(id), true);
       if (Model.coll(id) === 'openings') Render.openingGuides(env, Model.get(id), true);
     }
     // ручки
@@ -1072,6 +1073,25 @@ const Render = {
       const end = h ? h.p : G.add(pt, G.mul(dir, rem));
       const d = h ? h.t : rem;
       if (d > 0.5) Render.guide(env, pt, end, d, G.mul(g.n, g.th / 2 + 14 * env.px), interactive ? { kind: 'opening', id: op.id, sign, len: d } : null);
+    }
+  },
+  /** Выделенный проём постройки: рамка и расстояния до углов / соседних проёмов вдоль стены (по цифре — точно) */
+  bldOpSel(env, it, idx) {
+    const { ctx, px, C } = env;
+    const s = bldShell(it, it.w, it.d), o = s.ops.find(x => x.idx === idx);
+    if (!o) return;
+    const r = o.rect, W = (x, y) => bldWorld(it, { x, y });
+    Render.polyPath(ctx, [W(r.x0, r.y0), W(r.x1, r.y0), W(r.x1, r.y1), W(r.x0, r.y1)]);
+    ctx.strokeStyle = C.accent; ctx.lineWidth = 2.2 * px; ctx.setLineDash([]); ctx.stroke();
+    const F = o.F, same = s.ops.filter(x => x.side === o.side && x !== o);
+    const left = Math.max(F.lo, ...same.filter(x => x.s1 <= o.s0 + 0.01).map(x => x.s1));
+    const right = Math.min(F.hi, ...same.filter(x => x.s0 >= o.s1 - 0.01).map(x => x.s0));
+    const off = G.mul(F.n, -(s.t / 2 + 14 * px));                       // снаружи стены
+    const at = (sv) => bldWorld(it, G.add(F.c, G.mul(F.u, sv)));
+    const offW = G.sub(W(off.x, off.y), W(0, 0));
+    for (const [a, b, sign] of [[o.s0, left, 1], [o.s1, right, -1]]) {
+      const len = Math.abs(a - b);
+      if (len > 0.5) Render.guide(env, at(a), at(b), len, offW, { kind: 'bldop', id: it.id, idx, sign, len });
     }
   },
   _guideHits: [],
