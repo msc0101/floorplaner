@@ -209,7 +209,9 @@ const CATALOG = [
     { key: 'tallUnit', name: 'Пенал / шкаф-колонна', shape: 'tall', w: 60, d: 60, h: 215, label: 'П' },
     { key: 'ovenTower', name: 'Колонна под духовку и СВЧ', shape: 'tall', w: 60, d: 60, h: 215, label: 'Д' },
     { key: 'cornerUnit', name: 'Угловой нижний модуль', shape: 'kitchenL', w: 100, d: 100, h: 90, flip: true },
-    { key: 'barCounter', name: 'Барная стойка', shape: 'bar', w: 150, d: 50, h: 110 },
+    { key: 'barCounter', name: 'Барная стойка', kw: 'бар стойка стулья', shape: 'bar', w: 150, d: 50, h: 110 },
+    { key: 'prepTable', name: 'Стол вспомогательный кухонный (отдельно стоящий)', kw: 'стол рабочий разделочный остров тележка', shape: 'prepTable', w: 120, d: 60, h: 90 },
+    { key: 'prepTableS', name: 'Стол вспомогательный малый', kw: 'стол рабочий разделочный остров', shape: 'prepTable', w: 80, d: 50, h: 90 },
     { key: 'hood', name: 'Вытяжка', shape: 'hood', w: 60, d: 50, h: 60 },
     { key: 'counter60', name: 'Нижний модуль 60 см', shape: 'counter', w: 60, d: 60, h: 90 },
     { key: 'counter40', name: 'Нижний модуль 40 см', shape: 'counter', w: 40, d: 60, h: 90 },
@@ -959,7 +961,19 @@ const Painters = (() => {
   };
   for (const k of ['kitchenU', 'kitchenII', 'kitchenIsland', 'kitchenBar', 'kitchenPen', 'kitchenTall']) S[k] = kitchenRuns;
   S.tall = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); line(P, [-w / 2, -d / 2, w / 2, d / 2]); line(P, [w / 2, -d / 2, -w / 2, d / 2]); text(P, P.it.label || P.def.label || 'П', 0, 0, Math.min(w, d) * 0.35, { bold: true }); };
-  S.bar = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 3); thin(P); P.ctx.setLineDash([4 * P.px, 3 * P.px]); line(P, [-w / 2 + 5, 0, w / 2 - 5, 0]); P.ctx.setLineDash([]); };
+  // барная стойка: столешница со свесом к гостям (+d/2), пунктир — тумба под ней, линия — подставка для ног
+  S.bar = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d, 3); thin(P);
+    P.ctx.setLineDash([4 * P.px, 3 * P.px]); box(P, -w / 2 + 4, -d / 2, w - 8, d - 22, 0, false); P.ctx.setLineDash([]);
+    line(P, [-w / 2 + 8, d / 2 - 8, w / 2 - 8, d / 2 - 8]);
+  };
+  // вспомогательный стол: столешница, ножки по углам, полка внизу (пунктир), ящик спереди
+  S.prepTable = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d, 2); thin(P);
+    for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) box(P, x * (w / 2 - 6) - 2.5, y * (d / 2 - 6) - 2.5, 5, 5, 0);
+    P.ctx.setLineDash([4 * P.px, 3 * P.px]); box(P, -w / 2 + 6, -d / 2 + 6, w - 12, d - 12, 0, false); P.ctx.setLineDash([]);
+    line(P, [-w * 0.3, d / 2 - 3, w * 0.3, d / 2 - 3]);
+  };
   S.hood = (P, w, d) => {
     P.ctx.setLineDash([6 * P.px, 4 * P.px]); box(P, -w / 2, -d / 2, w, d, 0, false); P.ctx.setLineDash([]);
     thin(P); box(P, -w / 4, -d / 2, w / 2, d * 0.45, 0, false); text(P, 'В', 0, d * 0.15, Math.min(w, d) * 0.3, { bold: true });

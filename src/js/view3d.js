@@ -976,6 +976,42 @@ const View3D = {
       cy(0, 0, 3, e, e + (H || 75) - 5, chrome, 8); cy(0, 0, 18, e, e + 2, chrome, 14); cy(0, 0, W, e + (H || 75) - 5, e + (H || 75), C('#5a4636'), 16); cy(0, 0, W * 0.8, e + 25, e + 27, chrome, 14);
       return true;
     }
+    // --- барная стойка: тумба с фасадами со стороны кухни (−d/2), облицовка к гостям, столешница со свесом (+d/2),
+    //     хромированная подставка для ног на кронштейнах ---
+    if (sh === 'bar') {
+      const top = e + (H || 110), wood = it.color ? View3D.hex(it.color) : [0.55, 0.38, 0.24], fac = [0.94, 0.94, 0.93], dk = [0.28, 0.29, 0.31];
+      const over = Math.min(28, d * 0.45), by1 = D - over;                                            // тумба — до свеса
+      bx(-W + 2, -D + 5, W - 2, by1 - 3, e, e + 10, dk);                                              // цоколь
+      bx(-W, -D, W, by1, e + 10, top - 5, fac);                                                        // корпус
+      bx(-W, by1, W, by1 + 1.5, e + 10, top - 5, wood.map(x => x * 0.9));                              // облицовка к гостям
+      for (let x = -W + 15; x < W - 5; x += 15) bx(x - 0.4, by1 + 1.5, x + 0.4, by1 + 1.9, e + 12, top - 8, wood.map(v => v * 0.75));   // рейки
+      const n = Math.max(1, Math.round(w / 50)), dw = w / n;
+      for (let i = 0; i < n; i++) {                                                                    // дверцы со стороны кухни
+        const x0 = -W + i * dw + 0.3, x1 = -W + (i + 1) * dw - 0.3;
+        bx(x0, -D - 1.5, x1, -D, e + 11, top - 7, fac.map(v => v * 1.02));
+        const hx = i % 2 ? x0 + 4 : x1 - 4;
+        bx(hx - 0.8, -D - 4, hx + 0.8, -D - 1.5, top - 30, top - 12, chrome);
+      }
+      bx(-W - 3, -D - 2, W + 3, D, top - 5, top, wood);                                               // столешница 5 см со свесом
+      const fz = e + 24, fy = by1 + 14;
+      bx(-W + 6, fy - 1.5, W - 6, fy + 1.5, fz - 1.5, fz + 1.5, chrome);                              // подставка для ног
+      for (const x of w > 120 ? [-W + 12, 0, W - 12] : [-W + 12, W - 12]) bx(x - 1, by1 + 1.5, x + 1, fy, fz - 1, fz + 1, chrome);   // кронштейны
+      return true;
+    }
+    // --- вспомогательный кухонный стол: столешница, ящик с ручкой, ножки, нижняя полка, рейлинг для полотенец ---
+    if (sh === 'prepTable') {
+      const top = e + (H || 90), wood = it.color ? View3D.hex(it.color) : [0.72, 0.55, 0.36], frame = [0.93, 0.93, 0.92];
+      bx(-W, -D, W, D, top - 4, top, wood);                                                            // столешница
+      bx(-W + 3, -D + 3, W - 3, D - 3, top - 16, top - 4, frame);                                      // царга
+      bx(-W * 0.45, D - 3, W * 0.45, D - 2.6, top - 15, top - 5, frame.map(v => v * 1.03));           // ящик
+      bx(-10, D - 2.6, 10, D + 0.4, top - 11, top - 9.5, chrome);                                      // ручка ящика
+      for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) bx(sx * (W - 6) - 2.5, sy * (D - 6) - 2.5, sx * (W - 6) + 2.5, sy * (D - 6) + 2.5, e, top - 16, frame);
+      bx(-W + 4, -D + 4, W - 4, D - 4, e + 16, e + 18.5, wood.map(v => v * 0.92));                     // полка
+      for (let x = -W + 12, k = 0; x < W - 10; x += 14, k++) bx(x, -D + 8, x + 11, D - 10, e + 18.5, e + 22 + (k % 3) * 2, [0.85, 0.83, 0.78]);   // посуда на полке
+      for (const sx of [-1, 1]) bx(sx * (W + 3) - 1, -D + 12, sx * (W + 3) + 1, D - 12, top - 12, top - 10, chrome);   // рейлинги по бокам
+      for (const sx of [-1, 1]) for (const sy of [-1, 1]) bx(sx * W, sy * (D - 12) - 0.8, sx * (W + 3), sy * (D - 12) + 0.8, top - 12, top - 10, chrome);
+      return true;
+    }
     // --- пенал / колонна под технику ---
     if (sh === 'tall') { View3D.tallCab(bx, -W, -D, W, D, e, H || 215, it.key === 'ovenTower' ? 'oven' : 'pantry'); return true; }
     // --- кухонная вытяжка: купол над плитой, фильтры снизу, кнопки, короб до потолка (задняя сторона −d/2 — у стены) ---
