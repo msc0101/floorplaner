@@ -488,16 +488,38 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
 .bld-op.on { background: var(--accent-soft, rgba(47,111,237,.1)); border-radius: 6px; padding: 6px; }
 .check-item em { grid-column: 2; }
 /* анализ проекта */
-.an-dlg { width: min(980px, 96vw); max-height: 92vh; }
-.an-body { overflow: auto; max-height: 68vh; outline: none; }
+.modal-card.an-dlg { width: min(1800px, 97vw); max-height: 95vh; }
+.an-body { overflow: auto; max-height: calc(95vh - 84px); outline: none; }
+.an-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.an-head h3 { margin: 0; white-space: nowrap; }
+.an-head #anSum { flex: 1; min-width: 240px; }
+.an-head #anSum .check-sum { margin: 0; }
+.an-head .modal-actions { margin: 0; }
+.an-cols { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 0 24px; align-items: start; }
+@media (max-width: 1000px) { .an-cols { grid-template-columns: 1fr; } }
+.an-right .an-h { margin-top: 10px; }
 .an-issues h4, .an-card h4 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .an-issues .check-item { grid-template-columns: 1fr; }
 .an-issues .check-item em { grid-column: 1; }
 .check-item.an-warn { border-left-color: #d98a00; }
 .check-item.an-info { border-left-color: var(--border-2); }
-.an-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 0 16px; }
-.an-card .tbl td.num { text-align: right; white-space: nowrap; }
+.an-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 0 18px; }
+.an-card { min-width: 0; }
+.an-card .tbl { width: 100%; table-layout: fixed; }
+.an-card .tbl td { overflow-wrap: anywhere; vertical-align: top; }
+.an-card .tbl td, .an-card .tbl th { padding: 3px 6px; font-size: 12.5px; line-height: 1.35; }
+.an-card h4 { margin-top: 8px; }
+.an-stats > .an-wide { grid-column: 1 / -1; }
+.an-issues .check-item { display: block; padding: 4px 8px; font-size: 12.5px; line-height: 1.4; margin-top: 3px; }
+.an-issues .check-item em { display: inline; margin-left: 6px; font-size: 11px; }
+.an-issues h4 { margin-top: 8px; }
+.an-card .tbl td:first-child { width: 46%; color: var(--muted); }
+.an-card .tbl td.num { text-align: right; }
+.an-card .tbl.an-rooms { table-layout: auto; }
+.an-card .tbl.an-rooms td:first-child { width: auto; color: inherit; }
+.an-card .tbl.an-rooms td.num { white-space: nowrap; }
 .an-card .tbl td.bad { color: var(--danger); font-weight: 600; }
 .an-print .check-item { border: 1px solid #ccc; border-left-width: 3px; margin-top: 3px; padding: 3px 6px; font-size: 11px; }
 .an-print .an-stats { grid-template-columns: 1fr 1fr; }
+.an-print .an-cols { grid-template-columns: 1fr; }
 .an-h { font-size: 15px; margin: 18px 0 0; }

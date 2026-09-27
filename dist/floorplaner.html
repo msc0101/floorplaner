@@ -543,18 +543,40 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
 .bld-op.on { background: var(--accent-soft, rgba(47,111,237,.1)); border-radius: 6px; padding: 6px; }
 .check-item em { grid-column: 2; }
 /* анализ проекта */
-.an-dlg { width: min(980px, 96vw); max-height: 92vh; }
-.an-body { overflow: auto; max-height: 68vh; outline: none; }
+.modal-card.an-dlg { width: min(1800px, 97vw); max-height: 95vh; }
+.an-body { overflow: auto; max-height: calc(95vh - 84px); outline: none; }
+.an-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.an-head h3 { margin: 0; white-space: nowrap; }
+.an-head #anSum { flex: 1; min-width: 240px; }
+.an-head #anSum .check-sum { margin: 0; }
+.an-head .modal-actions { margin: 0; }
+.an-cols { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 0 24px; align-items: start; }
+@media (max-width: 1000px) { .an-cols { grid-template-columns: 1fr; } }
+.an-right .an-h { margin-top: 10px; }
 .an-issues h4, .an-card h4 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .an-issues .check-item { grid-template-columns: 1fr; }
 .an-issues .check-item em { grid-column: 1; }
 .check-item.an-warn { border-left-color: #d98a00; }
 .check-item.an-info { border-left-color: var(--border-2); }
-.an-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 0 16px; }
-.an-card .tbl td.num { text-align: right; white-space: nowrap; }
+.an-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 0 18px; }
+.an-card { min-width: 0; }
+.an-card .tbl { width: 100%; table-layout: fixed; }
+.an-card .tbl td { overflow-wrap: anywhere; vertical-align: top; }
+.an-card .tbl td, .an-card .tbl th { padding: 3px 6px; font-size: 12.5px; line-height: 1.35; }
+.an-card h4 { margin-top: 8px; }
+.an-stats > .an-wide { grid-column: 1 / -1; }
+.an-issues .check-item { display: block; padding: 4px 8px; font-size: 12.5px; line-height: 1.4; margin-top: 3px; }
+.an-issues .check-item em { display: inline; margin-left: 6px; font-size: 11px; }
+.an-issues h4 { margin-top: 8px; }
+.an-card .tbl td:first-child { width: 46%; color: var(--muted); }
+.an-card .tbl td.num { text-align: right; }
+.an-card .tbl.an-rooms { table-layout: auto; }
+.an-card .tbl.an-rooms td:first-child { width: auto; color: inherit; }
+.an-card .tbl.an-rooms td.num { white-space: nowrap; }
 .an-card .tbl td.bad { color: var(--danger); font-weight: 600; }
 .an-print .check-item { border: 1px solid #ccc; border-left-width: 3px; margin-top: 3px; padding: 3px 6px; font-size: 11px; }
 .an-print .an-stats { grid-template-columns: 1fr 1fr; }
+.an-print .an-cols { grid-template-columns: 1fr; }
 .an-h { font-size: 15px; margin: 18px 0 0; }
 
 </style>
@@ -762,11 +784,14 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
 
 <dialog class="modal" id="dlgAnalysis">
   <div class="modal-card wide an-dlg">
-    <h3>Анализ проекта</h3>
-    <div class="an-body" id="anBody" tabindex="-1"></div>
-    <div class="modal-actions">
-      <button id="anCopy">Копировать текстом</button><button id="anPrint">Печать / PDF</button><button class="primary" id="anClose" autofocus>Закрыть</button>
+    <div class="an-head">
+      <h3>Анализ проекта</h3>
+      <div id="anSum"></div>
+      <div class="modal-actions">
+        <button id="anCopy">Копировать текстом</button><button id="anPrint">Печать / PDF</button><button class="primary" id="anClose" autofocus>Закрыть</button>
+      </div>
     </div>
+    <div class="an-body" id="anBody" tabindex="-1"></div>
   </div>
 </dialog>
 
@@ -11059,34 +11084,39 @@ const Analysis = {
     const R = Analysis.run(), box = $('anBody');
     box.textContent = '';
     const bad = R.issues.filter(i => i.sev === 'bad').length, warn = R.issues.filter(i => i.sev === 'warn').length, info = R.issues.filter(i => i.sev === 'info').length;
-    box.append(U.el('div', { class: 'check-sum ' + (bad ? 'bad' : 'ok') },
+    const sum = U.el('div', { class: 'check-sum ' + (bad ? 'bad' : 'ok') },
       bad ? `✗ Нарушений норм: ${bad}` : '✓ Нарушений норм не найдено',
-      U.el('span', {}, ` · замечаний ${warn} · по чертежу ${info}`)));
+      U.el('span', {}, ` · замечаний ${warn} · по чертежу ${info}`));
+    const head = $('anSum');
+    if (head) { head.textContent = ''; head.append(sum); } else box.append(sum);
+    // две колонки: слева статистика и помещения, справа — замечания
+    const left = U.el('div', { class: 'an-left' }), right = U.el('div', { class: 'an-right' });
+    box.append(U.el('div', { class: 'an-cols' }, left, right));
     // статистика
     const grid = U.el('div', { class: 'an-stats' });
     for (const s of R.stats) grid.append(U.el('div', { class: 'an-card' }, U.el('h4', {}, s.title), U.el('table', { class: 'tbl' }, s.rows.map(([k, v]) => U.el('tr', {}, U.el('td', {}, k), U.el('td', { class: 'num' }, v))))));
-    box.append(grid);
+    left.append(grid);
     if (R.rooms.length) {
       const multi = new Set(R.rooms.map(r => r.floor)).size > 1;
-      box.append(U.el('div', { class: 'an-card' }, U.el('h4', {}, 'Помещения'),
-        U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, 'Помещение'), U.el('th', {}, 'Площадь'), U.el('th', {}, 'Окон'), U.el('th', {}, 'Окна : пол')),
+      grid.append(U.el('div', { class: 'an-card an-wide' }, U.el('h4', {}, 'Помещения'),
+        U.el('table', { class: 'tbl an-rooms' }, U.el('tr', {}, U.el('th', {}, 'Помещение'), U.el('th', {}, 'Площадь'), U.el('th', {}, 'Окон'), U.el('th', {}, 'Окна : пол')),
           R.rooms.map(r => U.el('tr', {}, U.el('td', {}, (multi ? r.floor + ': ' : '') + r.name + (r.living ? ' (жилая)' : '')), U.el('td', { class: 'num' }, U.fmtArea(r.area)), U.el('td', { class: 'num' }, String(r.windows)),
             U.el('td', { class: 'num ' + ((r.living || r.kitchen) && r.ratio > 8.05 ? 'bad' : '') }, r.windows ? '1:' + r.ratio.toFixed(1) : '—'))))));
     }
     // замечания
-    const sevName = { bad: 'Нарушение', warn: 'Замечание', info: 'Чертёж' };
+    const sevName = { bad: 'Нарушение', warn: 'Замечание', info: 'Неточности чертежа' };
     if (R.issues.length) {
       const list = U.el('div', { class: 'an-issues' });
       let group = null;
       for (const i of R.issues) {
-        const g = `${sevName[i.sev]} · ${i.group}`;
+        const g = i.sev === 'info' ? sevName.info : `${sevName[i.sev]} · ${i.group}`;
         if (g !== group) { group = g; list.append(U.el('h4', {}, g)); }
         const b = U.el('button', { type: 'button', class: 'check-item an-' + i.sev + (i.sev === 'bad' ? ' bad' : '') }, U.el('span', {}, i.text), i.src ? U.el('em', {}, i.src) : null);
         b.onclick = () => Analysis.show(i);
         list.append(b);
       }
-      box.append(U.el('h3', { class: 'an-h' }, 'Нарушения и замечания'), list);
-    }
+      right.append(U.el('h3', { class: 'an-h' }, 'Нарушения и замечания'), list);
+    } else right.append(U.el('h3', { class: 'an-h' }, 'Нарушения и замечания'), U.el('p', { class: 'note' }, 'Нарушений норм и замечаний нет.'));
     box.append(U.el('p', { class: 'note' }, 'Нормы справочные (СП 53, СП 55, СП 30, СП 62, СП 82, ПУЭ); значения отступов меняются на вкладке «Участок» → «Нормы». Проверьте требования ПЗЗ вашего поселения. Клик по замечанию — показать место на плане.'));
     Analysis._last = R;
   },
@@ -11116,6 +11146,7 @@ const Analysis = {
     const area = $('printArea');
     area.textContent = '';
     const body = $('anBody').cloneNode(true);
+    if ($('anSum')) body.prepend($('anSum').cloneNode(true));
     body.querySelectorAll('button').forEach(b => { const d2 = document.createElement('div'); d2.className = b.className; d2.append(...b.childNodes); b.replaceWith(d2); });
     area.append(U.el('style', {}, '@page { size: 210mm 297mm; margin: 0; }'),
       U.el('div', { class: 'sheet report an-print', style: { width: '210mm', minHeight: '297mm', padding: '12mm' } },

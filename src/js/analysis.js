@@ -145,34 +145,39 @@ const Analysis = {
     const R = Analysis.run(), box = $('anBody');
     box.textContent = '';
     const bad = R.issues.filter(i => i.sev === 'bad').length, warn = R.issues.filter(i => i.sev === 'warn').length, info = R.issues.filter(i => i.sev === 'info').length;
-    box.append(U.el('div', { class: 'check-sum ' + (bad ? 'bad' : 'ok') },
+    const sum = U.el('div', { class: 'check-sum ' + (bad ? 'bad' : 'ok') },
       bad ? `✗ Нарушений норм: ${bad}` : '✓ Нарушений норм не найдено',
-      U.el('span', {}, ` · замечаний ${warn} · по чертежу ${info}`)));
+      U.el('span', {}, ` · замечаний ${warn} · по чертежу ${info}`));
+    const head = $('anSum');
+    if (head) { head.textContent = ''; head.append(sum); } else box.append(sum);
+    // две колонки: слева статистика и помещения, справа — замечания
+    const left = U.el('div', { class: 'an-left' }), right = U.el('div', { class: 'an-right' });
+    box.append(U.el('div', { class: 'an-cols' }, left, right));
     // статистика
     const grid = U.el('div', { class: 'an-stats' });
     for (const s of R.stats) grid.append(U.el('div', { class: 'an-card' }, U.el('h4', {}, s.title), U.el('table', { class: 'tbl' }, s.rows.map(([k, v]) => U.el('tr', {}, U.el('td', {}, k), U.el('td', { class: 'num' }, v))))));
-    box.append(grid);
+    left.append(grid);
     if (R.rooms.length) {
       const multi = new Set(R.rooms.map(r => r.floor)).size > 1;
-      box.append(U.el('div', { class: 'an-card' }, U.el('h4', {}, 'Помещения'),
-        U.el('table', { class: 'tbl' }, U.el('tr', {}, U.el('th', {}, 'Помещение'), U.el('th', {}, 'Площадь'), U.el('th', {}, 'Окон'), U.el('th', {}, 'Окна : пол')),
+      grid.append(U.el('div', { class: 'an-card an-wide' }, U.el('h4', {}, 'Помещения'),
+        U.el('table', { class: 'tbl an-rooms' }, U.el('tr', {}, U.el('th', {}, 'Помещение'), U.el('th', {}, 'Площадь'), U.el('th', {}, 'Окон'), U.el('th', {}, 'Окна : пол')),
           R.rooms.map(r => U.el('tr', {}, U.el('td', {}, (multi ? r.floor + ': ' : '') + r.name + (r.living ? ' (жилая)' : '')), U.el('td', { class: 'num' }, U.fmtArea(r.area)), U.el('td', { class: 'num' }, String(r.windows)),
             U.el('td', { class: 'num ' + ((r.living || r.kitchen) && r.ratio > 8.05 ? 'bad' : '') }, r.windows ? '1:' + r.ratio.toFixed(1) : '—'))))));
     }
     // замечания
-    const sevName = { bad: 'Нарушение', warn: 'Замечание', info: 'Чертёж' };
+    const sevName = { bad: 'Нарушение', warn: 'Замечание', info: 'Неточности чертежа' };
     if (R.issues.length) {
       const list = U.el('div', { class: 'an-issues' });
       let group = null;
       for (const i of R.issues) {
-        const g = `${sevName[i.sev]} · ${i.group}`;
+        const g = i.sev === 'info' ? sevName.info : `${sevName[i.sev]} · ${i.group}`;
         if (g !== group) { group = g; list.append(U.el('h4', {}, g)); }
         const b = U.el('button', { type: 'button', class: 'check-item an-' + i.sev + (i.sev === 'bad' ? ' bad' : '') }, U.el('span', {}, i.text), i.src ? U.el('em', {}, i.src) : null);
         b.onclick = () => Analysis.show(i);
         list.append(b);
       }
-      box.append(U.el('h3', { class: 'an-h' }, 'Нарушения и замечания'), list);
-    }
+      right.append(U.el('h3', { class: 'an-h' }, 'Нарушения и замечания'), list);
+    } else right.append(U.el('h3', { class: 'an-h' }, 'Нарушения и замечания'), U.el('p', { class: 'note' }, 'Нарушений норм и замечаний нет.'));
     box.append(U.el('p', { class: 'note' }, 'Нормы справочные (СП 53, СП 55, СП 30, СП 62, СП 82, ПУЭ); значения отступов меняются на вкладке «Участок» → «Нормы». Проверьте требования ПЗЗ вашего поселения. Клик по замечанию — показать место на плане.'));
     Analysis._last = R;
   },
@@ -202,6 +207,7 @@ const Analysis = {
     const area = $('printArea');
     area.textContent = '';
     const body = $('anBody').cloneNode(true);
+    if ($('anSum')) body.prepend($('anSum').cloneNode(true));
     body.querySelectorAll('button').forEach(b => { const d2 = document.createElement('div'); d2.className = b.className; d2.append(...b.childNodes); b.replaceWith(d2); });
     area.append(U.el('style', {}, '@page { size: 210mm 297mm; margin: 0; }'),
       U.el('div', { class: 'sheet report an-print', style: { width: '210mm', minHeight: '297mm', padding: '12mm' } },
