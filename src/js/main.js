@@ -541,4 +541,26 @@ const App = {
   },
 };
 
-window.addEventListener('DOMContentLoaded', () => App.init());
+/* Счётчик уникальных посетителей — только на сайте (сборка с SITE_URL кладёт адрес в <meta name="fp-visits">).
+   Браузер засчитывается один раз: первый заход — hit (+1), дальше — только get. Нет сети — счётчик просто не виден. */
+const Visits = {
+  KEY: 'fp:visited',
+  init() {
+    const m = document.querySelector('meta[name="fp-visits"]'), el = $('visits');
+    if (!m || !m.content || !el || !/^https?:$/.test(location.protocol) || !window.fetch) return;
+    let seen = true;
+    try { seen = !!localStorage.getItem(Visits.KEY); } catch { /* хранилище недоступно — не накручиваем */ }
+    fetch(m.content.replace('{op}', seen ? 'get' : 'hit'), { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
+      .then(j => {
+        const n = Number(j && (j.value ?? j.count));
+        if (!Number.isFinite(n)) return;
+        if (!seen) try { localStorage.setItem(Visits.KEY, String(Date.now())); } catch { /* ничего */ }
+        el.querySelector('b').textContent = n.toLocaleString('ru-RU');
+        el.hidden = false;
+      })
+      .catch(() => {});
+  },
+};
+
+window.addEventListener('DOMContentLoaded', () => { App.init(); Visits.init(); });

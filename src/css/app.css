@@ -63,6 +63,11 @@ kbd {
 .tb-btn, .toggle-btn { padding: 6px 9px; }
 .icon-btn:hover:not(:disabled), .tb-btn:hover, .toggle-btn:hover { background: var(--surface-3); }
 .icon-btn:disabled { opacity: .35; cursor: default; }
+.visits { display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 12px; white-space: nowrap; cursor: default; }
+.visits[hidden] { display: none; }
+@media (max-width: 560px) { .visits { display: none; } }
+.visits svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
+.visits b { font-weight: 600; font-variant-numeric: tabular-nums; }
 .toggle-btn { color: var(--muted); }
 .toggle-btn.on { color: var(--accent); background: var(--accent-soft); }
 .zoom-val { min-width: 58px; justify-content: center; font-variant-numeric: tabular-nums; }
