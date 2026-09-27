@@ -762,6 +762,74 @@ const View3D = {
       cy(0, 0, 3, e, e + (H || 75) - 5, chrome, 8); cy(0, 0, 18, e, e + 2, chrome, 14); cy(0, 0, W, e + (H || 75) - 5, e + (H || 75), C('#5a4636'), 16); cy(0, 0, W * 0.8, e + 25, e + 27, chrome, 14);
       return true;
     }
+    // --- дымоход и вентканал: внутри дома оштукатурен, над крышей — кирпичный оголовок с колпаком; вентстояк — с дефлектором ---
+    if (def.stack) {
+      const top = e + Checks.stackH(it), st = Checks.stack(it), roofZ = st ? Math.min(st.roofZ, top) : top;
+      if (sh === 'ventPipe') {
+        cy(0, 0, W, e, top, [0.88, 0.89, 0.9], 14);
+        cy(0, 0, W + 3, Math.max(e, roofZ - 5), top - 4, [0.55, 0.57, 0.6], 14);          // утеплённая часть над кровлей
+        for (const a of [0, 1, 2, 3]) { const q = { x: Math.cos(a * Math.PI / 2) * W, y: Math.sin(a * Math.PI / 2) * W }; cy(q.x, q.y, 0.8, top, top + 12, chrome, 4); }
+        cy(0, 0, W * 1.7, top + 12, top + 15, [0.72, 0.74, 0.77], 16);                     // дефлектор
+        return true;
+      }
+      const brick = C(sh === 'chimney' ? '#8f5a45' : '#a86a52'), plaster = C('#e8e4dc');
+      bx(-W, -D, W, D, e, roofZ, plaster);
+      if (top > roofZ + 1) {
+        bx(-W, -D, W, D, roofZ - 2, top - 10, brick);
+        bx(-W - 4, -D - 4, W + 4, D + 4, top - 10, top - 4, brick.map(x => x * 0.88));    // выступ оголовка
+        bx(-W, -D, W, D, top - 4, top, brick);
+        for (const [px, py] of [[-W, -D], [W, -D], [W, D], [-W, D]]) bx(px - 1.5, py - 1.5, px + 1.5, py + 1.5, top, top + 16, [0.3, 0.31, 0.33]);
+        bx(-W - 8, -D - 8, W + 8, D + 8, top + 16, top + 18, [0.4, 0.42, 0.45]);            // колпак
+      }
+      return true;
+    }
+    // --- печи и камины: цоколь, кладка, дверца топки со стеклом и отсветом огня, предтопочный лист ---
+    const fire = [1, 0.55, 0.18], glassDark = [0.16, 0.1, 0.08], iron = [0.16, 0.16, 0.17];
+    const door = (x0, x1, za, zb, glow) => {
+      bx(x0 - 2, D, x1 + 2, D + 1.5, za - 2, zb + 2, iron);
+      face([V(x0, D + 1.6, za), V(x1, D + 1.6, za), V(x1, D + 1.6, zb), V(x0, D + 1.6, zb)], glow ? glassDark : iron, V(0, 0, (za + zb) / 2));
+      if (glow) face([V(x0 + 4, D + 1.7, za + 2), V(x1 - 4, D + 1.7, za + 2), V(x1 - 8, D + 1.7, za + (zb - za) * 0.55), V(x0 + 8, D + 1.7, za + (zb - za) * 0.55)], fire, V(0, 0, (za + zb) / 2));
+      bx(x1 - 4, D + 1.5, x1 - 2, D + 4, (za + zb) / 2 - 5, (za + zb) / 2 + 5, chrome);   // ручка
+    };
+    const sheet = (fw) => bx(-fw / 2, D, fw / 2, D + 50, e, e + 0.6, [0.62, 0.63, 0.65]);    // лист 50×70 перед топкой
+    if (sh === 'stoveHeat') {
+      const brick = C('#b5654a'), top = e + (H || 200);
+      bx(-W - 2, -D - 2, W + 2, D + 2, e, e + 10, brick.map(x => x * 0.75));
+      bx(-W, -D, W, D, e + 10, top - 14, brick);
+      for (let z = e + 40; z < top - 30; z += 45) bx(-W - 0.4, -D - 0.4, W + 0.4, D + 0.4, z, z + 1.2, brick.map(x => x * 0.8));   // швы-пояса
+      bx(-W - 4, -D - 4, W + 4, D + 4, top - 14, top - 6, brick.map(x => x * 0.9));                                             // карниз
+      bx(-W, -D, W, D, top - 6, top, brick);
+      const fw = Math.min(46, w * 0.45);
+      if (it.key === 'stoveKitchen') {
+        bx(-W, D - 1, W, D + 1, e + 78, e + 80, iron);                                                     // варочная плита на уровне стола
+        bx(-W + 6, -D + 6, W - 6, D - 20, e + 78, e + 80, iron);
+      }
+      door(-fw / 2, fw / 2, e + 32, e + 70, true);
+      door(-fw * 0.35, fw * 0.35, e + 14, e + 26, false);                                                    // поддувало
+      door(-fw * 0.3, fw * 0.3, top - 50, top - 38, false);                                                  // прочистка
+      sheet(70);
+      return true;
+    }
+    if (sh === 'fireplace' || sh === 'fireplaceCorner') {
+      const stone = C('#cfc6ba'), top = e + (H || 120), fw = Math.min(w * 0.55, 80), fh = Math.min(70, (H || 120) * 0.6);
+      bx(-W, -D, W, D, e + 8, top, stone);
+      bx(-W - 6, -D, W + 6, D + 6, top, top + 6, stone.map(x => x * 0.9));                     // полка
+      bx(-W - 4, -D, W + 4, D + 45, e, e + 8, C('#8e867c'));                                    // подиум перед топкой
+      face([V(-fw / 2, D + 0.3, e + 8), V(fw / 2, D + 0.3, e + 8), V(fw / 2, D + 0.3, e + 8 + fh), V(-fw / 2, D + 0.3, e + 8 + fh)], glassDark, V(0, 0, e + 40));
+      face([V(-fw / 3, D + 0.4, e + 10), V(fw / 3, D + 0.4, e + 10), V(fw / 6, D + 0.4, e + 8 + fh * 0.6), V(-fw / 6, D + 0.4, e + 8 + fh * 0.6)], fire, V(0, 0, e + 40));
+      for (const x of [-fw / 2 - 6, fw / 2]) bx(x, D, x + 6, D + 2, e + 8, e + 8 + fh + 6, stone.map(v => v * 0.85));   // портал
+      bx(-fw / 2 - 6, D, fw / 2 + 6, D + 2, e + 8 + fh, e + 14 + fh, stone.map(v => v * 0.85));
+      return true;
+    }
+    if (sh === 'stoveMetal') {
+      const top = e + (H || 80), fw = Math.min(w - 10, 36);
+      for (const [px, py] of [[-W + 4, -D + 4], [W - 4, -D + 4], [W - 4, D - 4], [-W + 4, D - 4]]) bx(px - 2, py - 2, px + 2, py + 2, e, e + 12, iron);
+      bx(-W, -D, W, D, e + 12, top, [0.2, 0.2, 0.21]);
+      door(-fw / 2, fw / 2, e + 22, e + 22 + Math.min(40, (H || 80) * 0.45), true);
+      if (it.key === 'saunaStove') { bx(-W + 3, -D + 3, W - 3, D - 3, top, top + 25, [0.26, 0.26, 0.27]); for (let k = 0; k < 7; k++) cy(-W / 2 + (k % 3) * W / 2, -D / 2 + Math.floor(k / 3) * D / 2, 7, top + 18, top + 30, [0.45, 0.43, 0.41], 7); }
+      sheet(70);
+      return true;
+    }
     void z0; void z1;
     return false;
   },

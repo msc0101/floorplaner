@@ -17,7 +17,7 @@ const LAYERS = [
   { id: 'rooms', name: 'Помещения (заливка, подписи)' },
   { id: 'furniture', name: 'Мебель и техника' },
   { id: 'plumbing', name: 'Водопровод и канализация' },
-  { id: 'heating', name: 'Отопление и печи' },
+  { id: 'heating', name: 'Отопление, печи, вентиляция' },
   { id: 'gas', name: 'Газ' },
   { id: 'electric', name: 'Электрика' },
   { id: 'dims', name: 'Размеры и надписи' },
@@ -266,7 +266,7 @@ const CATALOG = [
     { key: 'fireplaceCorner', name: 'Камин угловой', shape: 'fireplaceCorner', w: 110, d: 110, h: 120 },
     { key: 'stoveMetal', name: 'Печь металлическая', shape: 'stoveMetal', w: 50, d: 70, h: 80 },
     { key: 'saunaStove', name: 'Печь банная', shape: 'stoveMetal', w: 50, d: 85, h: 90 },
-    { key: 'chimney', name: 'Дымоход / труба', shape: 'chimney', w: 25, d: 25, h: 600 },
+    { key: 'chimney', name: 'Дымоход / труба', kw: 'дымоход труба печь камин котёл', shape: 'chimney', w: 25, d: 25, h: 600, stack: 'smoke' },
     { key: 'gasBoilerWall', name: 'Газовый котёл настенный', shape: 'labelbox', w: 40, d: 30, h: 70, label: 'КГ' },
     { key: 'boilerFloor', name: 'Котёл напольный', shape: 'labelbox', w: 50, d: 60, h: 85, label: 'К' },
     { key: 'elBoiler', name: 'Электрокотёл', shape: 'labelbox', w: 30, d: 20, h: 60, label: 'ЭК', layer: 'electric' },
@@ -275,6 +275,16 @@ const CATALOG = [
     { key: 'radiatorLong', name: 'Радиатор длинный', shape: 'radiator', w: 140, d: 10, h: 50 },
     { key: 'manifold', name: 'Коллектор', shape: 'labelbox', w: 50, d: 12, h: 40, label: 'Кол' },
     { key: 'pump', name: 'Циркуляционный насос', shape: 'pump', w: 18, d: 18, h: 15 },
+  ]},
+  { id: 'vent', name: 'Вентиляция', layer: 'heating', items: [
+    // вытяжка — через вентканалы выше крыши (высота «по норме» считается сама), приток — клапаны в стенах жилых комнат
+    { key: 'ventShaft', name: 'Вентканал вытяжной (кирпич / блок)', kw: 'вентиляция вытяжка шахта канал вентблок', shape: 'ventShaft', w: 27, d: 27, h: 600, stack: 'vent', autoH: true, channels: 1 },
+    { key: 'ventShaft2', name: 'Вентблок на 2 канала', kw: 'вентиляция вытяжка шахта канал вентблок', shape: 'ventShaft', w: 40, d: 27, h: 600, stack: 'vent', autoH: true, channels: 2 },
+    { key: 'ventPipe', name: 'Вентстояк круглый Ø125, утеплённый', kw: 'вентиляция вытяжка труба воздуховод дефлектор', shape: 'ventPipe', w: 16, d: 16, h: 600, stack: 'vent', autoH: true, channels: 1 },
+    { key: 'ventGrille', name: 'Вытяжная решётка (вход в вентканал)', kw: 'вентиляция вытяжка решётка', shape: 'ventGrille', w: 20, d: 6, h: 240, sym: 20 },
+    { key: 'ventSupply', name: 'Приточный клапан в стене (КИВ)', kw: 'вентиляция приток клапан кив свежий воздух', shape: 'ventSupply', w: 16, d: 8, h: 200, sym: 20 },
+    { key: 'ventTransfer', name: 'Переточная решётка (в двери / стене)', kw: 'вентиляция переток решётка дверь', shape: 'ventTransfer', w: 40, d: 6, h: 20, sym: 20 },
+    { key: 'recuperator', name: 'Приточно-вытяжная установка (рекуператор)', kw: 'вентиляция рекуператор пву приток вытяжка', shape: 'labelbox', w: 90, d: 60, h: 35, label: 'ПВУ' },
   ]},
   { id: 'hall', name: 'Прихожая, кабинет, прочее', layer: 'furniture', items: [
     { key: 'hallWardrobe', name: 'Шкаф в прихожую', shape: 'wardrobe', w: 120, d: 40, h: 220 },
@@ -1035,6 +1045,23 @@ const Painters = (() => {
     box(P, -w / 2 + 8, d / 2 - 8, w - 16, 5, 1, false);
     circle(P, 0, -d / 2 + Math.min(w, d) * 0.3, Math.min(w, d) * 0.18, false);
   };
+  // вентканал: стенка и канал(ы) с диагональю «вытяжка»
+  S.ventShaft = (P, w, d) => {
+    const n = (P.def && P.def.channels) || 1, cw = (w - 8) / n;
+    P.ctx.fillStyle = P.C.inkSoft; box(P, -w / 2, -d / 2, w, d, 0); thin(P); P.ctx.fillStyle = P.C.itemFill;
+    for (let i = 0; i < n; i++) { const x = -w / 2 + 4 + i * cw; box(P, x + (i ? 2 : 0), -d / 2 + 4, cw - (i < n - 1 ? 2 : 0) - (i ? 2 : 0), d - 8, 0); line(P, [x + 2, d / 2 - 6, x + cw - 2, -d / 2 + 6]); }
+  };
+  S.ventPipe = (P, w, d) => { circle(P, 0, 0, Math.min(w, d) / 2); thin(P); circle(P, 0, 0, Math.min(w, d) * 0.32, false); line(P, [-w * 0.22, w * 0.22, w * 0.22, -w * 0.22]); };
+  // решётки и клапаны — символы: вытяжка — стрелка из комнаты, приток — стрелка в комнату
+  const ventArrow = (P, w, d, up) => {
+    const c = P.ctx, a = d / 2, b = -d / 2 - d * 1.2;
+    c.beginPath(); c.moveTo(0, up ? a : b); c.lineTo(0, up ? b : a); c.stroke();
+    const t = up ? b : a, k = up ? 1 : -1;
+    c.beginPath(); c.moveTo(-d * 0.45, t + k * d * 0.5); c.lineTo(0, t); c.lineTo(d * 0.45, t + k * d * 0.5); c.stroke();
+  };
+  S.ventGrille = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); for (let x = -w / 2 + w / 5; x < w / 2 - 1; x += w / 5) line(P, [x, -d / 2, x, d / 2]); lw(P, 1.2); ventArrow(P, w, d * 2, false); };
+  S.ventSupply = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); circle(P, 0, 0, Math.min(w, d) * 0.35, false); lw(P, 1.2); ventArrow(P, w, d * 2, true); };
+  S.ventTransfer = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); for (let x = -w / 2 + w / 6; x < w / 2 - 1; x += w / 6) line(P, [x, -d / 2, x, d / 2]); };
   S.chimney = (P, w, d) => { P.ctx.fillStyle = P.C.inkSoft; box(P, -w / 2, -d / 2, w, d, 0); thin(P); P.ctx.fillStyle = P.C.itemFill; box(P, -w / 2 + 5, -d / 2 + 5, w - 10, d - 10, 0); };
   S.column = (P, w, d) => { P.ctx.fillStyle = P.C.wallExt; box(P, -w / 2, -d / 2, w, d, 0); };
   S.columnRound = (P, w, d) => { P.ctx.fillStyle = P.C.wallExt; ell(P, 0, 0, w / 2, d / 2); };

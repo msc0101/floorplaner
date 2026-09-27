@@ -547,10 +547,10 @@ const Visits = {
   KEY: 'fp:visited',
   init() {
     const m = document.querySelector('meta[name="fp-visits"]'), el = $('visits');
-    if (!m || !m.content || !el || !/^https?:$/.test(location.protocol) || !window.fetch) return;
+    if (!m || !m.content || !el || !/^https?:$/.test(window.location.protocol) || !window.fetch) return;
     let seen = true;
     try { seen = !!localStorage.getItem(Visits.KEY); } catch { /* хранилище недоступно — не накручиваем */ }
-    fetch(m.content.replace('{op}', seen ? 'get' : 'hit'), { cache: 'no-store' })
+    window.fetch(m.content.replace('{op}', seen ? 'get' : 'hit'), { cache: 'no-store' })
       .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
       .then(j => {
         const n = Number(j && (j.value ?? j.count));

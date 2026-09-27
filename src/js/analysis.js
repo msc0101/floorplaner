@@ -90,6 +90,9 @@ const Analysis = {
       if (hs.length && Math.max(...hs) < 250) add('bad', 'Помещения', `${f.name}: высота стен ${m(Math.max(...hs))} — жилым помещениям нужно не меньше 2,5 м`, 'СП 55.13330.2016 п. 6.2');
     }
 
+    // ---------------- вентиляция, дымоходы, печи ----------------
+    Analysis.vent(d, fd, add, stats, m);
+
     // ---------------- нормы отступов и сети ----------------
     for (const r of ch.results.filter(x => !x.ok)) add('bad', 'Отступы', `${r.a.name} — ${r.bName}: ${m(r.d)} (норма ≥ ${m(r.rule.min)})`, r.rule.src, r.pa || r.pb, Model.get(r.a.id) ? r.a.id : null);
     for (const n of (ch.nets || []).filter(x => x.ok === false)) add('bad', 'Сети', `${n.title}: ${n.text}`, n.src, n.at, n.line.id);
@@ -138,6 +141,97 @@ const Analysis = {
     const order = { bad: 0, warn: 1, info: 2 };
     issues.sort((a, b) => order[a.sev] - order[b.sev]);
     return { stats, rooms, issues };
+  },
+  /** Вентиляция по помещениям (СП 54.13330 табл. 9.1, СП 55.13330, СП 60.13330), трубы над крышей и печи (СП 7.13130) */
+  vent(d, fd, add, stats, m) {
+    const f1 = d.floors[0].id, EXH = new Set(['ventGrille', 'ventShaft', 'ventShaft2', 'ventPipe', 'fan', 'recuperator']);
+    const SHAFT = (it) => catItem(it.key).stack === 'vent';
+    const near = (p, poly, tol) => G.pointInPoly(p, poly) || Math.min(...poly.map((q, j) => G.distSeg(p, q, poly[(j + 1) % poly.length]))) <= tol;
+    const name = (it) => it.label || catItem(it.key).name;
+    let need = 0, supplyNeed = 0;
+    const noSupply = [];
+    const rowsOf = [];
+    for (const f of fd) Drawing.onFloor(f.floor.id, () => {
+      const items = d.items.filter(it => (it.floor || f1) === f.floor.id);
+      const H = (f.floor.h || 270) / 100;
+      for (const r of f.rooms) {
+        const nm = (r.name || '').toLowerCase(), at = G.polyCentroid(r.floor || r.axis), A = r.areaFloor / 1e4;
+        const inR = items.filter(it => near(it, r.axis, 15));
+        const exh = inR.filter(it => EXH.has(it.key)), sup = inR.filter(it => it.key === 'ventSupply' || it.key === 'recuperator');
+        const wins = Rooms.windowsOf(r).length;
+        const gasBoiler = inR.some(it => /gasBoiler/.test(it.key));
+        const stove = inR.find(it => ['stoveHeat', 'fireplace', 'fireplaceCorner', 'stoveMetal'].includes(catItem(it.key).shape));
+        const kitchen = /кухн/.test(nm), wc = /сануз|с\/у|туалет|уборн/.test(nm), bath = /ванн|душ/.test(nm) || inR.some(it => ['bath', 'bathCorner', 'shower'].includes(catItem(it.key).shape));
+        const living = !!(r.tag && r.tag.living) || /спальн|гостин|детск|кабинет|комнат/.test(nm);
+        const hood = inR.some(it => it.key === 'hood'), gasStove = inR.some(it => /gas/i.test(it.key) && catItem(it.key).shape === 'stove');
+        let q = 0, why = '';
+        if (kitchen) { q = gasStove ? 90 : 60; why = gasStove ? 'кухня с газовой плитой — 90 м³/ч' : 'кухня — 60 м³/ч (с газовой плитой — 90)'; }
+        else if (gasBoiler || /котельн|топочн/.test(nm)) { q = Math.ceil(3 * A * H); why = `котельная — 3 объёма в час (${q} м³/ч)`; }
+        else if (wc && bath) { q = 50; why = 'совмещённый санузел — 50 м³/ч'; }
+        else if (wc || bath) { q = 25; why = (bath ? 'ванная' : 'туалет') + ' — 25 м³/ч'; }
+        else if (/постироч|прачечн/.test(nm)) { q = Math.ceil(5 * A * H); why = ''; }
+        if (q) {
+          need += q; rowsOf.push([r.name, `${q} м³/ч${exh.length ? '' : ' — нет вытяжки'}`]);
+          const sev = why ? 'bad' : 'warn';
+          if (!exh.length) add(sev, 'Вентиляция', `${r.name}: нет вытяжки${hood ? ' (зонту над плитой нужен свой вентканал)' : ''} — ${why || 'нужна вытяжка'}; поставьте вентканал или решётку в канал`, 'СП 54.13330 табл. 9.1; СП 55.13330; СП 60.13330', at);
+        }
+        if (gasBoiler) {
+          if (!sup.length && !wins && !inR.some(it => it.key === 'ventTransfer')) add('bad', 'Вентиляция', `${r.name}: газовый котёл без притока — нужен приточный клапан или решётка (приток = вытяжка + воздух на горение)`, 'СП 62.13330; СП 402.1325800', at);
+          else if (!sup.length) add('warn', 'Вентиляция', `${r.name}: газовый котёл — поставьте приточный клапан или решётку в двери/стене (≥ 0,02 м²); форточка не заменяет постоянный приток`, 'СП 402.1325800', at);
+        }
+        if (living) { supplyNeed += Math.ceil(3 * A); if (!sup.length) noSupply.push(r.name); }
+        if (stove && !sup.length && !wins) add('warn', 'Печь', `${r.name}: печи / камину нужен приток воздуха на горение — окно или приточный клапан`, 'СП 7.13130', at);
+      }
+      // решётка должна стоять у вентканала (на этом этаже или проходящего снизу)
+      for (const g of items.filter(it => it.key === 'ventGrille')) {
+        const ok = d.items.some(o => SHAFT(o) && Model.floorIdx(o.floor || f1) <= Model.floorIdx(f.floor.id) && G.dist(o, g) <= Math.max(o.w, o.d) / 2 + 60);
+        if (!ok) add('warn', 'Вентиляция', `${name(g)}: рядом нет вентканала — решётке некуда отводить воздух`, '', g, g.id);
+      }
+    });
+    // трубы над крышей: высота относительно конька
+    for (const it of d.items) {
+      const def = catItem(it.key);
+      if (!def.stack) continue;
+      const st = Checks.stack(it);
+      if (!st) continue;
+      const top = st.e + Checks.stackH(it);
+      if (top < st.need - 1) add('bad', def.stack === 'smoke' ? 'Печь' : 'Вентиляция', `${name(it)}: верх трубы ${m(top - st.roofZ)} над кровлей, ${top >= st.ridgeZ ? 'выше' : 'ниже'} конька на ${m(Math.abs(top - st.ridgeZ))}, до конька ${m(st.dist)} — нужно поднять на ${m(st.need - top)}`, 'СП 7.13130.2013 п. 5.10: до 1,5 м от конька — 0,5 м над ним; 1,5–3 м — не ниже конька; дальше — не ниже линии 10°', it, it.id);
+    }
+    // печи и камины: дымоход и свободное место перед топкой
+    const ws = d.walls.filter(w => w.kind !== 'fence');
+    for (const it of d.items) {
+      const sh = catItem(it.key).shape;
+      if (!['stoveHeat', 'fireplace', 'fireplaceCorner', 'stoveMetal'].includes(sh)) continue;
+      const fl = it.floor || f1, poly = Model.itemPts(it);
+      const flue = d.items.find(o => catItem(o.key).stack === 'smoke' && (o.floor || f1) === fl && near(o, poly, 60));
+      if (!flue) add('bad', 'Печь', `${name(it)}: нет дымохода — поставьте «Дымоход / труба» над печью или вплотную к ней`, 'СП 7.13130.2013', it, it.id);
+      if (sh === 'fireplaceCorner') continue;
+      // перед топочной дверкой до противоположной стены — не меньше 1,25 м
+      const front = G.toWorld({ x: 0, y: it.d / 2 }, it.x, it.y, it.rot || 0), dir = G.sub(G.toWorld({ x: 0, y: it.d / 2 + 100 }, it.x, it.y, it.rot || 0), front);
+      const u = G.unit(dir);
+      let free = Infinity;
+      for (const w of ws.filter(w => (w.floor || f1) === fl)) {
+        const n = G.perp(G.unit(G.sub(w.b, w.a))), den = G.dot(u, n);
+        if (Math.abs(den) < 1e-6) continue;
+        const t = G.dot(G.sub(w.a, front), n) / den;
+        if (t <= 0) continue;
+        const p = G.add(front, G.mul(u, t)), L = Model.wallLen(w), s = G.dot(G.sub(p, w.a), G.unit(G.sub(w.b, w.a)));
+        if (s < -w.th / 2 || s > L + w.th / 2) continue;
+        free = Math.min(free, t - w.th / (2 * Math.abs(den)));
+      }
+      if (free < 124.5) add('bad', 'Печь', `${name(it)}: от топочной дверки до стены ${m(free)} — нужно не меньше 1,25 м`, 'СП 7.13130.2013, разд. 5', front, it.id);
+      const soft = d.items.find(o => o !== it && (o.floor || f1) === fl && ['sofa', 'sofaL', 'armchair', 'bed', 'wardrobe'].includes(catItem(o.key).shape) && Model.itemPts(o).some(q => { const v = G.sub(q, front), a = G.dot(v, u); return a > 0 && a < 125 && Math.abs(G.cross(u, v)) < it.w / 2 + 20; }));
+      if (soft) add('warn', 'Печь', `${name(it)}: «${name(soft)}» ближе 1,25 м перед топкой — отодвиньте мягкую мебель от дверки`, 'СП 7.13130.2013, разд. 5', front, it.id);
+    }
+    const shafts = d.items.filter(SHAFT), sups = d.items.filter(it => it.key === 'ventSupply');
+    if (need || shafts.length || sups.length) stats.push({ title: 'Вентиляция', rows: [
+      ['Вытяжка по нормам', `${need} м³/ч`],
+      ...rowsOf.map(([a, b]) => ['— ' + a, b]),
+      ['Приток в жилые комнаты (3 м³/ч на 1 м²)', `${supplyNeed} м³/ч`],
+      ['Вентканалы', shafts.length ? `${shafts.length} шт., каналов ${shafts.reduce((a, it) => a + (catItem(it.key).channels || 1), 0)}` : 'нет'],
+      ['Приточные клапаны', sups.length ? `${sups.length} шт.` : 'нет'],
+      noSupply.length ? ['Жилые без клапана (приток только через окна)', noSupply.join(', ')] : null,
+    ].filter(Boolean) });
   },
 
   open() { Analysis.render(); $('dlgAnalysis').showModal(); },

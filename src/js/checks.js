@@ -52,6 +52,35 @@ const Checks = {
     return g;
   },
   /** Контур постройки для норм: если свес крыши выступает больше чем на 50 см — по проекции крыши (СП 53 п. 6.7, прим.) */
+  /** Труба над крышей (дымоход, вентканал): отметки кровли и конька над ней и нужный верх трубы.
+   *  СП 7.13130.2013 п. 5.10 (для вытяжных вентшахт — так же): до 1,5 м от конька — не меньше 0,5 м над коньком;
+   *  1,5–3 м — не ниже конька; дальше — не ниже линии под 10° от конька; над плоской кровлей — 0,5 м.
+   *  Результат: { e (пол этажа), roofZ (кровля у трубы), ridgeZ, dist (от трубы до конька), need (нужный верх) } или null — крыши над трубой нет */
+  stack(it) {
+    const d = App.doc, f = d.floors.find(x => x.id === (it.floor || d.floors[0].id)) || d.floors[0], e = f.elev || 0;
+    let r = null, z = -Infinity;
+    for (const x of d.roofs) { const zz = Roof.zAt(x, it); if (zz != null && zz > z) { z = zz; r = x; } }
+    if (!r) return null;
+    const W = r.w / 2, D = r.d / 2, t = Math.tan(U.rad(U.clamp(r.pitch || 0, 0, 75))), b = r.base || 0, half = Math.max(it.w, it.d) / 2;
+    if (r.type === 'flat' || t < 0.01) return { e, roofZ: z, ridgeZ: z, dist: 0, flat: true, need: Math.ceil(z + 50) };
+    const q = G.toLocal({ x: it.x, y: it.y }, r.x, r.y, r.rot || 0);
+    let A, B, ridgeZ;
+    if (r.type === 'shed') { A = { x: -W, y: -D }; B = { x: W, y: -D }; ridgeZ = b + t * 2 * D; }
+    else if (r.type === 'hip' && W < D) { A = { x: 0, y: -(D - W) }; B = { x: 0, y: D - W }; ridgeZ = b + t * W; }
+    else if (r.type === 'hip') { A = { x: -(W - D), y: 0 }; B = { x: W - D, y: 0 }; ridgeZ = b + t * D; }
+    else { A = { x: -W, y: 0 }; B = { x: W, y: 0 }; ridgeZ = b + t * D; }
+    const dist = Math.max(0, G.distSeg(q, A, B) - half);
+    let need = dist <= 150 ? ridgeZ + 50 : dist <= 300 ? ridgeZ : ridgeZ - Math.tan(U.rad(10)) * dist;
+    need = Math.ceil(Math.max(need, z + 50));
+    return { e, roofZ: z, ridgeZ, dist, need };
+  },
+  /** Высота трубы от пола: «по норме» (autoH) — сама доходит до нужной отметки, иначе — как задано */
+  stackH(it) {
+    const def = catItem(it.key);
+    if (!def.stack || !(it.autoH ?? def.autoH)) return it.h || 0;
+    const s = Checks.stack(it);
+    return s ? Math.ceil((s.need - s.e) / 5) * 5 : (it.h || 0);
+  },
   itemPoly(it) {
     const sh = catItem(it.key).shape;
     if (BLD_ROOF_SHAPES.has(sh)) {

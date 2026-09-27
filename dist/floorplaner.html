@@ -1193,7 +1193,7 @@ const LAYERS = [
   { id: 'rooms', name: 'Помещения (заливка, подписи)' },
   { id: 'furniture', name: 'Мебель и техника' },
   { id: 'plumbing', name: 'Водопровод и канализация' },
-  { id: 'heating', name: 'Отопление и печи' },
+  { id: 'heating', name: 'Отопление, печи, вентиляция' },
   { id: 'gas', name: 'Газ' },
   { id: 'electric', name: 'Электрика' },
   { id: 'dims', name: 'Размеры и надписи' },
@@ -1442,7 +1442,7 @@ const CATALOG = [
     { key: 'fireplaceCorner', name: 'Камин угловой', shape: 'fireplaceCorner', w: 110, d: 110, h: 120 },
     { key: 'stoveMetal', name: 'Печь металлическая', shape: 'stoveMetal', w: 50, d: 70, h: 80 },
     { key: 'saunaStove', name: 'Печь банная', shape: 'stoveMetal', w: 50, d: 85, h: 90 },
-    { key: 'chimney', name: 'Дымоход / труба', shape: 'chimney', w: 25, d: 25, h: 600 },
+    { key: 'chimney', name: 'Дымоход / труба', kw: 'дымоход труба печь камин котёл', shape: 'chimney', w: 25, d: 25, h: 600, stack: 'smoke' },
     { key: 'gasBoilerWall', name: 'Газовый котёл настенный', shape: 'labelbox', w: 40, d: 30, h: 70, label: 'КГ' },
     { key: 'boilerFloor', name: 'Котёл напольный', shape: 'labelbox', w: 50, d: 60, h: 85, label: 'К' },
     { key: 'elBoiler', name: 'Электрокотёл', shape: 'labelbox', w: 30, d: 20, h: 60, label: 'ЭК', layer: 'electric' },
@@ -1451,6 +1451,16 @@ const CATALOG = [
     { key: 'radiatorLong', name: 'Радиатор длинный', shape: 'radiator', w: 140, d: 10, h: 50 },
     { key: 'manifold', name: 'Коллектор', shape: 'labelbox', w: 50, d: 12, h: 40, label: 'Кол' },
     { key: 'pump', name: 'Циркуляционный насос', shape: 'pump', w: 18, d: 18, h: 15 },
+  ]},
+  { id: 'vent', name: 'Вентиляция', layer: 'heating', items: [
+    // вытяжка — через вентканалы выше крыши (высота «по норме» считается сама), приток — клапаны в стенах жилых комнат
+    { key: 'ventShaft', name: 'Вентканал вытяжной (кирпич / блок)', kw: 'вентиляция вытяжка шахта канал вентблок', shape: 'ventShaft', w: 27, d: 27, h: 600, stack: 'vent', autoH: true, channels: 1 },
+    { key: 'ventShaft2', name: 'Вентблок на 2 канала', kw: 'вентиляция вытяжка шахта канал вентблок', shape: 'ventShaft', w: 40, d: 27, h: 600, stack: 'vent', autoH: true, channels: 2 },
+    { key: 'ventPipe', name: 'Вентстояк круглый Ø125, утеплённый', kw: 'вентиляция вытяжка труба воздуховод дефлектор', shape: 'ventPipe', w: 16, d: 16, h: 600, stack: 'vent', autoH: true, channels: 1 },
+    { key: 'ventGrille', name: 'Вытяжная решётка (вход в вентканал)', kw: 'вентиляция вытяжка решётка', shape: 'ventGrille', w: 20, d: 6, h: 240, sym: 20 },
+    { key: 'ventSupply', name: 'Приточный клапан в стене (КИВ)', kw: 'вентиляция приток клапан кив свежий воздух', shape: 'ventSupply', w: 16, d: 8, h: 200, sym: 20 },
+    { key: 'ventTransfer', name: 'Переточная решётка (в двери / стене)', kw: 'вентиляция переток решётка дверь', shape: 'ventTransfer', w: 40, d: 6, h: 20, sym: 20 },
+    { key: 'recuperator', name: 'Приточно-вытяжная установка (рекуператор)', kw: 'вентиляция рекуператор пву приток вытяжка', shape: 'labelbox', w: 90, d: 60, h: 35, label: 'ПВУ' },
   ]},
   { id: 'hall', name: 'Прихожая, кабинет, прочее', layer: 'furniture', items: [
     { key: 'hallWardrobe', name: 'Шкаф в прихожую', shape: 'wardrobe', w: 120, d: 40, h: 220 },
@@ -2211,6 +2221,23 @@ const Painters = (() => {
     box(P, -w / 2 + 8, d / 2 - 8, w - 16, 5, 1, false);
     circle(P, 0, -d / 2 + Math.min(w, d) * 0.3, Math.min(w, d) * 0.18, false);
   };
+  // вентканал: стенка и канал(ы) с диагональю «вытяжка»
+  S.ventShaft = (P, w, d) => {
+    const n = (P.def && P.def.channels) || 1, cw = (w - 8) / n;
+    P.ctx.fillStyle = P.C.inkSoft; box(P, -w / 2, -d / 2, w, d, 0); thin(P); P.ctx.fillStyle = P.C.itemFill;
+    for (let i = 0; i < n; i++) { const x = -w / 2 + 4 + i * cw; box(P, x + (i ? 2 : 0), -d / 2 + 4, cw - (i < n - 1 ? 2 : 0) - (i ? 2 : 0), d - 8, 0); line(P, [x + 2, d / 2 - 6, x + cw - 2, -d / 2 + 6]); }
+  };
+  S.ventPipe = (P, w, d) => { circle(P, 0, 0, Math.min(w, d) / 2); thin(P); circle(P, 0, 0, Math.min(w, d) * 0.32, false); line(P, [-w * 0.22, w * 0.22, w * 0.22, -w * 0.22]); };
+  // решётки и клапаны — символы: вытяжка — стрелка из комнаты, приток — стрелка в комнату
+  const ventArrow = (P, w, d, up) => {
+    const c = P.ctx, a = d / 2, b = -d / 2 - d * 1.2;
+    c.beginPath(); c.moveTo(0, up ? a : b); c.lineTo(0, up ? b : a); c.stroke();
+    const t = up ? b : a, k = up ? 1 : -1;
+    c.beginPath(); c.moveTo(-d * 0.45, t + k * d * 0.5); c.lineTo(0, t); c.lineTo(d * 0.45, t + k * d * 0.5); c.stroke();
+  };
+  S.ventGrille = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); for (let x = -w / 2 + w / 5; x < w / 2 - 1; x += w / 5) line(P, [x, -d / 2, x, d / 2]); lw(P, 1.2); ventArrow(P, w, d * 2, false); };
+  S.ventSupply = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); circle(P, 0, 0, Math.min(w, d) * 0.35, false); lw(P, 1.2); ventArrow(P, w, d * 2, true); };
+  S.ventTransfer = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 0); thin(P); for (let x = -w / 2 + w / 6; x < w / 2 - 1; x += w / 6) line(P, [x, -d / 2, x, d / 2]); };
   S.chimney = (P, w, d) => { P.ctx.fillStyle = P.C.inkSoft; box(P, -w / 2, -d / 2, w, d, 0); thin(P); P.ctx.fillStyle = P.C.itemFill; box(P, -w / 2 + 5, -d / 2 + 5, w - 10, d - 10, 0); };
   S.column = (P, w, d) => { P.ctx.fillStyle = P.C.wallExt; box(P, -w / 2, -d / 2, w, d, 0); };
   S.columnRound = (P, w, d) => { P.ctx.fillStyle = P.C.wallExt; ell(P, 0, 0, w / 2, d / 2); };
@@ -4161,6 +4188,35 @@ const Checks = {
     return g;
   },
   /** Контур постройки для норм: если свес крыши выступает больше чем на 50 см — по проекции крыши (СП 53 п. 6.7, прим.) */
+  /** Труба над крышей (дымоход, вентканал): отметки кровли и конька над ней и нужный верх трубы.
+   *  СП 7.13130.2013 п. 5.10 (для вытяжных вентшахт — так же): до 1,5 м от конька — не меньше 0,5 м над коньком;
+   *  1,5–3 м — не ниже конька; дальше — не ниже линии под 10° от конька; над плоской кровлей — 0,5 м.
+   *  Результат: { e (пол этажа), roofZ (кровля у трубы), ridgeZ, dist (от трубы до конька), need (нужный верх) } или null — крыши над трубой нет */
+  stack(it) {
+    const d = App.doc, f = d.floors.find(x => x.id === (it.floor || d.floors[0].id)) || d.floors[0], e = f.elev || 0;
+    let r = null, z = -Infinity;
+    for (const x of d.roofs) { const zz = Roof.zAt(x, it); if (zz != null && zz > z) { z = zz; r = x; } }
+    if (!r) return null;
+    const W = r.w / 2, D = r.d / 2, t = Math.tan(U.rad(U.clamp(r.pitch || 0, 0, 75))), b = r.base || 0, half = Math.max(it.w, it.d) / 2;
+    if (r.type === 'flat' || t < 0.01) return { e, roofZ: z, ridgeZ: z, dist: 0, flat: true, need: Math.ceil(z + 50) };
+    const q = G.toLocal({ x: it.x, y: it.y }, r.x, r.y, r.rot || 0);
+    let A, B, ridgeZ;
+    if (r.type === 'shed') { A = { x: -W, y: -D }; B = { x: W, y: -D }; ridgeZ = b + t * 2 * D; }
+    else if (r.type === 'hip' && W < D) { A = { x: 0, y: -(D - W) }; B = { x: 0, y: D - W }; ridgeZ = b + t * W; }
+    else if (r.type === 'hip') { A = { x: -(W - D), y: 0 }; B = { x: W - D, y: 0 }; ridgeZ = b + t * D; }
+    else { A = { x: -W, y: 0 }; B = { x: W, y: 0 }; ridgeZ = b + t * D; }
+    const dist = Math.max(0, G.distSeg(q, A, B) - half);
+    let need = dist <= 150 ? ridgeZ + 50 : dist <= 300 ? ridgeZ : ridgeZ - Math.tan(U.rad(10)) * dist;
+    need = Math.ceil(Math.max(need, z + 50));
+    return { e, roofZ: z, ridgeZ, dist, need };
+  },
+  /** Высота трубы от пола: «по норме» (autoH) — сама доходит до нужной отметки, иначе — как задано */
+  stackH(it) {
+    const def = catItem(it.key);
+    if (!def.stack || !(it.autoH ?? def.autoH)) return it.h || 0;
+    const s = Checks.stack(it);
+    return s ? Math.ceil((s.need - s.e) / 5) * 5 : (it.h || 0);
+  },
   itemPoly(it) {
     const sh = catItem(it.key).shape;
     if (BLD_ROOF_SHAPES.has(sh)) {
@@ -6383,6 +6439,74 @@ const View3D = {
     }
     if (sh === 'round' && it.key === 'barstool') {
       cy(0, 0, 3, e, e + (H || 75) - 5, chrome, 8); cy(0, 0, 18, e, e + 2, chrome, 14); cy(0, 0, W, e + (H || 75) - 5, e + (H || 75), C('#5a4636'), 16); cy(0, 0, W * 0.8, e + 25, e + 27, chrome, 14);
+      return true;
+    }
+    // --- дымоход и вентканал: внутри дома оштукатурен, над крышей — кирпичный оголовок с колпаком; вентстояк — с дефлектором ---
+    if (def.stack) {
+      const top = e + Checks.stackH(it), st = Checks.stack(it), roofZ = st ? Math.min(st.roofZ, top) : top;
+      if (sh === 'ventPipe') {
+        cy(0, 0, W, e, top, [0.88, 0.89, 0.9], 14);
+        cy(0, 0, W + 3, Math.max(e, roofZ - 5), top - 4, [0.55, 0.57, 0.6], 14);          // утеплённая часть над кровлей
+        for (const a of [0, 1, 2, 3]) { const q = { x: Math.cos(a * Math.PI / 2) * W, y: Math.sin(a * Math.PI / 2) * W }; cy(q.x, q.y, 0.8, top, top + 12, chrome, 4); }
+        cy(0, 0, W * 1.7, top + 12, top + 15, [0.72, 0.74, 0.77], 16);                     // дефлектор
+        return true;
+      }
+      const brick = C(sh === 'chimney' ? '#8f5a45' : '#a86a52'), plaster = C('#e8e4dc');
+      bx(-W, -D, W, D, e, roofZ, plaster);
+      if (top > roofZ + 1) {
+        bx(-W, -D, W, D, roofZ - 2, top - 10, brick);
+        bx(-W - 4, -D - 4, W + 4, D + 4, top - 10, top - 4, brick.map(x => x * 0.88));    // выступ оголовка
+        bx(-W, -D, W, D, top - 4, top, brick);
+        for (const [px, py] of [[-W, -D], [W, -D], [W, D], [-W, D]]) bx(px - 1.5, py - 1.5, px + 1.5, py + 1.5, top, top + 16, [0.3, 0.31, 0.33]);
+        bx(-W - 8, -D - 8, W + 8, D + 8, top + 16, top + 18, [0.4, 0.42, 0.45]);            // колпак
+      }
+      return true;
+    }
+    // --- печи и камины: цоколь, кладка, дверца топки со стеклом и отсветом огня, предтопочный лист ---
+    const fire = [1, 0.55, 0.18], glassDark = [0.16, 0.1, 0.08], iron = [0.16, 0.16, 0.17];
+    const door = (x0, x1, za, zb, glow) => {
+      bx(x0 - 2, D, x1 + 2, D + 1.5, za - 2, zb + 2, iron);
+      face([V(x0, D + 1.6, za), V(x1, D + 1.6, za), V(x1, D + 1.6, zb), V(x0, D + 1.6, zb)], glow ? glassDark : iron, V(0, 0, (za + zb) / 2));
+      if (glow) face([V(x0 + 4, D + 1.7, za + 2), V(x1 - 4, D + 1.7, za + 2), V(x1 - 8, D + 1.7, za + (zb - za) * 0.55), V(x0 + 8, D + 1.7, za + (zb - za) * 0.55)], fire, V(0, 0, (za + zb) / 2));
+      bx(x1 - 4, D + 1.5, x1 - 2, D + 4, (za + zb) / 2 - 5, (za + zb) / 2 + 5, chrome);   // ручка
+    };
+    const sheet = (fw) => bx(-fw / 2, D, fw / 2, D + 50, e, e + 0.6, [0.62, 0.63, 0.65]);    // лист 50×70 перед топкой
+    if (sh === 'stoveHeat') {
+      const brick = C('#b5654a'), top = e + (H || 200);
+      bx(-W - 2, -D - 2, W + 2, D + 2, e, e + 10, brick.map(x => x * 0.75));
+      bx(-W, -D, W, D, e + 10, top - 14, brick);
+      for (let z = e + 40; z < top - 30; z += 45) bx(-W - 0.4, -D - 0.4, W + 0.4, D + 0.4, z, z + 1.2, brick.map(x => x * 0.8));   // швы-пояса
+      bx(-W - 4, -D - 4, W + 4, D + 4, top - 14, top - 6, brick.map(x => x * 0.9));                                             // карниз
+      bx(-W, -D, W, D, top - 6, top, brick);
+      const fw = Math.min(46, w * 0.45);
+      if (it.key === 'stoveKitchen') {
+        bx(-W, D - 1, W, D + 1, e + 78, e + 80, iron);                                                     // варочная плита на уровне стола
+        bx(-W + 6, -D + 6, W - 6, D - 20, e + 78, e + 80, iron);
+      }
+      door(-fw / 2, fw / 2, e + 32, e + 70, true);
+      door(-fw * 0.35, fw * 0.35, e + 14, e + 26, false);                                                    // поддувало
+      door(-fw * 0.3, fw * 0.3, top - 50, top - 38, false);                                                  // прочистка
+      sheet(70);
+      return true;
+    }
+    if (sh === 'fireplace' || sh === 'fireplaceCorner') {
+      const stone = C('#cfc6ba'), top = e + (H || 120), fw = Math.min(w * 0.55, 80), fh = Math.min(70, (H || 120) * 0.6);
+      bx(-W, -D, W, D, e + 8, top, stone);
+      bx(-W - 6, -D, W + 6, D + 6, top, top + 6, stone.map(x => x * 0.9));                     // полка
+      bx(-W - 4, -D, W + 4, D + 45, e, e + 8, C('#8e867c'));                                    // подиум перед топкой
+      face([V(-fw / 2, D + 0.3, e + 8), V(fw / 2, D + 0.3, e + 8), V(fw / 2, D + 0.3, e + 8 + fh), V(-fw / 2, D + 0.3, e + 8 + fh)], glassDark, V(0, 0, e + 40));
+      face([V(-fw / 3, D + 0.4, e + 10), V(fw / 3, D + 0.4, e + 10), V(fw / 6, D + 0.4, e + 8 + fh * 0.6), V(-fw / 6, D + 0.4, e + 8 + fh * 0.6)], fire, V(0, 0, e + 40));
+      for (const x of [-fw / 2 - 6, fw / 2]) bx(x, D, x + 6, D + 2, e + 8, e + 8 + fh + 6, stone.map(v => v * 0.85));   // портал
+      bx(-fw / 2 - 6, D, fw / 2 + 6, D + 2, e + 8 + fh, e + 14 + fh, stone.map(v => v * 0.85));
+      return true;
+    }
+    if (sh === 'stoveMetal') {
+      const top = e + (H || 80), fw = Math.min(w - 10, 36);
+      for (const [px, py] of [[-W + 4, -D + 4], [W - 4, -D + 4], [W - 4, D - 4], [-W + 4, D - 4]]) bx(px - 2, py - 2, px + 2, py + 2, e, e + 12, iron);
+      bx(-W, -D, W, D, e + 12, top, [0.2, 0.2, 0.21]);
+      door(-fw / 2, fw / 2, e + 22, e + 22 + Math.min(40, (H || 80) * 0.45), true);
+      if (it.key === 'saunaStove') { bx(-W + 3, -D + 3, W - 3, D - 3, top, top + 25, [0.26, 0.26, 0.27]); for (let k = 0; k < 7; k++) cy(-W / 2 + (k % 3) * W / 2, -D / 2 + Math.floor(k / 3) * D / 2, 7, top + 18, top + 30, [0.45, 0.43, 0.41], 7); }
+      sheet(70);
       return true;
     }
     void z0; void z1;
@@ -9369,6 +9493,17 @@ const UI = {
             : 'Высота объекта — до конька; если при заданном уклоне столбы выходят ниже 1,8 м, конёк поднимается. Направления — относительно самой постройки.'));
     };
     if (BLD_ROOF_SHAPES.has(def.shape)) body.append(roofSection());
+    if (def.stack) {
+      // труба над крышей: высота по норме от конька (СП 7.13130 п. 5.10)
+      const st = Checks.stack(it), auto = !!(it.autoH ?? def.autoH), top = (st ? st.e : 0) + Checks.stackH(it), mm = (v) => (v / 100).toFixed(2) + ' м';
+      body.append(F.section(def.stack === 'smoke' ? 'Дымоход над крышей' : 'Вентканал над крышей',
+        F.check('Высота по норме (сама доходит до нужной отметки)', auto, (v) => { if (!v) it.h = Checks.stackH(it); it.autoH = v; Model.commit(); }),
+        st ? F.note(`До конька ${mm(st.dist)}${st.flat ? ' (плоская кровля)' : ''}. Над кровлей ${mm(top - st.roofZ)}, ${top >= st.ridgeZ ? `выше конька на ${mm(top - st.ridgeZ)}` : `ниже конька на ${mm(st.ridgeZ - top)}`}. `
+          + (top >= st.need - 1 ? '<b>По норме.</b>' : `<b style="color:var(--danger)">Ниже нормы на ${mm(st.need - top)}</b> — нужен верх на ${mm(st.need - st.e)} от пола.`)
+          + ' Норма: до 1,5 м от конька — на 0,5 м выше конька, 1,5–3 м — не ниже конька, дальше — не ниже линии 10° от конька.')
+          : F.note('Над трубой нет крыши дома — высоту задайте сами (не меньше 0,5 м над кровлей).'),
+        !auto && st && top < st.need - 1 ? F.btns([['Поднять до нормы', () => { it.h = Math.ceil((st.need - st.e) / 5) * 5; Model.commit(); }]]) : null));
+    }
     if (def.shape === 'gateSlide') {
       const z = gateZone(it, it.w);
       body.append(F.section('Ворота',
@@ -11177,6 +11312,9 @@ const Analysis = {
       if (hs.length && Math.max(...hs) < 250) add('bad', 'Помещения', `${f.name}: высота стен ${m(Math.max(...hs))} — жилым помещениям нужно не меньше 2,5 м`, 'СП 55.13330.2016 п. 6.2');
     }
 
+    // ---------------- вентиляция, дымоходы, печи ----------------
+    Analysis.vent(d, fd, add, stats, m);
+
     // ---------------- нормы отступов и сети ----------------
     for (const r of ch.results.filter(x => !x.ok)) add('bad', 'Отступы', `${r.a.name} — ${r.bName}: ${m(r.d)} (норма ≥ ${m(r.rule.min)})`, r.rule.src, r.pa || r.pb, Model.get(r.a.id) ? r.a.id : null);
     for (const n of (ch.nets || []).filter(x => x.ok === false)) add('bad', 'Сети', `${n.title}: ${n.text}`, n.src, n.at, n.line.id);
@@ -11225,6 +11363,97 @@ const Analysis = {
     const order = { bad: 0, warn: 1, info: 2 };
     issues.sort((a, b) => order[a.sev] - order[b.sev]);
     return { stats, rooms, issues };
+  },
+  /** Вентиляция по помещениям (СП 54.13330 табл. 9.1, СП 55.13330, СП 60.13330), трубы над крышей и печи (СП 7.13130) */
+  vent(d, fd, add, stats, m) {
+    const f1 = d.floors[0].id, EXH = new Set(['ventGrille', 'ventShaft', 'ventShaft2', 'ventPipe', 'fan', 'recuperator']);
+    const SHAFT = (it) => catItem(it.key).stack === 'vent';
+    const near = (p, poly, tol) => G.pointInPoly(p, poly) || Math.min(...poly.map((q, j) => G.distSeg(p, q, poly[(j + 1) % poly.length]))) <= tol;
+    const name = (it) => it.label || catItem(it.key).name;
+    let need = 0, supplyNeed = 0;
+    const noSupply = [];
+    const rowsOf = [];
+    for (const f of fd) Drawing.onFloor(f.floor.id, () => {
+      const items = d.items.filter(it => (it.floor || f1) === f.floor.id);
+      const H = (f.floor.h || 270) / 100;
+      for (const r of f.rooms) {
+        const nm = (r.name || '').toLowerCase(), at = G.polyCentroid(r.floor || r.axis), A = r.areaFloor / 1e4;
+        const inR = items.filter(it => near(it, r.axis, 15));
+        const exh = inR.filter(it => EXH.has(it.key)), sup = inR.filter(it => it.key === 'ventSupply' || it.key === 'recuperator');
+        const wins = Rooms.windowsOf(r).length;
+        const gasBoiler = inR.some(it => /gasBoiler/.test(it.key));
+        const stove = inR.find(it => ['stoveHeat', 'fireplace', 'fireplaceCorner', 'stoveMetal'].includes(catItem(it.key).shape));
+        const kitchen = /кухн/.test(nm), wc = /сануз|с\/у|туалет|уборн/.test(nm), bath = /ванн|душ/.test(nm) || inR.some(it => ['bath', 'bathCorner', 'shower'].includes(catItem(it.key).shape));
+        const living = !!(r.tag && r.tag.living) || /спальн|гостин|детск|кабинет|комнат/.test(nm);
+        const hood = inR.some(it => it.key === 'hood'), gasStove = inR.some(it => /gas/i.test(it.key) && catItem(it.key).shape === 'stove');
+        let q = 0, why = '';
+        if (kitchen) { q = gasStove ? 90 : 60; why = gasStove ? 'кухня с газовой плитой — 90 м³/ч' : 'кухня — 60 м³/ч (с газовой плитой — 90)'; }
+        else if (gasBoiler || /котельн|топочн/.test(nm)) { q = Math.ceil(3 * A * H); why = `котельная — 3 объёма в час (${q} м³/ч)`; }
+        else if (wc && bath) { q = 50; why = 'совмещённый санузел — 50 м³/ч'; }
+        else if (wc || bath) { q = 25; why = (bath ? 'ванная' : 'туалет') + ' — 25 м³/ч'; }
+        else if (/постироч|прачечн/.test(nm)) { q = Math.ceil(5 * A * H); why = ''; }
+        if (q) {
+          need += q; rowsOf.push([r.name, `${q} м³/ч${exh.length ? '' : ' — нет вытяжки'}`]);
+          const sev = why ? 'bad' : 'warn';
+          if (!exh.length) add(sev, 'Вентиляция', `${r.name}: нет вытяжки${hood ? ' (зонту над плитой нужен свой вентканал)' : ''} — ${why || 'нужна вытяжка'}; поставьте вентканал или решётку в канал`, 'СП 54.13330 табл. 9.1; СП 55.13330; СП 60.13330', at);
+        }
+        if (gasBoiler) {
+          if (!sup.length && !wins && !inR.some(it => it.key === 'ventTransfer')) add('bad', 'Вентиляция', `${r.name}: газовый котёл без притока — нужен приточный клапан или решётка (приток = вытяжка + воздух на горение)`, 'СП 62.13330; СП 402.1325800', at);
+          else if (!sup.length) add('warn', 'Вентиляция', `${r.name}: газовый котёл — поставьте приточный клапан или решётку в двери/стене (≥ 0,02 м²); форточка не заменяет постоянный приток`, 'СП 402.1325800', at);
+        }
+        if (living) { supplyNeed += Math.ceil(3 * A); if (!sup.length) noSupply.push(r.name); }
+        if (stove && !sup.length && !wins) add('warn', 'Печь', `${r.name}: печи / камину нужен приток воздуха на горение — окно или приточный клапан`, 'СП 7.13130', at);
+      }
+      // решётка должна стоять у вентканала (на этом этаже или проходящего снизу)
+      for (const g of items.filter(it => it.key === 'ventGrille')) {
+        const ok = d.items.some(o => SHAFT(o) && Model.floorIdx(o.floor || f1) <= Model.floorIdx(f.floor.id) && G.dist(o, g) <= Math.max(o.w, o.d) / 2 + 60);
+        if (!ok) add('warn', 'Вентиляция', `${name(g)}: рядом нет вентканала — решётке некуда отводить воздух`, '', g, g.id);
+      }
+    });
+    // трубы над крышей: высота относительно конька
+    for (const it of d.items) {
+      const def = catItem(it.key);
+      if (!def.stack) continue;
+      const st = Checks.stack(it);
+      if (!st) continue;
+      const top = st.e + Checks.stackH(it);
+      if (top < st.need - 1) add('bad', def.stack === 'smoke' ? 'Печь' : 'Вентиляция', `${name(it)}: верх трубы ${m(top - st.roofZ)} над кровлей, ${top >= st.ridgeZ ? 'выше' : 'ниже'} конька на ${m(Math.abs(top - st.ridgeZ))}, до конька ${m(st.dist)} — нужно поднять на ${m(st.need - top)}`, 'СП 7.13130.2013 п. 5.10: до 1,5 м от конька — 0,5 м над ним; 1,5–3 м — не ниже конька; дальше — не ниже линии 10°', it, it.id);
+    }
+    // печи и камины: дымоход и свободное место перед топкой
+    const ws = d.walls.filter(w => w.kind !== 'fence');
+    for (const it of d.items) {
+      const sh = catItem(it.key).shape;
+      if (!['stoveHeat', 'fireplace', 'fireplaceCorner', 'stoveMetal'].includes(sh)) continue;
+      const fl = it.floor || f1, poly = Model.itemPts(it);
+      const flue = d.items.find(o => catItem(o.key).stack === 'smoke' && (o.floor || f1) === fl && near(o, poly, 60));
+      if (!flue) add('bad', 'Печь', `${name(it)}: нет дымохода — поставьте «Дымоход / труба» над печью или вплотную к ней`, 'СП 7.13130.2013', it, it.id);
+      if (sh === 'fireplaceCorner') continue;
+      // перед топочной дверкой до противоположной стены — не меньше 1,25 м
+      const front = G.toWorld({ x: 0, y: it.d / 2 }, it.x, it.y, it.rot || 0), dir = G.sub(G.toWorld({ x: 0, y: it.d / 2 + 100 }, it.x, it.y, it.rot || 0), front);
+      const u = G.unit(dir);
+      let free = Infinity;
+      for (const w of ws.filter(w => (w.floor || f1) === fl)) {
+        const n = G.perp(G.unit(G.sub(w.b, w.a))), den = G.dot(u, n);
+        if (Math.abs(den) < 1e-6) continue;
+        const t = G.dot(G.sub(w.a, front), n) / den;
+        if (t <= 0) continue;
+        const p = G.add(front, G.mul(u, t)), L = Model.wallLen(w), s = G.dot(G.sub(p, w.a), G.unit(G.sub(w.b, w.a)));
+        if (s < -w.th / 2 || s > L + w.th / 2) continue;
+        free = Math.min(free, t - w.th / (2 * Math.abs(den)));
+      }
+      if (free < 124.5) add('bad', 'Печь', `${name(it)}: от топочной дверки до стены ${m(free)} — нужно не меньше 1,25 м`, 'СП 7.13130.2013, разд. 5', front, it.id);
+      const soft = d.items.find(o => o !== it && (o.floor || f1) === fl && ['sofa', 'sofaL', 'armchair', 'bed', 'wardrobe'].includes(catItem(o.key).shape) && Model.itemPts(o).some(q => { const v = G.sub(q, front), a = G.dot(v, u); return a > 0 && a < 125 && Math.abs(G.cross(u, v)) < it.w / 2 + 20; }));
+      if (soft) add('warn', 'Печь', `${name(it)}: «${name(soft)}» ближе 1,25 м перед топкой — отодвиньте мягкую мебель от дверки`, 'СП 7.13130.2013, разд. 5', front, it.id);
+    }
+    const shafts = d.items.filter(SHAFT), sups = d.items.filter(it => it.key === 'ventSupply');
+    if (need || shafts.length || sups.length) stats.push({ title: 'Вентиляция', rows: [
+      ['Вытяжка по нормам', `${need} м³/ч`],
+      ...rowsOf.map(([a, b]) => ['— ' + a, b]),
+      ['Приток в жилые комнаты (3 м³/ч на 1 м²)', `${supplyNeed} м³/ч`],
+      ['Вентканалы', shafts.length ? `${shafts.length} шт., каналов ${shafts.reduce((a, it) => a + (catItem(it.key).channels || 1), 0)}` : 'нет'],
+      ['Приточные клапаны', sups.length ? `${sups.length} шт.` : 'нет'],
+      noSupply.length ? ['Жилые без клапана (приток только через окна)', noSupply.join(', ')] : null,
+    ].filter(Boolean) });
   },
 
   open() { Analysis.render(); $('dlgAnalysis').showModal(); },
@@ -11650,8 +11879,8 @@ const IO = {
     T(925, 1900, 'Гостиная', true); T(925, 1420, 'Спальня', true); T(1300, 1350, 'Санузел'); T(1575, 1350, 'Котельная');
     T(1480, 1650, 'Прихожая'); T(1420, 1950, 'Кухня');
     // гостиная
-    I('sofa3', 1092.5, 1900, 90); I('coffeetable', 960, 1900, 90); I('armchair', 900, 1720, 180); I('tvstand', 737.5, 1900, -90); I('tv', 725, 1900, -90);
-    I('fireplace', 925, 2057.5, 180); I('rug', 950, 1900, 90, { w: 200, d: 250 });
+    I('sofa3', 1092.5, 1900, 90); I('coffeetable', 960, 1900, 90); I('armchair', 990, 2025, 180); I('tvstand', 737.5, 1900, -90); I('tv', 725, 1900, -90);
+    I('fireplace', 925, 1682.5, 0); I('rug', 950, 1900, 90, { w: 200, d: 250 });
     // спальня
     I('bed160', 1032.5, 1400, 90); I('nightstand', 1120, 1285, 90); I('wardrobe3', 815, 1615, 180); I('dresser', 740, 1300, -90);
     // кухня
@@ -11660,6 +11889,9 @@ const IO = {
     I('bath170', 1245, 1250, 0); I('toilet', 1412.5, 1300, 90); I('sink', 1422.5, 1440, 90); I('washer', 1190, 1450, -90); I('boiler80', 1240, 1470);
     // котельная
     I('gasBoilerWall', 1520, 1230, 0); I('indirect', 1630, 1280); I('panel', 1677.5, 1420, 90); I('riser', 1435, 1215);
+    // вентиляция: дымоход камина, вентблоки у кухни и санузла/котельной, приточные клапаны в комнатах
+    I('chimney', 925, 1667, 0, { autoH: true }); I('ventShaft2', 1150, 2060, 90); I('ventShaft2', 1450, 1350, 90);
+    I('ventSupply', 720, 1500, -90); I('ventSupply', 720, 1760, -90); I('ventSupply', 1600, 2080, 180); I('ventSupply', 1690, 1330, 90);
     // прихожая
     I('hallWardrobe', 1405, 1775, 180); I('shoeRack', 1240, 1520, 0);
     // радиаторы под окнами
@@ -12264,10 +12496,10 @@ const Visits = {
   KEY: 'fp:visited',
   init() {
     const m = document.querySelector('meta[name="fp-visits"]'), el = $('visits');
-    if (!m || !m.content || !el || !/^https?:$/.test(location.protocol) || !window.fetch) return;
+    if (!m || !m.content || !el || !/^https?:$/.test(window.location.protocol) || !window.fetch) return;
     let seen = true;
     try { seen = !!localStorage.getItem(Visits.KEY); } catch { /* хранилище недоступно — не накручиваем */ }
-    fetch(m.content.replace('{op}', seen ? 'get' : 'hit'), { cache: 'no-store' })
+    window.fetch(m.content.replace('{op}', seen ? 'get' : 'hit'), { cache: 'no-store' })
       .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
       .then(j => {
         const n = Number(j && (j.value ?? j.count));

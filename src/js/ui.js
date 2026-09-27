@@ -807,6 +807,17 @@ const UI = {
             : 'Высота объекта — до конька; если при заданном уклоне столбы выходят ниже 1,8 м, конёк поднимается. Направления — относительно самой постройки.'));
     };
     if (BLD_ROOF_SHAPES.has(def.shape)) body.append(roofSection());
+    if (def.stack) {
+      // труба над крышей: высота по норме от конька (СП 7.13130 п. 5.10)
+      const st = Checks.stack(it), auto = !!(it.autoH ?? def.autoH), top = (st ? st.e : 0) + Checks.stackH(it), mm = (v) => (v / 100).toFixed(2) + ' м';
+      body.append(F.section(def.stack === 'smoke' ? 'Дымоход над крышей' : 'Вентканал над крышей',
+        F.check('Высота по норме (сама доходит до нужной отметки)', auto, (v) => { if (!v) it.h = Checks.stackH(it); it.autoH = v; Model.commit(); }),
+        st ? F.note(`До конька ${mm(st.dist)}${st.flat ? ' (плоская кровля)' : ''}. Над кровлей ${mm(top - st.roofZ)}, ${top >= st.ridgeZ ? `выше конька на ${mm(top - st.ridgeZ)}` : `ниже конька на ${mm(st.ridgeZ - top)}`}. `
+          + (top >= st.need - 1 ? '<b>По норме.</b>' : `<b style="color:var(--danger)">Ниже нормы на ${mm(st.need - top)}</b> — нужен верх на ${mm(st.need - st.e)} от пола.`)
+          + ' Норма: до 1,5 м от конька — на 0,5 м выше конька, 1,5–3 м — не ниже конька, дальше — не ниже линии 10° от конька.')
+          : F.note('Над трубой нет крыши дома — высоту задайте сами (не меньше 0,5 м над кровлей).'),
+        !auto && st && top < st.need - 1 ? F.btns([['Поднять до нормы', () => { it.h = Math.ceil((st.need - st.e) / 5) * 5; Model.commit(); }]]) : null));
+    }
     if (def.shape === 'gateSlide') {
       const z = gateZone(it, it.w);
       body.append(F.section('Ворота',
