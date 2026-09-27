@@ -372,6 +372,29 @@ const bop = await page.evaluate(() => {
 });
 console.log('bldop', JSON.stringify(bop));
 if (!bop.hit || bop.ops !== 0 || !bop.kept || bop.sub !== null || bop.inner !== 350 * 550 || !bop.sum) errors.push('Проём постройки / площадь: ' + JSON.stringify(bop));
+// нормы отступов: улица и сосед — разные нормы; курятник — 4 м до соседа; объекты вне участка не проверяются
+const chk = await page.evaluate(() => {
+  const f = App.doc.floors[0].id, X = 300000;
+  Model.add('areas', { kind: 'plot', pts: [{ x: X, y: 0 }, { x: X + 2000, y: 0 }, { x: X + 2000, y: 3000 }, { x: X, y: 3000 }], floor: f });
+  Model.add('roads', { kind: 'street', width: 600, pts: [{ x: X - 500, y: 3400 }, { x: X + 2500, y: 3400 }], floor: f });
+  const coop = Model.add('items', { key: 'coop', x: X + 150 + 300, y: 1000, w: 300, d: 250, h: 250, rot: 0, floor: f });
+  const shed = Model.add('items', { key: 'shed', x: X + 1000, y: 3000 - 200 - 300, w: 300, d: 400, h: 280, rot: 0, floor: f });
+  const out = Model.add('items', { key: 'shed', x: X - 1000, y: 1000, w: 300, d: 400, h: 280, rot: 0, floor: f });
+  Model.commit();
+  const res = Checks.run().results, R = (id, rule) => res.find(r => r.a.id === id && r.rule.id === rule);
+  const r = {
+    edges: [0, 1, 2, 3].map(i => Checks.edgeType(App.doc.areas[App.doc.areas.length - 1], i)).join(','),
+    coop4: R(coop.id, 'animals_neighbor') && Math.round(R(coop.id, 'animals_neighbor').d) === 300 && !R(coop.id, 'animals_neighbor').ok,
+    coopNoDup: !R(coop.id, 'outb_neighbor'),
+    shedStreet: R(shed.id, 'outb_street') && Math.round(R(shed.id, 'outb_street').d) === 300 && !R(shed.id, 'outb_street').ok,
+    outside: !res.some(x => x.a.id === out.id && x.rule.b.startsWith('bound:')),
+  };
+  Model.get(shed.id).checkAs = 'none'; Model.commit(); r.none = !Checks.run().results.some(x => x.a.id === shed.id);
+  Model.undo(); Model.undo();
+  return r;
+});
+console.log('checks', JSON.stringify(chk));
+if (chk.edges !== 'neighbor,neighbor,street,neighbor' || !chk.coop4 || !chk.coopNoDup || !chk.shedStreet || !chk.outside || !chk.none) errors.push('Нормы отступов: ' + JSON.stringify(chk));
 // заголовок вкладки — имя открытого файла
 const ttl = await page.evaluate(() => { const f0 = App.fileName; IO.setFile('Дача.json'); const t = document.title; IO.setFile(f0); return t; });
 console.log('title', ttl);

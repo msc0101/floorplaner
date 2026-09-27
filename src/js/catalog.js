@@ -330,6 +330,8 @@ const CATALOG = [
     { key: 'carportLean', name: 'Навес пристроенный (односкатный)', shape: 'canopyLean', w: 350, d: 600, h: 300, shadow: true, roof: true },
     { key: 'shed', name: 'Сарай / хозблок', shape: 'building', w: 300, d: 400, h: 280, shadow: true },
     { key: 'bathhouse', name: 'Баня', shape: 'building', w: 400, d: 500, h: 380, shadow: true },
+    { key: 'coop', name: 'Курятник / птичник', kw: 'птица куры утки гуси кролики крольчатник', shape: 'building', w: 300, d: 250, h: 250, shadow: true },
+    { key: 'barn', name: 'Хлев / сарай для скота', kw: 'скот козы овцы свиньи коровы животные', shape: 'building', w: 500, d: 400, h: 300, shadow: true },
     { key: 'gazebo', name: 'Беседка', shape: 'gazebo', w: 300, d: 300, h: 300, shadow: true },
     { key: 'greenhouse', name: 'Теплица', shape: 'greenhouse', w: 300, d: 600, h: 220, shadow: true },
     { key: 'woodshed', name: 'Дровник', shape: 'canopy', w: 250, d: 120, h: 200, shadow: true },
