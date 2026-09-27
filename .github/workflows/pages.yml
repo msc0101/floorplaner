@@ -31,6 +31,7 @@ jobs:
           YANDEX_VERIFY: ${{ vars.YANDEX_VERIFY || secrets.YANDEX_VERIFY }}
           # счётчик посетителей: свой адрес ({op} = hit/get) или off; номер Яндекс Метрики — по желанию
           VISITS_URL: ${{ vars.VISITS_URL }}
+          VISITS_LI: ${{ vars.VISITS_LI }}
           YANDEX_METRIKA: ${{ vars.YANDEX_METRIKA || secrets.YANDEX_METRIKA }}
         run: |
           node tools/build.mjs

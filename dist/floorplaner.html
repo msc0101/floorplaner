@@ -123,6 +123,8 @@ kbd {
 @media (max-width: 560px) { .visits { display: none; } }
 .visits svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
 .visits b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.visits.li { padding: 0; background: none; }
+.visits.li img { display: block; height: 26px; width: auto; border-radius: 3px; }
 .toggle-btn { color: var(--muted); }
 .toggle-btn.on { color: var(--accent); background: var(--accent-soft); }
 .zoom-val { min-width: 58px; justify-content: center; font-variant-numeric: tabular-nums; }
@@ -13002,24 +13004,39 @@ const App = {
 };
 
 /* Счётчик уникальных посетителей — только на сайте (сборка с SITE_URL кладёт адрес в <meta name="fp-visits">).
-   Браузер засчитывается один раз: первый заход — hit (+1), дальше — только get. Нет сети — счётчик просто не виден. */
+   Браузер засчитывается один раз: первый заход — hit (+1), дальше — только get.
+   Запасной счётчик — LiveInternet (<meta name="fp-visits-li">, работает и из России, где зарубежный сервис
+   может быть недоступен): картинка «посетители за 24 часа и за сегодня» — если основной не ответил за 6 с. */
 const Visits = {
   KEY: 'fp:visited',
   init() {
-    const m = document.querySelector('meta[name="fp-visits"]'), el = $('visits');
-    if (!m || !m.content || !el || !/^https?:$/.test(window.location.protocol) || !window.fetch) return;
+    const m = document.querySelector('meta[name="fp-visits"]'), li = document.querySelector('meta[name="fp-visits-li"]'), el = $('visits');
+    if (!el || !/^https?:$/.test(window.location.protocol)) return;
+    let done = false;
+    const fallback = () => { if (!done && li) { done = true; Visits.liveinternet(el); } };
+    if (!m || !m.content || !window.fetch) { fallback(); return; }
     let seen = true;
     try { seen = !!localStorage.getItem(Visits.KEY); } catch { /* хранилище недоступно — не накручиваем */ }
+    const timer = setTimeout(fallback, 6000);
     window.fetch(m.content.replace('{op}', seen ? 'get' : 'hit'), { cache: 'no-store' })
       .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
       .then(j => {
         const n = Number(j && (j.value ?? j.count));
-        if (!Number.isFinite(n)) return;
+        if (!Number.isFinite(n) || done) return fallback();
+        done = true; clearTimeout(timer);
         if (!seen) try { localStorage.setItem(Visits.KEY, String(Date.now())); } catch { /* ничего */ }
         el.querySelector('b').textContent = n.toLocaleString('ru-RU');
         el.hidden = false;
       })
-      .catch(() => {});
+      .catch(() => { clearTimeout(timer); fallback(); });
+  },
+  /** Информер LiveInternet 88×31: просмотры за 24 часа, посетители за 24 часа и за сегодня */
+  liveinternet(el) {
+    const d = document, s = window.screen;
+    const img = U.el('img', { width: 88, height: 31, alt: 'LiveInternet', title: 'LiveInternet: просмотры за 24 часа, посетители за 24 часа и за сегодня' });
+    img.src = 'https://counter.yadro.ru/hit?t14.6;r' + encodeURIComponent(d.referrer) + ';s' + s.width + '*' + s.height + '*' + (s.colorDepth || s.pixelDepth) + ';u' + encodeURIComponent(d.URL) + ';h' + encodeURIComponent(d.title.substring(0, 150)) + ';' + Math.random();
+    const a = U.el('a', { href: 'https://www.liveinternet.ru/click', target: '_blank', rel: 'noopener' }, img);
+    el.textContent = ''; el.append(a); el.classList.add('li'); el.hidden = false;
   },
 };
 

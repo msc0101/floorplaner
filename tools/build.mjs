@@ -3,7 +3,8 @@
 // dist/index.html с canonical/og:url/og:image, dist/robots.txt, dist/sitemap.xml и dist/og.png.
 // Коды подтверждения прав: GOOGLE_VERIFY=… (Search Console), YANDEX_VERIFY=… (Яндекс Вебмастер).
 // Счётчик уникальных посетителей в шапке: VISITS_URL=…{op}… (op = hit | get; «off» — выключить),
-// по умолчанию — бесплатный abacus.jasoncameron.dev. YANDEX_METRIKA=номер — ещё и Яндекс Метрика.
+// по умолчанию — бесплатный abacus.jasoncameron.dev, запасной — LiveInternet (VISITS_LI=off — без него).
+// YANDEX_METRIKA=номер — ещё и Яндекс Метрика.
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,6 +40,8 @@ if (site) {
   const ns = base.replace(/^https?:\/\//, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
   let visits = (process.env.VISITS_URL || '').trim() || `https://abacus.jasoncameron.dev/{op}/${ns}/visitors`;
   if (/^(off|no|0|false)$/i.test(visits)) visits = '';
+  // запасной счётчик LiveInternet (доступен из России); VISITS_LI=off — выключить
+  const liCounter = !/^(off|no|0|false)$/i.test((process.env.VISITS_LI || '').trim());
   const ym = (process.env.YANDEX_METRIKA || '').trim().match(/\d{5,12}/);
   const tags = [
     `<link rel="canonical" href="${esc(base)}">`,
@@ -50,6 +53,7 @@ if (site) {
     gv && `<meta name="google-site-verification" content="${esc(gv)}">`,
     yv && `<meta name="yandex-verification" content="${esc(yv)}">`,
     visits && `<meta name="fp-visits" content="${esc(visits)}">`,
+    liCounter && '<meta name="fp-visits-li" content="1">',
     ym && `<script>(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};m[i].l=1*new Date();k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})(window,document,'script','https://mc.yandex.ru/metrika/tag.js','ym');ym(${ym[0]},'init',{clickmap:true,trackLinks:true,accurateTrackBounce:true});</script>`,
     ym && `<noscript><div><img src="https://mc.yandex.ru/watch/${ym[0]}" style="position:absolute;left:-9999px" alt=""></div></noscript>`,
   ].filter(Boolean).join('\n');
