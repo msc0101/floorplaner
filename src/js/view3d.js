@@ -932,10 +932,43 @@ const View3D = {
       return true;
     }
     if (sh === 'fridge' || sh === 'fridge2') {
-      const top = e + (H || 180), col = sh === 'fridge2' ? [0.78, 0.8, 0.82] : white;
-      bx(-W, -D, W, D - 2, e, top, col);
-      if (sh === 'fridge2') { bx(-W, D - 2, -0.5, D, e + 2, top - 2, col); bx(0.5, D - 2, W, D, e + 2, top - 2, col); for (const s of [-1, 1]) bx(s * 4 - 1, D, s * 4 + 1, D + 3, e + 70, e + 150, chrome); }
-      else { bx(-W, D - 2, W, D, e + 2, e + (H || 180) * 0.62, col); bx(-W, D - 2, W, D, e + (H || 180) * 0.63, top - 2, col); for (const [za, zb] of [[e + 40, e + 100], [e + 125, e + 160]]) bx(W - 8, D, W - 6, D + 3, za, zb, chrome); }
+      // корпус, решётка внизу, двери с уплотнителем (тёмный зазор) и скруглённой кромкой, ручки-скобы на опорах;
+      // обычный — камера сверху с дисплеем, морозильник снизу; Side-by-Side — две двери, диспенсер воды и льда
+      const Hh = H || 180, top = e + Hh, sbs = sh === 'fridge2';
+      const col = it.color ? View3D.hex(it.color) : sbs ? [0.76, 0.78, 0.81] : [0.95, 0.95, 0.96];
+      const edge = col.map(v => v * 0.9), gasket = [0.2, 0.2, 0.22], dt = 5;
+      bx(-W, -D, W, D - dt, e, top, col.map(v => v * 0.93));                                             // корпус
+      bx(-W + 2, D - dt, W - 2, D - dt + 3, e + 1, e + 9, [0.18, 0.18, 0.2]);                          // решётка внизу
+      for (let x = -W + 6; x < W - 5; x += 4) bx(x, D - dt + 3, x + 2, D - dt + 3.3, e + 2.5, e + 7.5, [0.1, 0.1, 0.11]);
+      const door = (x0, x1, z0, z1) => {
+        bx(x0, D - dt, x1, D - dt + 0.8, z0, z1, gasket);                                                 // уплотнитель
+        bx(x0 + 0.3, D - dt + 0.8, x1 - 0.3, D - 0.8, z0 + 0.3, z1 - 0.3, col);                           // полотно
+        bx(x0 + 1.2, D - 0.8, x1 - 1.2, D, z0 + 1.2, z1 - 1.2, col.map(v => Math.min(1, v * 1.03)));      // скругление кромки
+        bx(x0 + 0.3, D - dt + 0.8, x0 + 1.2, D - 0.8, z0 + 0.3, z1 - 0.3, edge); bx(x1 - 1.2, D - dt + 0.8, x1 - 0.3, D - 0.8, z0 + 0.3, z1 - 0.3, edge);
+      };
+      const hc = sbs || col[0] < 0.85 ? [0.42, 0.44, 0.47] : chrome;                                      // на стали — ручки темнее
+      const handle = (x, z0, z1) => {                                                                      // вертикальная скоба
+        bx(x - 1.2, D + 2.5, x + 1.2, D + 4.5, z0, z1, hc);
+        for (const z of [z0 + 3, z1 - 3]) bx(x - 1, D, x + 1, D + 2.5, z - 1.5, z + 1.5, hc);
+      };
+      if (sbs) {
+        const xm = -W + w * 0.42;
+        door(-W, xm - 0.4, e + 10, top - 1); door(xm + 0.4, W, e + 10, top - 1);
+        handle(xm - 5, e + 70, e + 150); handle(xm + 5, e + 70, e + 150);
+        // диспенсер на морозильной двери
+        const dx0 = -W + 8, dx1 = xm - 10, dz0 = e + 100, dz1 = e + 138;
+        bx(dx0, D - 0.9, dx1, D + 0.2, dz0, dz1, [0.12, 0.12, 0.13]);
+        bx(dx0 + 2, D + 0.2, dx1 - 2, D + 0.4, dz1 - 7, dz1 - 2, [0.25, 0.6, 0.85]);                      // дисплей
+        bx((dx0 + dx1) / 2 - 3, D - 0.5, (dx0 + dx1) / 2 + 3, D + 3, dz1 - 16, dz1 - 10, [0.3, 0.3, 0.32]); // рычаг
+        bx(dx0 + 2, D - 0.5, dx1 - 2, D + 2, dz0, dz0 + 2, [0.3, 0.3, 0.32]);                               // решётка поддона
+      } else {
+        const zm = e + Math.round(Hh * 0.36);
+        door(-W, W, zm + 0.4, top - 1); door(-W, W, e + 10, zm - 0.4);
+        handle(W - 6, zm + 12, zm + 72); handle(W - 6, zm - 36, zm - 8);
+        bx(-8, D - 0.2, 8, D + 0.3, top - 22, top - 16, [0.12, 0.13, 0.15]);                                // дисплей температуры
+        bx(-5, D + 0.3, 5, D + 0.5, top - 20.5, top - 17.5, [0.35, 0.75, 0.95]);
+      }
+      bx(-W, -D, W, D - dt, top - 0.5, top, col.map(v => v * 0.85));                                        // верхняя кромка
       return true;
     }
     if (sh === 'stove') {
