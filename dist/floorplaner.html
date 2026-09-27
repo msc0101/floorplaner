@@ -7552,51 +7552,108 @@ const View3D = {
       face([V(-iw, -id, top + 3.4), V(iw, -id, top + 3.4), V(iw, id, top + 3.4), V(-iw, id, top + 3.4)], [0.12, 0.12, 0.13], V(0, 0, top - 100));
     }
   },
-  /** Кухонный гарнитур: цоколь, корпуса, столешница, мойка, варочная панель, навесные шкафы, пеналы */
+  /** Кухонный гарнитур: цоколь, модули с фасадами (двери, ящики, духовка под варочной панелью, посудомойка у мойки),
+   *  столешница со свесом, фартук, мойка со смесителем, варочная панель, навесные шкафы с фасадами и подсветкой, пеналы */
   kitchen(it, def, e) {
     const { box, cyl } = View3D._g, C = View3D.hex, rot = it.rot || 0;
     const K = kitchenLayout(def.shape, it.w, it.d);
     const fx = it.flip ? -1 : 1;
     const L = (x, y) => G.toWorld({ x: x * fx, y }, it.x, it.y, rot);
     const bx = (x0, y0, x1, y1, z0, z1, col, opt) => { const q = L((x0 + x1) / 2, (y0 + y1) / 2); box(q.x, q.y, Math.abs(x1 - x0), Math.abs(y1 - y0), rot, z0, z1, col, opt); };
-    const facade = C('#eef0f1'), plinth = C('#4a4d52'), top = C('#8d8478'), upper = C('#f5f6f7');
-    const H = it.h || 90;
+    const fac = it.color ? View3D.hex(it.color) : [0.94, 0.94, 0.93], body = fac.map(v => v * 0.8), plinth = C('#3f4246');
+    const topC = C('#8d8478'), chrome = [0.78, 0.8, 0.82], black = [0.13, 0.13, 0.14], glass = [0.07, 0.08, 0.1];
+    const tile = [0.86, 0.84, 0.8], light = [1, 0.95, 0.8];
+    const H = it.h || 90, TOP = e + H;
+    // окна в стене за рядом (под ними нет фартука и навесных шкафов) и вытяжки (над ними нет шкафа)
+    const cutsFor = (r, alongX, back) => {
+      const win = [], hood = [];
+      for (const o of App.V.openings) {
+        if ((OPENING_TYPES[o.type] || {}).cat !== 'window' || (o.sill || 0) >= 215) continue;
+        const g = Model.opGeom(o);
+        if (!g) continue;
+        const pa = G.toLocal(g.a, it.x, it.y, rot), pb = G.toLocal(g.b, it.x, it.y, rot);
+        pa.x *= fx; pb.x *= fx;
+        const off = (p) => Math.abs((alongX ? p.y : p.x) - back);
+        if (off(pa) > g.th / 2 + 15 || off(pb) > g.th / 2 + 15) continue;
+        const [c0, c1] = alongX ? [Math.min(pa.x, pb.x), Math.max(pa.x, pb.x)] : [Math.min(pa.y, pb.y), Math.max(pa.y, pb.y)];
+        win.push([c0 - 5, c1 + 5, o.sill || 0]);
+      }
+      for (const o of App.V.items) {
+        if (catItem(o.key).shape !== 'hood') continue;
+        const c = G.toLocal({ x: o.x, y: o.y }, it.x, it.y, rot); c.x *= fx;
+        if (Math.abs((alongX ? c.y : c.x) - back) > 60) continue;
+        const m = alongX ? c.x : c.y;
+        hood.push([m - o.w / 2 - 2, m + o.w / 2 + 2]);
+      }
+      return { win, hood };
+    };
+    const minus = (segs, cuts) => { for (const [c0, c1] of cuts) segs = segs.flatMap(([s0, s1]) => (c1 <= s0 || c0 >= s1) ? [[s0, s1]] : [[s0, Math.max(s0, c0)], [Math.min(s1, c1), s1]].filter(q => q[1] - q[0] > 8)); return segs; };
     for (const r of K.runs) {
       const h = r.h || H;
-      // цоколь утоплен от фасада на 5 см
-      const inset = { down: [0, 0, 0, -5], up: [0, 5, 0, 0], left: [5, 0, 0, 0], right: [0, 0, -5, 0] }[r.front] || [0, 0, 0, 0];
-      bx(r.x0 + inset[0], r.y0 + inset[1], r.x1 + inset[2], r.y1 + inset[3], e, e + 10, plinth);
-      bx(r.x0, r.y0, r.x1, r.y1, e + 10, e + h - 4, r.h ? C('#b88a5a') : facade);
-      bx(r.x0 - 1, r.y0 - 1, r.x1 + 1, r.y1 + 1, e + h - 4, e + h, top);
-      // навесные шкафы над рядом у стены — у задней кромки
-      if (r.wall && !r.h) {
-        const b = { down: [r.x0, r.y0, r.x1, r.y0 + 35], up: [r.x0, r.y1 - 35, r.x1, r.y1], left: [r.x1 - 35, r.y0, r.x1, r.y1], right: [r.x0, r.y0, r.x0 + 35, r.y1] }[r.front];
-        if (!b) continue;
-        // над окном в стене за рядом шкафов не вешаем: режем ленту по ширине окна (+5 см)
-        const alongX = r.front === 'down' || r.front === 'up', back = { down: r.y0, up: r.y1, left: r.x1, right: r.x0 }[r.front];
-        const cuts = [];
-        for (const o of App.V.openings) {
-          if ((OPENING_TYPES[o.type] || {}).cat !== 'window' || (o.sill || 0) >= 215) continue;
-          const g = Model.opGeom(o);
-          if (!g) continue;
-          const pa = G.toLocal(g.a, it.x, it.y, rot), pb = G.toLocal(g.b, it.x, it.y, rot);
-          pa.x *= fx; pb.x *= fx;
-          const off = (p) => Math.abs((alongX ? p.y : p.x) - back);
-          if (off(pa) > g.th / 2 + 15 || off(pb) > g.th / 2 + 15) continue;
-          const [c0, c1] = alongX ? [Math.min(pa.x, pb.x), Math.max(pa.x, pb.x)] : [Math.min(pa.y, pb.y), Math.max(pa.y, pb.y)];
-          cuts.push([c0 - 5, c1 + 5]);
+      const alongX = r.front === 'down' || r.front === 'up';
+      const s0 = alongX ? r.x0 : r.y0, s1 = alongX ? r.x1 : r.y1, len = s1 - s0;
+      const front = { down: r.y1, up: r.y0, left: r.x0, right: r.x1 }[r.front], back = { down: r.y0, up: r.y1, left: r.x1, right: r.x0 }[r.front];
+      const out = { down: 1, up: -1, left: -1, right: 1 }[r.front] || 1;
+      // прямоугольник в осях ряда: a — вдоль, k0..k1 — поперёк (от фасада наружу = +)
+      const R2 = (a0, a1, k0, k1, z0, z1, col, opt) => {
+        const c0 = front + out * k0, c1 = front + out * k1;
+        alongX ? bx(a0, Math.min(c0, c1), a1, Math.max(c0, c1), z0, z1, col, opt) : bx(Math.min(c0, c1), a0, Math.max(c0, c1), a1, z0, z1, col, opt);
+      };
+      const depth = Math.abs(front - back);
+      R2(s0, s1, -depth, -5, e, e + 10, plinth);                                                    // цоколь утоплен
+      if (r.h) {                                                                                     // барная часть — дерево, без фасадов
+        R2(s0, s1, -depth, 0, e + 10, e + h - 4, C('#b88a5a'));
+        R2(s0 - 1, s1 + 1, -depth - 1, 2, e + h - 4, e + h, topC);
+        continue;
+      }
+      R2(s0, s1, -depth, -0.1, e + 10, TOP - 4, body);                                               // корпуса
+      R2(s0 - 1, s1 + 1, -depth, 2.5, TOP - 4, TOP, topC);                                          // столешница со свесом
+      // модули ~60 см: где мойка, где варочная панель
+      const n = Math.max(1, Math.round(len / 60)), ml = len / n;
+      const idxOf = (p) => { if (!p) return -1; const a = alongX ? p.x : p.y, c = alongX ? p.y : p.x; if (a < s0 || a > s1 || Math.abs(c - (front + back) / 2) > depth / 2 + 1) return -1; return Math.min(n - 1, Math.floor((a - s0) / ml)); };
+      const iSink = idxOf(K.sink), iHob = idxOf(K.hob);
+      const iDish = iSink >= 0 && n >= 3 ? (iSink + 1 < n && iSink + 1 !== iHob ? iSink + 1 : iSink - 1 !== iHob ? iSink - 1 : -1) : -1;
+      const zf0 = e + 10.5, zf1 = TOP - 4.5;
+      const hbar = (a0, a1, z) => { const m = (a0 + a1) / 2, hl = Math.min(18, (a1 - a0) * 0.45); R2(m - hl / 2, m + hl / 2, 1.8, 4, z - 0.7, z + 0.7, chrome); };
+      for (let i = 0; i < n; i++) {
+        const a0 = s0 + i * ml + 0.2, a1 = s0 + (i + 1) * ml - 0.2;
+        if (i === iHob) {                                                                            // ящик + встроенный духовой шкаф
+          R2(a0, a1, 0, 1.8, zf1 - 14, zf1, fac); hbar(a0, a1, zf1 - 4);
+          R2(a0 + 0.5, a1 - 0.5, 0, 1.8, zf0, zf1 - 15, black);
+          R2(a0 + 4, a1 - 4, 1.8, 2.1, zf0 + 6, zf1 - 26, glass);
+          R2(a0 + 3, a1 - 3, 1.8, 2.1, zf1 - 24, zf1 - 17, [0.22, 0.23, 0.25]);
+          hbar(a0 + 4, a1 - 4, zf1 - 27);
+        } else if (i === iDish) {                                                                    // посудомоечная машина — под фасадом
+          R2(a0, a1, 0, 1.8, zf0, zf1, fac); hbar(a0, a1, zf1 - 5);
+        } else if (i === iSink || ml >= 75) {                                                        // двустворчатый
+          const am = (a0 + a1) / 2;
+          R2(a0, am - 0.2, 0, 1.8, zf0, zf1, fac); R2(am + 0.2, a1, 0, 1.8, zf0, zf1, fac);
+          R2(am - 3, am - 1.5, 1.8, 4, zf1 - 22, zf1 - 6, chrome); R2(am + 1.5, am + 3, 1.8, 4, zf1 - 22, zf1 - 6, chrome);
+        } else if ((iHob >= 0 && Math.abs(i - iHob) === 1) || (i % 3 === 1 && iHob < 0)) {          // три ящика — у плиты
+          const hz = (zf1 - zf0) / 3;
+          for (let k = 0; k < 3; k++) { const z0 = zf0 + k * hz; R2(a0, a1, 0, 1.8, z0 + 0.2, z0 + hz - 0.2, fac); hbar(a0, a1, z0 + hz - 5); }
+        } else {                                                                                     // дверца, ручка сверху у края
+          R2(a0, a1, 0, 1.8, zf0, zf1, fac);
+          const hp = i % 2 ? a0 + 4 : a1 - 4; R2(hp - 0.8, hp + 0.8, 1.8, 4, zf1 - 22, zf1 - 6, chrome);
         }
-        // и над вытяжкой (зонт с коробом до потолка вместо шкафа)
-        for (const o of App.V.items) {
-          if (catItem(o.key).shape !== 'hood') continue;
-          const c = G.toLocal({ x: o.x, y: o.y }, it.x, it.y, rot); c.x *= fx;
-          if (Math.abs((alongX ? c.y : c.x) - back) > 60) continue;
-          const m = alongX ? c.x : c.y;
-          cuts.push([m - o.w / 2 - 2, m + o.w / 2 + 2]);
+      }
+      if (!r.wall) continue;
+      const { win, hood } = cutsFor(r, alongX, back);
+      // фартук на стене между столешницей и навесными шкафами (под окном — только до подоконника)
+      for (const [a0, a1] of minus([[s0, s1]], win)) R2(a0, a1, -depth, -depth + 1, TOP, e + 145, tile);
+      for (const [c0, c1, sill] of win) if (sill > H) R2(Math.max(s0, c0 + 5), Math.min(s1, c1 - 5), -depth, -depth + 1, TOP, e + sill, tile);
+      // навесные шкафы: корпус, фасады по ~50 см с ручками снизу, подсветка под шкафами, карниз
+      for (const [a0, a1] of minus([[s0, s1]], win.map(w2 => [w2[0], w2[1]]).concat(hood))) {
+        const uz0 = e + 145, uz1 = e + 215, ud = 35;
+        R2(a0, a1, -depth, -depth + ud - 1.8, uz0, uz1, body);
+        const m = Math.max(1, Math.round((a1 - a0) / 50)), fw = (a1 - a0) / m;
+        for (let k = 0; k < m; k++) {
+          const f0 = a0 + k * fw + 0.2, f1 = a0 + (k + 1) * fw - 0.2;
+          R2(f0, f1, -depth + ud - 1.8, -depth + ud, uz0 + 0.3, uz1 - 0.3, fac);
+          const hp = k % 2 ? f0 + 4 : f1 - 4; R2(hp - 0.8, hp + 0.8, -depth + ud, -depth + ud + 2.2, uz0 + 4, uz0 + 16, chrome);
         }
-        let segs = [[alongX ? b[0] : b[1], alongX ? b[2] : b[3]]];
-        for (const [c0, c1] of cuts) segs = segs.flatMap(([s0, s1]) => (c1 <= s0 || c0 >= s1) ? [[s0, s1]] : [[s0, Math.max(s0, c0)], [Math.min(s1, c1), s1]].filter(q => q[1] - q[0] > 8));
-        for (const [s0, s1] of segs) alongX ? bx(s0, b[1], s1, b[3], e + 145, e + 215, upper) : bx(b[0], s0, b[2], s1, e + 145, e + 215, upper);
+        R2(a0 + 3, a1 - 3, -depth + 4, -depth + ud - 6, uz0 - 0.6, uz0, light);                       // подсветка
+        R2(a0 - 0.5, a1 + 0.5, -depth, -depth + ud + 0.5, uz1, uz1 + 2, body.map(v => v * 1.05));    // карниз
       }
     }
     // пеналы: широкий участок — колонна под духовку и СВЧ + пенал
@@ -7604,11 +7661,26 @@ const View3D = {
       if (r.x1 - r.x0 >= 110) { const xm = (r.x0 + r.x1) / 2; View3D.tallCab(bx, r.x0, r.y0, xm, r.y1, e, 215, 'pantry'); View3D.tallCab(bx, xm, r.y0, r.x1, r.y1, e, 215, 'oven'); }
       else View3D.tallCab(bx, r.x0, r.y0, r.x1, r.y1, e, 215, 'pantry');
     }
-    if (K.sink) { const s = K.sink; bx(s.x - 22, s.y - 18, s.x + 22, s.y + 18, e + H - 0.5, e + H + 0.3, C('#b9c3cc')); }
+    // мойка: чаша со сливом и смеситель-гусак у задней кромки
+    if (K.sink) {
+      const s = K.sink, sr = K.runs.find(r => s.x >= r.x0 && s.x <= r.x1 && s.y >= r.y0 && s.y <= r.y1) || K.runs[0];
+      const bk = { down: [0, -1], up: [0, 1], left: [1, 0], right: [-1, 0] }[sr.front] || [0, -1];
+      const hw = bk[0] ? 18 : 24, hd = bk[0] ? 24 : 18;
+      bx(s.x - hw - 2, s.y - hd - 2, s.x + hw + 2, s.y + hd + 2, TOP - 0.2, TOP + 0.4, [0.76, 0.78, 0.8]);   // борт
+      bx(s.x - hw, s.y - hd, s.x + hw, s.y + hd, TOP + 0.4, TOP + 0.45, [0.42, 0.44, 0.47]);                // чаша (тень)
+      const d0 = L(s.x, s.y); cyl(d0.x, d0.y, 2.5, TOP + 0.45, TOP + 0.55, black, 10);                    // слив
+      const fp = { x: s.x + bk[0] * (hd + 7), y: s.y + bk[1] * (hd + 7) }, q = L(fp.x, fp.y);
+      cyl(q.x, q.y, 2.2, TOP, TOP + 4, chrome, 10);
+      cyl(q.x, q.y, 1.2, TOP + 4, TOP + 32, chrome, 8);
+      const sp = { x: fp.x - bk[0] * 16, y: fp.y - bk[1] * 16 };
+      bx(Math.min(fp.x, sp.x) - 1.2, Math.min(fp.y, sp.y) - 1.2, Math.max(fp.x, sp.x) + 1.2, Math.max(fp.y, sp.y) + 1.2, TOP + 30, TOP + 32.5, chrome);   // излив
+      const qs = L(sp.x, sp.y); cyl(qs.x, qs.y, 1.2, TOP + 24, TOP + 31, chrome, 8);
+      bx(fp.x - 1, fp.y - 1, fp.x + 1, fp.y + 1, TOP + 18, TOP + 20, chrome);
+    }
     if (K.hob) {
       const hb = K.hob, hw = hb.v ? 25 : 28, hd = hb.v ? 28 : 25;
-      bx(hb.x - hw, hb.y - hd, hb.x + hw, hb.y + hd, e + H, e + H + 0.6, C('#1f2226'));
-      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const q = L(hb.x + sx * hw * 0.5, hb.y + sy * hd * 0.5); cyl(q.x, q.y, 7, e + H + 0.6, e + H + 1, C('#3a3d42'), 10); }
+      bx(hb.x - hw, hb.y - hd, hb.x + hw, hb.y + hd, TOP, TOP + 0.6, C('#1f2226'));
+      for (const [sx, sy, r2] of [[-1, -1, 8], [1, -1, 6], [-1, 1, 6], [1, 1, 9]]) { const q = L(hb.x + sx * hw * 0.5, hb.y + sy * hd * 0.5); cyl(q.x, q.y, r2, TOP + 0.6, TOP + 0.9, C('#5a2a22'), 14); cyl(q.x, q.y, r2 - 1.5, TOP + 0.9, TOP + 1, C('#2a2c30'), 14); }
     }
   },
   _g: null,
