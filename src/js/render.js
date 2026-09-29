@@ -111,7 +111,7 @@ const Render = {
     if (L.rooms) Render.roomFills(env);
     if (L.shadows && !ctx.isVector) Render.shadows(env);
     lay('ITEMS');
-    const items = App.V.items.filter(it => L[catItem(it.key).layer] !== false);
+    const items = App.V.items.filter(it => L[catItem(it.key).layer] !== false && Render.sysOn(env, sysOf(it)));
     // «напольные» объекты — под стенами и дверьми (крыльцо и веранда не закрывают открытую дверь)
     const isGround = (it) => { const d = catItem(it.key); return !d.sym && (it.h <= 20 || d.shape === 'rug' || d.shape === 'veranda') && !['tree', 'conifer', 'bush'].includes(d.shape); };
     const isCanopy = (it) => ['tree', 'conifer', 'bush', 'hedge'].includes(catItem(it.key).shape);
@@ -169,7 +169,7 @@ const Render = {
     ctx.globalAlpha = 0.3;
     try {
       if (env.layers.site) { Render.areas(env); Render.roads(env); }
-      for (const it of App.V.items) if (!catItem(it.key).sym && env.layers[catItem(it.key).layer] !== false) Render.item(env, it);
+      for (const it of App.V.items) if (!catItem(it.key).sym && env.layers[catItem(it.key).layer] !== false && Render.sysOn(env, sysOf(it))) Render.item(env, it);
       Render.walls(env);
     } finally {
       ctx.restore();
@@ -725,13 +725,15 @@ const Render = {
     }
   },
 
+  /** Инженерная система включена (панель «Слои» на плане; при печати — свой набор env.sys) */
+  sysOn(env, id) { return !id || ((env.sys || App.doc.settings.sys || {})[id] !== false); },
   /* ---------------------------- инженерные трассы ------------------------ */
   lines(env) {
     const { ctx, px } = env;
     const L = env.layers;
     for (const l of App.V.lines) {
       const k = LINE_KINDS[l.kind];
-      if (L[k.layer] === false) continue;
+      if (L[k.layer] === false || !Render.sysOn(env, sysOfLine(l))) continue;
       const color = l.color || k.color;
       // ЛЭП: охранная зона (по умолчанию 2 м в каждую сторону — ВЛ 0,4 кВ) — строить под проводами нельзя
       if (l.kind === 'overhead' && (l.zone ?? 200) > 0) {

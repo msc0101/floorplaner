@@ -7,7 +7,7 @@ const DOC_VERSION = 1;
 const COLLECTIONS = ['areas', 'roads', 'walls', 'openings', 'items', 'roofs', 'lines', 'dims', 'texts', 'roomTags', 'notes'];
 
 /** Настройки вида — не часть «правки», undo/redo их не трогает */
-const VIEW_SETTINGS = ['hoverTips', 'layers', 'sun', 'showWallDims', 'showItemDims', 'showGuides', 'showSwing', 'wallHatch', 'showChecks', 'showChecksOk', 'roofFill', 'wallDefaultsLive'];
+const VIEW_SETTINGS = ['hoverTips', 'layers', 'sys', 'sun', 'showWallDims', 'showItemDims', 'showGuides', 'showSwing', 'wallHatch', 'showChecks', 'showChecksOk', 'roofFill', 'wallDefaultsLive'];
 
 const Model = {
   newDoc() {
@@ -408,6 +408,7 @@ const Model = {
   /** Сдвиг набора объектов. Концы стен, не входящих в набор, но примыкающих — тянутся следом. */
   translate(ids, dx, dy, opts = {}) {
     const set = new Set(ids);
+    const before = opts.links === false ? null : Model.itemPos(ids);
     const mv = (p) => { p.x += dx; p.y += dy; };
     const movedPts = new Set();
     const wallIds = new Set(ids.filter(id => Model.coll(id) === 'walls'));
@@ -430,7 +431,37 @@ const Model = {
       else if (c === 'lines' || c === 'areas' || c === 'roads') o.pts.forEach(mv);
       else if (c === 'dims') { mv(o.a); mv(o.b); }
     }
+    if (before) Model.followLinks(before, set);
     return set;
+  },
+  /** Положения предметов (до сдвига) — для followLinks */
+  itemPos(ids) { const m = new Map(); for (const id of ids) { const o = Model.get(id); if (o && Model.coll(id) === 'items') m.set(id, { x: o.x, y: o.y }); } return m; },
+  /** Трубы и кабели, подключённые к сдвинутому прибору (вершина трассы — в точке прибора), тянутся за ним;
+   *  соседний излом сдвигается так, чтобы горизонтальные и вертикальные участки такими и остались */
+  followLinks(before, skip = new Set()) {
+    for (const [id, p0] of before) {
+      const it = Model.get(id);
+      if (!it || !(sysOf(it) || catItem(it.key).sym)) continue;               // только инженерные приборы
+      const dx = it.x - p0.x, dy = it.y - p0.y;
+      if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) continue;
+      const tol = U.clamp(Math.min(it.w, it.d) / 2 + 2, 6, 20);
+      for (const l of App.doc.lines) {
+        if (skip.has(l.id) || (l.floor && it.floor && l.floor !== it.floor)) continue;
+        const hit = l.pts.map(p => G.dist(p, p0) <= tol);
+        if (!hit.some(Boolean)) continue;
+        const moved = new Set();
+        l.pts.forEach((p, i) => {
+          if (!hit[i]) return;
+          for (const j of [i - 1, i + 1]) {
+            const q = l.pts[j];
+            if (!q || hit[j] || moved.has(j)) continue;
+            if (Math.abs(q.x - p.x) < 0.5) { q.x += dx; moved.add(j); }         // вертикальный участок остаётся вертикальным
+            else if (Math.abs(q.y - p.y) < 0.5) { q.y += dy; moved.add(j); }    // горизонтальный — горизонтальным
+          }
+          p.x += dx; p.y += dy;
+        });
+      }
+    }
   },
   rotate(ids, center, deg) {
     const a = U.rad(deg);

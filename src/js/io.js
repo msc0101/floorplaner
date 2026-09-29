@@ -108,7 +108,8 @@ const IO = {
     Theme.C = Theme.light;
     const layers = { ...App.doc.settings.layers, grid: !!o.grid, lower: false, ...(o.drawing ? { lower: false, checks: false, shadows: false, heat: false } : {}), ...(o.planOnly ? { site: false, siteobj: false, fence: false, roof: false } : {}) };
     try {
-      Render.draw({ ctx, w: cv.width, h: cv.height, dpr: 1, fs: o.fs || 1, scale, ox: cx - cv.width / 2 / scale, oy: cy - cv.height / 2 / scale, C: Theme.light, exporting: true, printGrid: !!o.grid, layers });
+      if (o.noRoof) layers.roof = false;
+      Render.draw({ ctx, w: cv.width, h: cv.height, dpr: 1, fs: o.fs || 1, scale, ox: cx - cv.width / 2 / scale, oy: cy - cv.height / 2 / scale, C: Theme.light, exporting: true, printGrid: !!o.grid, layers, sys: o.sysOnly || o.sys });
       // компас и масштабная линейка
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       const k = Math.max(1, Math.min(W, H) / 900);
@@ -174,7 +175,7 @@ const IO = {
       const cx = (sh.region.x0 + sh.region.x1) / 2, cy = (sh.region.y0 + sh.region.y1) / 2;
       const reg = { x0: cx - boxW * N / 20, x1: cx + boxW * N / 20, y0: cy - boxH * N / 20, y1: cy + boxH * N / 20 };
       const draw = () => IO.renderRegion(reg, boxW * dpmm, boxH * dpmm, { ...o, drawing: true, planOnly: sh.dims, fs: dpmm / 4 });
-      const { canvas } = Drawing.onFloor(sh.fid, () => sh.dims ? Drawing.withAutoDims(sh.fid, draw) : draw());
+      const { canvas } = Drawing.onFloor(sh.fid, () => sh.dims && o.autoDims !== false ? Drawing.withAutoDims(sh.fid, draw) : draw());
       const tb = U.el('table', { class: 'tblock' },
         U.el('tr', {}, U.el('td', { colspan: 3, class: 'tb-proj' }, App.doc.name || 'Проект')),
         U.el('tr', {}, U.el('td', { rowspan: 2, class: 'tb-sheet' }, sh.title, U.el('div', { class: 'tb-note' }, sh.note || '')), U.el('td', { class: 'tb-h' }, 'Масштаб'), U.el('td', { class: 'tb-h' }, 'Лист')),
@@ -186,10 +187,84 @@ const IO = {
           tb)));
     });
     if (o.expl || o.spec || o.legend || App.doc.notes.length) area.append(IO.reportSheet(PW, PH, M, o));
+    IO.finish(o, PW, PH);
+  },
+  /** После сборки листов: листы по системам, затем предпросмотр или печать */
+  finish(o, PW, PH) {
+    if (o.sysSheets) for (const sh of IO.sysSheets(o, PW, PH)) $('printArea').append(sh);
+    if (o.preview) IO.showPreview(); else IO.doPrint();
+  },
+  doPrint() {
+    const area = $('printArea');
     document.body.classList.add('printing');
     const done = () => { document.body.classList.remove('printing'); area.textContent = ''; window.removeEventListener('afterprint', done); };
     window.addEventListener('afterprint', done);
     setTimeout(() => window.print(), 150);
+  },
+  /** Окно предпросмотра: копии листов в масштабе окна */
+  showPreview() {
+    const body = $('pvBody'), sheets = [...$('printArea').querySelectorAll('.sheet')];
+    body.textContent = '';
+    $('pvTitle').textContent = `Предпросмотр печати — листов: ${sheets.length}`;
+    $('dlgPreview').showModal();
+    const avail = Math.max(300, body.clientWidth - 48);
+    for (const s of sheets) {
+      const c = s.cloneNode(true), wmm = parseFloat(s.style.width) || 297;
+      c.style.zoom = Math.min(1, avail / (wmm * 3.78)).toFixed(3);
+      body.append(c);
+    }
+  },
+  /** Листы по инженерным системам: план только этой сети с авторазмерами, справа — обозначения, трассы, оборудование, нормы */
+  sysSheets(o, PW, PH) {
+    const d = App.doc, ground = d.floors[0], M = 10, tbH = 42, descW = 92;
+    const boxW = PW - 20 - M - descW - 4, boxH = PH - 2 * M - tbH - 2, dpmm = o.paper === 'A2' ? 5 : 7;
+    const std = [20, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 2000];
+    const ids = Object.keys(SYSTEMS).filter(id => (o.sys || {})[id] !== false && (d.items.some(it => sysOf(it) === id) || d.lines.some(l => sysOfLine(l) === id)));
+    const issues = (() => { try { return Analysis.run().issues; } catch (e) { return []; } })();
+    const grp = { power: 'Электрика', lowvolt: 'Видеонаблюдение', vent: 'Вентиляция', gas: 'Газ' };
+    const date = new Date().toLocaleDateString('ru-RU'), out = [];
+    ids.forEach((id, i) => {
+      const S = SYSTEMS[id], lines = d.lines.filter(l => sysOfLine(l) === id), items = d.items.filter(it => sysOf(it) === id);
+      let b = Drawing.regionFor(ground.id);
+      for (const l of lines) b = G.bboxUnion(b, G.bbox(l.pts));
+      for (const it of items) b = G.bboxUnion(b, G.bbox(Model.itemPts(it)));
+      const pad = 120, reg0 = { x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad };
+      const need = Math.max((reg0.x1 - reg0.x0) * 10 / boxW, (reg0.y1 - reg0.y0) * 10 / boxH), N = std.find(x => x >= need) || Math.ceil(need);
+      const cx = (reg0.x0 + reg0.x1) / 2, cy = (reg0.y0 + reg0.y1) / 2, reg = { x0: cx - boxW * N / 20, x1: cx + boxW * N / 20, y0: cy - boxH * N / 20, y1: cy + boxH * N / 20 };
+      const only = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, k === id]));
+      const draw = () => IO.renderRegion(reg, boxW * dpmm, boxH * dpmm, { ...o, drawing: true, noRoof: true, sysOnly: only, fs: dpmm / 4 });
+      const { canvas } = Drawing.onFloor(ground.id, () => o.autoDims !== false ? Drawing.withAutoDims(ground.id, draw) : draw());
+      const len = lines.reduce((s, l) => s + G.polyPerimeter(l.pts, false), 0);
+      const kinds = [...new Set(lines.map(l => l.kind))];
+      const T = (head, rows) => U.el('table', {}, U.el('tr', {}, head.map(h => U.el('th', {}, h))), rows.map(r => U.el('tr', {}, r.map(c => U.el('td', {}, c)))));
+      const lrows = lines.map(l => [l.label || LINE_KINDS[l.kind].code, l.section || (l.dia ? 'Ø' + l.dia : ''), (G.polyPerimeter(l.pts, false) / 100).toFixed(1), l.depth ? (l.depth / 100).toFixed(2) : '—', l.breaker ? `${l.breaker}${l.rcd ? ' / ' + l.rcd : ''}` : '']);
+      const eq = {};
+      for (const it of items) { const k = it.label || catItem(it.key).name; eq[k] = (eq[k] || 0) + 1; }
+      const erows = Object.entries(eq).map(([k, n]) => [k, String(n)]);
+      const cut = (rows, n) => rows.length > n ? rows.slice(0, n).concat([['… ещё ' + (rows.length - n), '', '', '', ''].slice(0, rows[0].length)]) : rows;
+      const iss = issues.filter(x => grp[id] && x.group === grp[id]);
+      const desc = U.el('div', { class: 'sysdesc' },
+        U.el('h3', {}, S.name),
+        kinds.length ? U.el('div', {}, kinds.map(k => U.el('div', {}, U.el('span', { class: 'sw', style: { borderTopColor: LINE_KINDS[k].color, borderTopStyle: LINE_KINDS[k].dash.length ? 'dashed' : 'solid' } }), `${LINE_KINDS[k].code} — ${LINE_KINDS[k].name}`))) : null,
+        lines.length ? U.el('h4', {}, `Трассы (${lines.length}, всего ${(len / 100).toFixed(1)} м)`) : null,
+        lines.length ? T(['Обозн.', 'Марка / Ø', 'Длина, м', 'Глуб., м', id === 'power' ? 'Автомат / УЗО' : ''], cut(lrows, id === 'power' ? 24 : 16)) : null,
+        erows.length ? U.el('h4', {}, 'Оборудование') : null,
+        erows.length ? T(['Наименование', 'Кол.'], cut(erows, 14)) : null,
+        U.el('h4', {}, 'Требования'),
+        U.el('ul', { style: { margin: '0', paddingLeft: '4mm' } }, (SYSTEM_RULES[id] || []).map(r => U.el('li', {}, r))),
+        grp[id] ? U.el('div', { style: { marginTop: '1.5mm' } }, iss.length ? `Замечания анализа: ${iss.length} — ${iss.slice(0, 3).map(x => x.text).join('; ')}` : 'Замечаний анализа нет.') : null,
+        U.el('div', { class: 'norm' }, '§ ' + S.norms));
+      const tb = U.el('table', { class: 'tblock' },
+        U.el('tr', {}, U.el('td', { colspan: 3, class: 'tb-proj' }, d.name || 'Проект')),
+        U.el('tr', {}, U.el('td', { rowspan: 2, class: 'tb-sheet' }, 'План сетей: ' + S.name.toLowerCase(), U.el('div', { class: 'tb-note' }, ground.name + ', участок')), U.el('td', { class: 'tb-h' }, 'Масштаб'), U.el('td', { class: 'tb-h' }, 'Лист')),
+        U.el('tr', {}, U.el('td', {}, '1:' + N), U.el('td', {}, `С-${i + 1} / ${ids.length}`)),
+        U.el('tr', {}, U.el('td', { colspan: 3, class: 'tb-date' }, `Floorplaner · ${date}`)));
+      out.push(U.el('div', { class: 'sheet drawing', style: { width: PW + 'mm', height: PH + 'mm' } },
+        U.el('div', { class: 'dframe', style: { left: '20mm', top: M + 'mm', width: (PW - 20 - M) + 'mm', height: (PH - 2 * M) + 'mm', justifyContent: 'flex-start' } },
+          U.el('img', { src: canvas.toDataURL('image/png'), style: { width: (boxW - 2) + 'mm', height: (boxH - 2) + 'mm', margin: '1mm' }, alt: S.name }),
+          desc, tb)));
+    });
+    return out;
   },
   print(o) {
     if (o.drawing) return IO.printDrawings(o);
@@ -220,7 +295,8 @@ const IO = {
     const imgWmm = (region.x1 - region.x0) * 10 / N, imgHmm = (region.y1 - region.y0) * 10 / N;
     const dpmm = o.paper === 'A2' ? 5 : 7;
     // шрифты ≈ 8 pt на бумаге независимо от разрешения
-    const { canvas } = IO.renderRegion(region, imgWmm * dpmm, imgHmm * dpmm, { ...o, fs: dpmm / 4 });
+    const draw = () => IO.renderRegion(region, imgWmm * dpmm, imgHmm * dpmm, { ...o, fs: dpmm / 4 });
+    const { canvas } = o.autoDims ? Drawing.withAutoDims(App.floor, draw) : draw();
     const area = $('printArea');
     area.textContent = '';
     const style = U.el('style', {}, `@page { size: ${PW}mm ${PH}mm; margin: 0; }`);
@@ -233,10 +309,7 @@ const IO = {
         U.el('img', { src: canvas.toDataURL('image/png'), style: { width: imgWmm + 'mm', height: imgHmm + 'mm' }, alt: 'План' })));
     area.append(style, sheet);
     if (o.expl || o.spec || o.legend || App.doc.notes.length) area.append(IO.reportSheet(PW, PH, M, o));
-    document.body.classList.add('printing');
-    const done = () => { document.body.classList.remove('printing'); area.textContent = ''; window.removeEventListener('afterprint', done); };
-    window.addEventListener('afterprint', done);
-    setTimeout(() => window.print(), 150);
+    IO.finish(o, PW, PH);
   },
   reportSheet(PW, PH, M, o) {
     const s = Rooms.summary();

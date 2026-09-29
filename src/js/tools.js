@@ -502,7 +502,7 @@ const Tools = {
       // прилипание настенных предметов
       if (ids.length === 1 && Model.coll(ids[0]) === 'items' && !e.altKey) {
         const it = Model.get(ids[0]);
-        if (WALL_MOUNT.has(catItem(it.key).shape)) { const s = Tools.wallSnapItem(it, it, false); if (s) Object.assign(it, s); }
+        if (WALL_MOUNT.has(catItem(it.key).shape)) { const s = Tools.wallSnapItem(it, it, false); if (s) { const b = Model.itemPos([it.id]); Object.assign(it, s); Model.followLinks(b); } }
       }
       st.dx = dx; st.dy = dy;
       App.changedLive();

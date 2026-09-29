@@ -120,9 +120,13 @@ const UI = {
     $('libSearch').addEventListener('input', () => UI.buildLibrary());
     UI.buildLibrary();
     // печать
+    { const dp = $('dlgPrint'), show = dp.showModal.bind(dp); dp.showModal = () => { UI.fillPrintSys(); show(); }; }
+    $('pvClose').onclick = () => { $('dlgPreview').close(); $('printArea').textContent = ''; };
+    $('pvPrint').onclick = () => { $('dlgPreview').close(); IO.doPrint(); };
     $('dlgPrint').addEventListener('close', () => {
       const v = $('dlgPrint').returnValue;
       if (v === 'ok') IO.print(UI.printOpts());
+      else if (v === 'preview') IO.print({ ...UI.printOpts(), preview: true });
       else if (v === 'png') IO.exportPNG(UI.printOpts());
       else if (v === 'svg' || v === 'dxf') Vector.exportFile(v, UI.printOpts());
     });
@@ -132,7 +136,18 @@ const UI = {
     UI.syncTheme();
   },
   printOpts() {
-    return { paper: $('prPaper').value, orient: $('prOrient').value, scale: $('prScale').value, area: $('prArea').value, expl: $('prExpl').checked, spec: $('prSpec').checked, legend: $('prLegend').checked, grid: $('prGrid').checked, drawing: $('prDrawing').checked };
+    const sys = {};
+    for (const c of document.querySelectorAll('#prSysList input[data-sys]')) sys[c.dataset.sys] = c.checked;
+    return { paper: $('prPaper').value, orient: $('prOrient').value, scale: $('prScale').value, area: $('prArea').value, expl: $('prExpl').checked, spec: $('prSpec').checked, legend: $('prLegend').checked, grid: $('prGrid').checked, drawing: $('prDrawing').checked,
+      autoDims: $('prAutoDims').checked, sysSheets: $('prSysSheets').checked, sys };
+  },
+  /** Какие системы печатать: по умолчанию — как включены на плане */
+  fillPrintSys() {
+    const box = $('prSysList'), st = App.doc.settings.sys || {};
+    box.textContent = '';
+    const present = Object.keys(SYSTEMS).filter(id => App.doc.items.some(it => sysOf(it) === id) || App.doc.lines.some(l => sysOfLine(l) === id));
+    if (!present.length) return;
+    box.append(U.el('span', { class: 'fnote' }, 'Системы на плане и листах: '), ...present.map(id => U.el('label', { class: 'chip-chk' }, U.el('input', { type: 'checkbox', 'data-sys': id, checked: st[id] !== false }), ' ' + SYSTEMS[id].short)));
   },
 
   action(act) {
@@ -194,12 +209,13 @@ const UI = {
         return { title: T.name, lines: [`${Math.round(o.w)} × ${Math.round(o.h)} см${win ? `, подоконник ${Math.round(o.sill || 0)} см` : ''}`, info && !info.interior ? `Смотрит на ${U.compass16(info.bearing)} (${Math.round(info.bearing)}°)` : '', ...tail].filter(Boolean), hint: 'Тяните вдоль стены; петли и сторона — в свойствах' };
       }
       case 'items': {
-        const d = catItem(o.key);
-        return { title: o.label || d.name, lines: [`${Math.round(o.w)} × ${Math.round(o.d)} см, высота ${Math.round(o.h)} см`, o.rot ? `Поворот ${Math.round(o.rot)}°` : '', o.note || '', ...tail].filter(Boolean), hint: 'Тяните — переместить, ручки — размер и поворот' };
+        const d = catItem(o.key), nm = normsFor(o, c), s = sysOf(o);
+        return { title: o.label || d.name, lines: [o.label ? d.name : '', d.sym ? `Высота установки ${Math.round(o.h)} см` : `${Math.round(o.w)} × ${Math.round(o.d)} см, высота ${Math.round(o.h)} см`,
+          U.isNum(o.tset) ? `Термоголовка: +${o.tset} °C` : '', o.hob === 'gas' ? 'Варочная панель газовая' : '', o.note || '', s ? `Система: ${SYSTEMS[s].name}` : '', ...tail].filter(Boolean), norms: nm, hint: 'Тяните — переместить (подключённые трубы и кабели — следом), ручки — размер и поворот' };
       }
       case 'lines': {
         const k = LINE_KINDS[o.kind];
-        return { title: `${k.code} — ${k.name}`, lines: [`Длина ${L(G.polyPerimeter(o.pts, false))}`, o.dia ? `Ø ${o.dia} мм` : (o.section || ''), o.depth ? `Глубина ${L(o.depth)}` : '', ...tail].filter(Boolean) };
+        return { title: `${o.label || k.code} — ${k.name}`, lines: [`Длина ${L(G.polyPerimeter(o.pts, false))}`, o.section || '', o.dia ? `Ø ${o.dia} мм` : '', o.depth ? `Глубина ${L(o.depth)}` : '', o.breaker ? `Автомат ${o.breaker}${o.rcd ? ', УЗО ' + o.rcd : ''}` : '', o.note || '', ...tail].filter(Boolean), norms: normsFor(o, c) };
       }
       case 'areas': {
         const ar = Math.abs(G.polyArea(o.pts));
@@ -226,7 +242,7 @@ const UI = {
       const o = Model.get(id);
       if (o && o.grp) t.lines = [...t.lines, `В группе: ${Model.groupOf(id).length} объектов (Alt+клик — только этот)`];
       tip.textContent = '';
-      tip.append(U.el('b', {}, t.title), ...t.lines.map(l => U.el('div', {}, l)), t.hint ? U.el('em', {}, t.hint) : null);
+      tip.append(U.el('b', {}, t.title), ...t.lines.map(l => U.el('div', {}, l)), t.norms ? U.el('div', { class: 'tip-norm' }, '§ ' + t.norms) : null, t.hint ? U.el('em', {}, t.hint) : null);
       tip.hidden = false;
       UI._tipId = id;
       const W = App.cw, H = App.ch;
@@ -285,6 +301,29 @@ const UI = {
   },
 
   /* -------------------------------- этажи --------------------------------- */
+  /** Панель «Слои» на плане: инженерные системы по отдельности, крыша, размеры; «Чистый план» — одна планировка */
+  renderSysbar() {
+    const bar = $('sysbar');
+    if (!bar) return;
+    const d = App.doc, st = d.settings, sys = st.sys || {}, lay = st.layers;
+    const cnt = {};
+    for (const it of d.items) { const s = sysOf(it); if (s) cnt[s] = (cnt[s] || 0) + 1; }
+    for (const l of d.lines) { const s = sysOfLine(l); if (s) cnt[s] = (cnt[s] || 0) + 1; }
+    const ids = Object.keys(SYSTEMS).filter(id => cnt[id]);
+    bar.textContent = '';
+    if (!ids.length) { bar.hidden = true; return; }
+    bar.hidden = false;
+    const set = (fn) => { fn(); App.redraw(); UI.renderSysbar(); App.saveSoon(); };
+    const chip = (label, on, color, title, fn) => U.el('button', { type: 'button', class: 'sys-chip' + (on ? ' on' : ''), title, onclick: () => set(fn) }, color ? U.el('i', { style: { background: color } }) : null, label);
+    const setSys = (id, v) => { st.sys = { ...(st.sys || {}), [id]: v }; };
+    bar.append(U.el('span', { class: 'sys-title' }, 'Слои:'),
+      ...ids.map(id => chip(SYSTEMS[id].short, sys[id] !== false, SYSTEMS[id].color, `${SYSTEMS[id].name}: ${cnt[id]} объектов и трасс. Нормы: ${SYSTEMS[id].norms}`, () => setSys(id, sys[id] === false))),
+      chip('Крыша', lay.roof !== false, '#8f6b5a', 'Крыши дома и построек', () => { lay.roof = lay.roof === false; }),
+      chip('Размеры', lay.dims !== false, '#555', 'Размеры и надписи', () => { lay.dims = lay.dims === false; }),
+      U.el('span', { class: 'sys-sep' }),
+      chip('Чистый план', false, null, 'Только планировка: стены, окна, двери, мебель и сантехприборы — без сетей, крыши и отметок', () => { st.sys = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, false])); lay.roof = false; lay.checks = false; }),
+      chip('Всё', false, null, 'Показать все системы и крышу', () => { st.sys = {}; lay.roof = true; lay.dims = true; lay.checks = true; }));
+  },
   renderFloorbar() {
     const bar = $('floorbar');
     bar.textContent = '';
@@ -478,6 +517,7 @@ const UI = {
     UI.syncUndo();
     UI.syncToggles();
     UI.renderFloorbar();
+    UI.renderSysbar();
     if (View3D.active) { View3D.dirty = true; View3D.redraw(); }
     $('projectName').value = App.doc.name;
     UI.syncTitle();

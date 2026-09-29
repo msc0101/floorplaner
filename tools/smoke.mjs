@@ -526,6 +526,32 @@ const wk = await page.evaluate(() => {
 });
 console.log('walk', JSON.stringify(wk));
 if (!wk.on || wk.level !== 1 || wk.foot !== 300 || !wk.wallStop || !wk.off || !wk.still3d) errors.push('Прогулка: ' + JSON.stringify(wk));
+// инженерные системы: слои, связи трасс с приборами, листы печати по системам, ночь и камеры в 3D
+const sy = await page.evaluate(() => {
+  const r = {};
+  const id = (p) => Model.add('items', p).id;
+  const s1 = id({ key: 'socket2', x: 5000, y: 5000, h: 30, w: 15, d: 4, rot: 0 });
+  const l = Model.add('lines', { kind: 'power', pts: [{ x: 4800, y: 4900 }, { x: 5000, y: 4900 }, { x: 5000, y: 5000 }], depth: 0, section: 'ВВГнг-LS 3×1,5', breaker: 'C25', label: 'Тест' });
+  Model.commit();
+  r.sys = sysOf(Model.get(s1)) === 'power' && sysOfLine(l) === 'power';
+  Model.translate([s1], 40, 0);
+  r.follow = l.pts[2].x === 5040 && l.pts[1].x === 5040 && l.pts[0].x === 4800;
+  r.breaker = Analysis.run().issues.some(x => x.group === 'Электрика' && /Тест: автомат C25/.test(x.text));
+  App.doc.settings.sys = { power: false }; App.redraw(); App.doc.settings.sys = {};
+  const cam = Model.add('items', { key: 'cctvCam', x: 5200, y: 5200, h: 280, w: 10, d: 22, rot: 0 });
+  Model.commit();
+  r.cctv = !!Analysis.cctv(App.doc, App.floorData);
+  View3D.toggle(true); View3D.opts.night = true; View3D.setCamView(cam.id); View3D.draw(); r.night = View3D.lights !== undefined && !!View3D.camView;
+  View3D.setCamView(null); View3D.opts.night = false; View3D.toggle(false);
+  UI.fillPrintSys();
+  IO.print({ ...UI.printOpts(), paper: 'A4', orient: 'landscape', drawing: true, sysSheets: true, preview: true });
+  r.sheets = document.querySelectorAll('#pvBody .sheet').length;
+  $('pvClose').click();
+  Model.remove([s1, l.id, cam.id]); Model.commit();
+  return r;
+});
+console.log('systems', JSON.stringify(sy));
+if (!sy.sys || !sy.follow || !sy.breaker || !sy.cctv || !sy.night || !(sy.sheets >= 3)) errors.push('Инженерные системы: ' + JSON.stringify(sy));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

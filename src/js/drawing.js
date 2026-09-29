@@ -51,6 +51,14 @@ const Drawing = {
     // габариты
     dims.push({ a: P(s0, t0), b: P(s1, t0), off: -gap2 }, { a: P(s0, t1), b: P(s1, t1), off: gap2 });
     dims.push({ a: P(s0, t0), b: P(s0, t1), off: gap2 }, { a: P(s1, t0), b: P(s1, t1), off: -gap2 });
+    // размеры помещений в чистоте (ширина и глубина) — у прямоугольных комнат
+    for (const r of fd.rooms) {
+      const q = r.floor || r.axis;
+      if (!q || q.length > 6 || r.areaFloor < 2e4) continue;
+      const bb = G.bbox(q), w = bb.x1 - bb.x0, h = bb.y1 - bb.y0, yy = bb.y0 + h * 0.3, xx = bb.x0 + w * 0.3;
+      if (G.pointInPoly({ x: (bb.x0 + bb.x1) / 2, y: yy }, q)) dims.push({ a: { x: bb.x0, y: yy }, b: { x: bb.x1, y: yy }, off: 0, room: true });
+      if (G.pointInPoly({ x: xx, y: (bb.y0 + bb.y1) / 2 }, q)) dims.push({ a: { x: xx, y: bb.y0 }, b: { x: xx, y: bb.y1 }, off: 0, room: true });
+    }
     return dims.filter(d => G.dist(d.a, d.b) > 3);
   },
   /** Выполнить fn с временными авторазмерами на текущем виде этажа */

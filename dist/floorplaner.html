@@ -262,6 +262,15 @@ button.mini:disabled { opacity: .35; }
 .hovertip div { color: var(--muted); }
 .hovertip em { display: block; font-style: normal; color: var(--muted-2); font-size: 11px; margin-top: 3px; border-top: 1px solid var(--border); padding-top: 3px; }
 @media (hover: none) { .hovertip { display: none !important; } }
+.hovertip .tip-norm { color: var(--text); font-size: 11px; margin-top: 4px; padding: 4px 6px; border-radius: 5px; background: var(--surface-2); }
+.sysbar { position: absolute; left: 8px; bottom: 34px; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; width: fit-content; max-width: calc(100% - 160px);
+  background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 6px; box-shadow: var(--shadow-sm); backdrop-filter: blur(6px); }
+.sysbar[hidden], body.mode-3d .sysbar { display: none; }
+.sys-title { font-size: 11.5px; color: var(--muted); margin-right: 2px; }
+.sys-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 2px; }
+.sys-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--muted); font-size: 11.5px; opacity: .6; }
+.sys-chip.on { opacity: 1; color: var(--text); background: var(--surface); }
+.sys-chip i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .statusbar {
   position: absolute; left: 0; right: 0; bottom: 0; height: 26px; display: flex; align-items: center; gap: 14px; padding: 0 10px 0 250px;
   font-size: 11.5px; color: var(--muted); background: color-mix(in srgb, var(--surface) 90%, transparent); border-top: 1px solid var(--border); z-index: 2;
@@ -508,6 +517,8 @@ button.mini:disabled { opacity: .35; }
   body.printing { overflow: visible; background: #fff; }
   body.printing .app, body.printing dialog, body.printing .ctxmenu, body.printing .scrim { display: none !important; }
   body.printing #printArea { display: block; }
+}
+/* листы печати — и на бумаге, и в окне предпросмотра */
   .sheet { page-break-after: always; break-after: page; overflow: hidden; color: #111; font: 11px/1.35 system-ui, sans-serif; }
   .sheet:last-child { page-break-after: auto; break-after: auto; }
   .sheet-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1.5px solid #111; padding-bottom: 2mm; margin-bottom: 2mm; height: 12mm; }
@@ -529,7 +540,18 @@ button.mini:disabled { opacity: .35; }
   .rep table { width: 100%; border-collapse: collapse; }
   .rep th, .rep td { border: .3mm solid #999; padding: 1mm 1.5mm; text-align: left; vertical-align: top; }
   .rep th { background: #eee; }
-}
+  .sysdesc { position: absolute; top: 2mm; right: 2mm; width: 88mm; bottom: 46mm; overflow: hidden; font: 8.5px/1.3 Arial, sans-serif; color: #111; }
+  .sysdesc h3 { margin: 0 0 1.5mm; font-size: 12px; }
+  .sysdesc h4 { margin: 2.5mm 0 1mm; font-size: 9.5px; }
+  .sysdesc table { width: 100%; border-collapse: collapse; }
+  .sysdesc td, .sysdesc th { border: .25mm solid #aaa; padding: .6mm 1mm; text-align: left; vertical-align: top; }
+  .sysdesc th { background: #eee; }
+  .sysdesc .sw { display: inline-block; width: 7mm; height: 0; border-top: .7mm solid; vertical-align: middle; margin-right: 1mm; }
+  .sysdesc .norm { margin-top: 2mm; padding: 1.5mm; background: #f3f3f3; border-left: .8mm solid #888; }
+.pv-dlg { width: min(1200px, 96vw); height: 92vh; display: flex; flex-direction: column; }
+.pv-head { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.pv-body { flex: 1; overflow: auto; background: #7a7f87; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.pv-body .sheet { background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.35); flex: none; position: relative; }
 .fbtns.views3d button { flex: 1 1 30%; padding: 5px 4px; }
 .p3d-head { all: unset; cursor: pointer; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
 .p3d-head::after { content: '▾'; color: var(--muted); font-weight: 400; }
@@ -730,6 +752,7 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
         </div>
       </div>
       <div class="floorbar" id="floorbar" aria-label="Этажи"></div>
+      <div class="sysbar" id="sysbar" aria-label="Слои инженерных систем" hidden></div>
       <div class="hovertip" id="hovertip" role="tooltip" hidden></div>
       <div class="statusbar" role="status">
         <span class="st-coords">X <b id="stX">0.00</b> Y <b id="stY">0.00</b> м</span>
@@ -785,10 +808,20 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
       <label><input type="checkbox" id="prLegend" checked> Условные обозначения сетей</label>
       <label><input type="checkbox" id="prGrid"> Сетка</label>
       <label class="span2"><input type="checkbox" id="prDrawing"> <b>Комплект чертежей</b>: генплан и план каждого этажа на отдельном листе, с размерными цепочками и штампом</label>
+      <label><input type="checkbox" id="prAutoDims" checked> Авторазмеры: габариты, проёмы и окна, размеры комнат</label>
+      <label><input type="checkbox" id="prSysSheets"> <b>Листы по системам</b>: каждая сеть — отдельная страница с описанием и нормами</label>
+      <div class="span2 pr-sys" id="prSysList"></div>
     </div>
     <p class="note">В диалоге печати браузера выберите принтер или «Сохранить как PDF». Масштаб 1:N соблюдается при печати «100%» без подгонки. SVG и DXF — векторные, со слоями (DXF — в миллиметрах, для AutoCAD/nanoCAD/LibreCAD); масштаб влияет на толщину линий и размер шрифтов.</p>
-    <div class="modal-actions"><button value="cancel" formnovalidate>Отмена</button><button value="svg">SVG</button><button value="dxf">DXF</button><button value="png" id="prPng">PNG</button><button value="ok" class="primary">Печать</button></div>
+    <div class="modal-actions"><button value="cancel" formnovalidate>Отмена</button><button value="svg">SVG</button><button value="dxf">DXF</button><button value="png" id="prPng">PNG</button><button value="preview">Просмотр</button><button value="ok" class="primary">Печать</button></div>
   </form>
+</dialog>
+
+<dialog class="modal" id="dlgPreview">
+  <div class="modal-card pv-dlg">
+    <div class="pv-head"><h3 id="pvTitle">Предпросмотр печати</h3><div class="modal-actions"><button id="pvClose">Закрыть</button><button class="primary" id="pvPrint">Печать / PDF</button></div></div>
+    <div class="pv-body" id="pvBody"></div>
+  </div>
 </dialog>
 
 <dialog class="modal" id="dlgAnalysis">
@@ -1224,6 +1257,77 @@ const LINE_KINDS = {
   lowvolt:  { name: 'Слаботочка (сеть, ТВ)', code: 'СС', color: '#7c3aed', dash: [6, 4], layer: 'electric', dia: 0, depth: 0, section: 'UTP cat.5e' },
   ground:   { name: 'Заземление', code: 'З', color: '#16a34a', dash: [2, 4], layer: 'electric', dia: 0, depth: 50, section: 'Полоса 40×4' },
 };
+
+/* Инженерные системы — «слои» плана, которые можно включать по отдельности (и печатать по листам).
+   lines — виды трасс, keys — предметы каталога; norms — основные своды правил для подсказок и листов. */
+const SYSTEMS = {
+  water:     { name: 'Водопровод (ХВС, ГВС)', short: 'Вода', color: '#1e6fe0', lines: ['water', 'hotwater'], keys: ['waterIn', 'faucetOut', 'gardenHydrant', 'filter', 'hydroTank', 'pumpStation', 'tap', 'borehole', 'boreholeArt', 'well'],
+    norms: 'СП 30.13330.2020 «Внутренний водопровод и канализация зданий»; СП 31.13330.2021 «Водоснабжение. Наружные сети»; СанПиН 2.1.3684-21 (зоны санитарной охраны скважин)' },
+  sewer:     { name: 'Канализация и ливнёвка', short: 'Канализация', color: '#8a5a2b', lines: ['sewer', 'drain'], keys: ['septic2', 'septic3', 'septicRing', 'cesspool', 'manhole', 'drainWell', 'filterField', 'riser', 'downspout', 'stormInlet', 'drainChannel', 'rainBarrel'],
+    norms: 'СП 30.13330.2020 (внутренняя: Ø50 — уклон 3%, Ø110 — 2%); СП 32.13330.2018 «Канализация. Наружные сети»; СП 17.13330.2017 п. 9 (водосток с кровли)' },
+  heating:   { name: 'Отопление', short: 'Отопление', color: '#c2257e', lines: ['heating'], keys: ['radiator', 'radiatorLong', 'towel', 'gasBoilerWall', 'boilerFloor', 'elBoiler', 'indirect', 'pump', 'expansionTank'],
+    norms: 'СП 60.13330.2020 «Отопление, вентиляция и кондиционирование воздуха» (радиаторы — под окнами, п. 6.4.4); СП 50.13330.2012 (теплозащита)' },
+  warmfloor: { name: 'Тёплый пол', short: 'Тёплый пол', color: '#e07b2f', lines: ['warmfloor'], keys: ['manifoldWF'],
+    norms: 'СП 60.13330.2020 п. 6.4.10: температура поверхности пола ≤ 26 °C в жилых, ≤ 31 °C в ванных; контур ≤ 80–100 м (PE-Xa 16 мм)' },
+  vent:      { name: 'Вентиляция', short: 'Вентиляция', color: '#0e9f6e', lines: [], keys: ['ventSupply', 'ventGrille', 'ventTransfer', 'recuperator', 'fan'],
+    norms: 'СП 54.13330.2022 / СП 55.13330.2016 (воздухообмен); СП 60.13330.2020 табл. 9.1; СП 402.1325800.2018 (помещения с газовыми приборами)' },
+  ac:        { name: 'Кондиционирование', short: 'Кондиционеры', color: '#0891b2', lines: ['freon'], keys: ['ac', 'acout'],
+    norms: 'СП 60.13330.2020 разд. 7; длина трассы и перепад высот — по паспорту кондиционера' },
+  power:     { name: 'Электрика', short: 'Электрика', color: '#d21f3c', lines: ['power', 'overhead', 'ground'], keys: ['generator', 'groundRod'],
+    norms: 'ПУЭ 7-е изд., гл. 7.1 (жилые здания), 1.7 (заземление), 2.4 (ВЛ); СП 256.1325800.2016 «Электроустановки жилых и общественных зданий»' },
+  lowvolt:   { name: 'Слаботочка и видеонаблюдение', short: 'Видео, сеть', color: '#7c3aed', lines: ['lowvolt'], keys: ['cctvCam', 'nvr'],
+    norms: 'СП 134.13330.2022 «Системы электросвязи зданий»; ГОСТ Р 51558-2014 (системы охранные телевизионные)' },
+  gas:       { name: 'Газоснабжение', short: 'Газ', color: '#d89b00', lines: ['gas', 'gasAir'], keys: [],
+    norms: 'СП 62.13330.2011 «Газораспределительные системы»; СП 402.1325800.2018 «Здания жилые. Правила проектирования систем газопотребления»' },
+};
+/** Главные требования по системам — на листах печати */
+const SYSTEM_RULES = {
+  water: ['Ввод — ниже глубины промерзания на 0,5 м, через фундамент в футляре', 'Разводка от коллектора: PP-R PN20 (ГВС — армированный) Ø20–25, в стяжке — в гофре', 'ГВС: 60 °C у водонагревателя, ≥ 50 °C у прибора (СанПиН 1.2.3685-21)', 'Водопровод и канализация: параллельно ≥ 1,5 м, на пересечении вода выше на 0,4 м или в футляре'],
+  sewer: ['Уклоны: Ø50 — 0,03, Ø110 — 0,02; повороты — отводами 45°, ревизии у стояков', 'Вытяжная часть стояка — выше кровли, Ø не меньше стояка', 'Выпуск Ø110 до колодца — не длиннее 12 м', 'Септик ≥ 5 м от дома, ≥ 20 м от скважины (фильтрующие — ≥ 50 м); ливнёвка — в поглощающие колодцы, не в септик'],
+  heating: ['Радиаторы — под окнами, длиной 50–75 % окна, 10–12 см от пола', 'Котельная: объём ≥ 7,5 м³ (котёл до 30 кВт), окно, приток и вытяжка', 'Неотапливаемый гараж — отдельная ветка, дежурный режим ✱ +5 °C'],
+  warmfloor: ['Шаг 15–20 см (у окон и в ванных — 15), отступ от стен 10–15 см', 'Контур не длиннее 80 м, контуры на коллекторе — примерно равной длины', 'Стяжка над трубой ≥ 45 мм, демпферная лента по периметру, температура пола ≤ 26 °C'],
+  vent: ['Вытяжка: кухня 60 м³/ч (с газовой плитой 90), санузел 25–50 м³/ч, котельная — 3 объёма в час', 'Приток в жилые комнаты — клапаны в стенах; переток — щели или решётки в дверях', 'Вентканалы выводятся выше кровли по СП 7.13130 п. 5.10'],
+  ac: ['Внутренний блок — не над кроватью и рабочим местом, ≥ 15 см от потолка', 'Трасса на блок ≤ 15–25 м (по паспорту), дренаж — с уклоном ≥ 1 %', 'Наружный блок — в тени, на кронштейнах, с доступом для обслуживания'],
+  power: ['Ввод: вводной автомат, счётчик, УЗО 300 мА (пожарное), УЗИП', 'Группы: свет — 3×1,5 C10; розетки — 3×2,5 C16 + УЗО 30 мА; мощные приборы — отдельные линии', 'Ванная, стиральная машина, улица — УЗО 10–30 мА, розетки IP44', 'Высоты: розетки 0,3 м (кухня 1,1 м), выключатели 0,9 м у двери со стороны ручки'],
+  lowvolt: ['Сектора камер перекрываются и закрывают весь периметр', 'Кабели UTP outdoor в гофре, в земле — в ПНД-трубе на 0,7 м', 'Регистратор с ИБП — в скрытом тёплом помещении'],
+  gas: ['Надземный газопровод ≥ 2,2 м над землёй, над проездом ≥ 5 м, над окнами — не ближе 0,5 м', 'Кран перед каждым газовым прибором, гибкая подводка ≤ 1,5 м', 'Помещение с газовым прибором — окно с форточкой, вытяжка, сигнализатор загазованности с клапаном-отсекателем'],
+};
+/** Инженерная система предмета (id из SYSTEMS) или null — архитектура, мебель, сантехприборы */
+function sysOf(it) {
+  const def = catItem(it.key), k = def.key;
+  if (k === 'manifold') return /ХВС|ГВС|вод/i.test(it.label || '') ? 'water' : 'heating';
+  for (const [id, s] of Object.entries(SYSTEMS)) if (s.keys.includes(k)) return id;
+  if (def.layer === 'gas') return 'gas';
+  if (def.layer === 'electric' && def.sym) return 'power';
+  return null;
+}
+/** Инженерная система трассы */
+function sysOfLine(l) { for (const [id, s] of Object.entries(SYSTEMS)) if (s.lines.includes(l.kind)) return id; return null; }
+/** Нормы для подсказки: по предмету или трассе */
+const ITEM_NORMS = {
+  socket: 'ПУЭ 7.1.47–7.1.50; СП 256 п. 14: розеток — по одной на 4 м периметра комнаты, на кухне — от 4; в ванной — только зона 3 (≥ 0,6 м от ванны), IP44, УЗО ≤ 30 мА',
+  switch: 'СП 256.1325800 п. 16.4: у входа, со стороны ручки, на 0,8–1,7 м; в санузлах — снаружи',
+  lamp: 'СП 52.13330.2016 (освещённость: жилые 150 лк, кухни 150 лк, санузлы 50 лк)',
+  panel: 'ПУЭ 7.1.28–7.1.30: щит — в доступном месте, не в санузле и не под мойкой; по группам — автоматы и УЗО',
+  meter: 'ПУЭ 1.5.27–1.5.29: счётчик на высоте 0,8–1,7 м, доступ для сетевой компании',
+  radiator: 'СП 60.13330 п. 6.4.4: под окнами, длина ≥ 50 % ширины окна; от пола 6–12 см, от стены ≥ 2,5 см',
+  socketOut: 'ПУЭ 7.1.83: наружные розетки — через УЗО 30 мА, степень защиты ≥ IP44',
+  cctv: 'ГОСТ Р 51558-2014: обнаружение человека — ≥ 10 % высоты кадра, распознавание — ≥ 50 %',
+  downspout: 'СП 17.13330.2017 п. 9.1–9.7: водосток — одна труба на 10 м карниза, отвод воды от фундамента',
+  faucetOut: 'СП 30.13330 п. 5.4.4: поливочные краны по периметру здания — через 60–70 м, незамерзающие',
+  gasValve: 'СП 62.13330 п. 5.1.7: отключающее устройство перед каждым газовым прибором',
+  ventSupply: 'СП 54.13330 п. 9.6: приток в жилые комнаты — клапаны в стенах или окнах',
+  ac: 'СП 60.13330 п. 7: внутренний блок — не над кроватью и не на рабочее место, наружный — с доступом для обслуживания',
+  riser: 'СП 30.13330 п. 8.3.12–8.3.15: вытяжная часть стояка — выше кровли на 0,2 м (скатная), Ø не меньше стояка',
+};
+function normsFor(o, coll) {
+  if (coll === 'lines') { const s = sysOfLine(o); return s ? SYSTEMS[s].norms : ''; }
+  const def = catItem(o.key), sh = def.shape;
+  const n = ITEM_NORMS[def.key] || ITEM_NORMS[sh] || (sh === 'socket2' || sh === 'socketP' ? ITEM_NORMS.socket : sh === 'switch2' ? ITEM_NORMS.switch : '');
+  if (n) return n;
+  const s = sysOf(o);
+  return s ? SYSTEMS[s].norms : '';
+}
 
 /** Опоры воздушной линии: столб из библиотеки (item), крепление на стене дома (wall — ввод) или столб,
  *  который рисуем сами; промежуточные опоры — чтобы пролёт был не длиннее ~40 м */
@@ -2869,7 +2973,7 @@ const DOC_VERSION = 1;
 const COLLECTIONS = ['areas', 'roads', 'walls', 'openings', 'items', 'roofs', 'lines', 'dims', 'texts', 'roomTags', 'notes'];
 
 /** Настройки вида — не часть «правки», undo/redo их не трогает */
-const VIEW_SETTINGS = ['hoverTips', 'layers', 'sun', 'showWallDims', 'showItemDims', 'showGuides', 'showSwing', 'wallHatch', 'showChecks', 'showChecksOk', 'roofFill', 'wallDefaultsLive'];
+const VIEW_SETTINGS = ['hoverTips', 'layers', 'sys', 'sun', 'showWallDims', 'showItemDims', 'showGuides', 'showSwing', 'wallHatch', 'showChecks', 'showChecksOk', 'roofFill', 'wallDefaultsLive'];
 
 const Model = {
   newDoc() {
@@ -3270,6 +3374,7 @@ const Model = {
   /** Сдвиг набора объектов. Концы стен, не входящих в набор, но примыкающих — тянутся следом. */
   translate(ids, dx, dy, opts = {}) {
     const set = new Set(ids);
+    const before = opts.links === false ? null : Model.itemPos(ids);
     const mv = (p) => { p.x += dx; p.y += dy; };
     const movedPts = new Set();
     const wallIds = new Set(ids.filter(id => Model.coll(id) === 'walls'));
@@ -3292,7 +3397,37 @@ const Model = {
       else if (c === 'lines' || c === 'areas' || c === 'roads') o.pts.forEach(mv);
       else if (c === 'dims') { mv(o.a); mv(o.b); }
     }
+    if (before) Model.followLinks(before, set);
     return set;
+  },
+  /** Положения предметов (до сдвига) — для followLinks */
+  itemPos(ids) { const m = new Map(); for (const id of ids) { const o = Model.get(id); if (o && Model.coll(id) === 'items') m.set(id, { x: o.x, y: o.y }); } return m; },
+  /** Трубы и кабели, подключённые к сдвинутому прибору (вершина трассы — в точке прибора), тянутся за ним;
+   *  соседний излом сдвигается так, чтобы горизонтальные и вертикальные участки такими и остались */
+  followLinks(before, skip = new Set()) {
+    for (const [id, p0] of before) {
+      const it = Model.get(id);
+      if (!it || !(sysOf(it) || catItem(it.key).sym)) continue;               // только инженерные приборы
+      const dx = it.x - p0.x, dy = it.y - p0.y;
+      if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) continue;
+      const tol = U.clamp(Math.min(it.w, it.d) / 2 + 2, 6, 20);
+      for (const l of App.doc.lines) {
+        if (skip.has(l.id) || (l.floor && it.floor && l.floor !== it.floor)) continue;
+        const hit = l.pts.map(p => G.dist(p, p0) <= tol);
+        if (!hit.some(Boolean)) continue;
+        const moved = new Set();
+        l.pts.forEach((p, i) => {
+          if (!hit[i]) return;
+          for (const j of [i - 1, i + 1]) {
+            const q = l.pts[j];
+            if (!q || hit[j] || moved.has(j)) continue;
+            if (Math.abs(q.x - p.x) < 0.5) { q.x += dx; moved.add(j); }         // вертикальный участок остаётся вертикальным
+            else if (Math.abs(q.y - p.y) < 0.5) { q.y += dy; moved.add(j); }    // горизонтальный — горизонтальным
+          }
+          p.x += dx; p.y += dy;
+        });
+      }
+    }
   },
   rotate(ids, center, deg) {
     const a = U.rad(deg);
@@ -4831,7 +4966,7 @@ const Render = {
     if (L.rooms) Render.roomFills(env);
     if (L.shadows && !ctx.isVector) Render.shadows(env);
     lay('ITEMS');
-    const items = App.V.items.filter(it => L[catItem(it.key).layer] !== false);
+    const items = App.V.items.filter(it => L[catItem(it.key).layer] !== false && Render.sysOn(env, sysOf(it)));
     // «напольные» объекты — под стенами и дверьми (крыльцо и веранда не закрывают открытую дверь)
     const isGround = (it) => { const d = catItem(it.key); return !d.sym && (it.h <= 20 || d.shape === 'rug' || d.shape === 'veranda') && !['tree', 'conifer', 'bush'].includes(d.shape); };
     const isCanopy = (it) => ['tree', 'conifer', 'bush', 'hedge'].includes(catItem(it.key).shape);
@@ -4889,7 +5024,7 @@ const Render = {
     ctx.globalAlpha = 0.3;
     try {
       if (env.layers.site) { Render.areas(env); Render.roads(env); }
-      for (const it of App.V.items) if (!catItem(it.key).sym && env.layers[catItem(it.key).layer] !== false) Render.item(env, it);
+      for (const it of App.V.items) if (!catItem(it.key).sym && env.layers[catItem(it.key).layer] !== false && Render.sysOn(env, sysOf(it))) Render.item(env, it);
       Render.walls(env);
     } finally {
       ctx.restore();
@@ -5445,13 +5580,15 @@ const Render = {
     }
   },
 
+  /** Инженерная система включена (панель «Слои» на плане; при печати — свой набор env.sys) */
+  sysOn(env, id) { return !id || ((env.sys || App.doc.settings.sys || {})[id] !== false); },
   /* ---------------------------- инженерные трассы ------------------------ */
   lines(env) {
     const { ctx, px } = env;
     const L = env.layers;
     for (const l of App.V.lines) {
       const k = LINE_KINDS[l.kind];
-      if (L[k.layer] === false) continue;
+      if (L[k.layer] === false || !Render.sysOn(env, sysOfLine(l))) continue;
       const color = l.color || k.color;
       // ЛЭП: охранная зона (по умолчанию 2 м в каждую сторону — ВЛ 0,4 кВ) — строить под проводами нельзя
       if (l.kind === 'overhead' && (l.zone ?? 200) > 0) {
@@ -9230,7 +9367,7 @@ const Tools = {
       // прилипание настенных предметов
       if (ids.length === 1 && Model.coll(ids[0]) === 'items' && !e.altKey) {
         const it = Model.get(ids[0]);
-        if (WALL_MOUNT.has(catItem(it.key).shape)) { const s = Tools.wallSnapItem(it, it, false); if (s) Object.assign(it, s); }
+        if (WALL_MOUNT.has(catItem(it.key).shape)) { const s = Tools.wallSnapItem(it, it, false); if (s) { const b = Model.itemPos([it.id]); Object.assign(it, s); Model.followLinks(b); } }
       }
       st.dx = dx; st.dy = dy;
       App.changedLive();
@@ -10178,9 +10315,13 @@ const UI = {
     $('libSearch').addEventListener('input', () => UI.buildLibrary());
     UI.buildLibrary();
     // печать
+    { const dp = $('dlgPrint'), show = dp.showModal.bind(dp); dp.showModal = () => { UI.fillPrintSys(); show(); }; }
+    $('pvClose').onclick = () => { $('dlgPreview').close(); $('printArea').textContent = ''; };
+    $('pvPrint').onclick = () => { $('dlgPreview').close(); IO.doPrint(); };
     $('dlgPrint').addEventListener('close', () => {
       const v = $('dlgPrint').returnValue;
       if (v === 'ok') IO.print(UI.printOpts());
+      else if (v === 'preview') IO.print({ ...UI.printOpts(), preview: true });
       else if (v === 'png') IO.exportPNG(UI.printOpts());
       else if (v === 'svg' || v === 'dxf') Vector.exportFile(v, UI.printOpts());
     });
@@ -10190,7 +10331,18 @@ const UI = {
     UI.syncTheme();
   },
   printOpts() {
-    return { paper: $('prPaper').value, orient: $('prOrient').value, scale: $('prScale').value, area: $('prArea').value, expl: $('prExpl').checked, spec: $('prSpec').checked, legend: $('prLegend').checked, grid: $('prGrid').checked, drawing: $('prDrawing').checked };
+    const sys = {};
+    for (const c of document.querySelectorAll('#prSysList input[data-sys]')) sys[c.dataset.sys] = c.checked;
+    return { paper: $('prPaper').value, orient: $('prOrient').value, scale: $('prScale').value, area: $('prArea').value, expl: $('prExpl').checked, spec: $('prSpec').checked, legend: $('prLegend').checked, grid: $('prGrid').checked, drawing: $('prDrawing').checked,
+      autoDims: $('prAutoDims').checked, sysSheets: $('prSysSheets').checked, sys };
+  },
+  /** Какие системы печатать: по умолчанию — как включены на плане */
+  fillPrintSys() {
+    const box = $('prSysList'), st = App.doc.settings.sys || {};
+    box.textContent = '';
+    const present = Object.keys(SYSTEMS).filter(id => App.doc.items.some(it => sysOf(it) === id) || App.doc.lines.some(l => sysOfLine(l) === id));
+    if (!present.length) return;
+    box.append(U.el('span', { class: 'fnote' }, 'Системы на плане и листах: '), ...present.map(id => U.el('label', { class: 'chip-chk' }, U.el('input', { type: 'checkbox', 'data-sys': id, checked: st[id] !== false }), ' ' + SYSTEMS[id].short)));
   },
 
   action(act) {
@@ -10252,12 +10404,13 @@ const UI = {
         return { title: T.name, lines: [`${Math.round(o.w)} × ${Math.round(o.h)} см${win ? `, подоконник ${Math.round(o.sill || 0)} см` : ''}`, info && !info.interior ? `Смотрит на ${U.compass16(info.bearing)} (${Math.round(info.bearing)}°)` : '', ...tail].filter(Boolean), hint: 'Тяните вдоль стены; петли и сторона — в свойствах' };
       }
       case 'items': {
-        const d = catItem(o.key);
-        return { title: o.label || d.name, lines: [`${Math.round(o.w)} × ${Math.round(o.d)} см, высота ${Math.round(o.h)} см`, o.rot ? `Поворот ${Math.round(o.rot)}°` : '', o.note || '', ...tail].filter(Boolean), hint: 'Тяните — переместить, ручки — размер и поворот' };
+        const d = catItem(o.key), nm = normsFor(o, c), s = sysOf(o);
+        return { title: o.label || d.name, lines: [o.label ? d.name : '', d.sym ? `Высота установки ${Math.round(o.h)} см` : `${Math.round(o.w)} × ${Math.round(o.d)} см, высота ${Math.round(o.h)} см`,
+          U.isNum(o.tset) ? `Термоголовка: +${o.tset} °C` : '', o.hob === 'gas' ? 'Варочная панель газовая' : '', o.note || '', s ? `Система: ${SYSTEMS[s].name}` : '', ...tail].filter(Boolean), norms: nm, hint: 'Тяните — переместить (подключённые трубы и кабели — следом), ручки — размер и поворот' };
       }
       case 'lines': {
         const k = LINE_KINDS[o.kind];
-        return { title: `${k.code} — ${k.name}`, lines: [`Длина ${L(G.polyPerimeter(o.pts, false))}`, o.dia ? `Ø ${o.dia} мм` : (o.section || ''), o.depth ? `Глубина ${L(o.depth)}` : '', ...tail].filter(Boolean) };
+        return { title: `${o.label || k.code} — ${k.name}`, lines: [`Длина ${L(G.polyPerimeter(o.pts, false))}`, o.section || '', o.dia ? `Ø ${o.dia} мм` : '', o.depth ? `Глубина ${L(o.depth)}` : '', o.breaker ? `Автомат ${o.breaker}${o.rcd ? ', УЗО ' + o.rcd : ''}` : '', o.note || '', ...tail].filter(Boolean), norms: normsFor(o, c) };
       }
       case 'areas': {
         const ar = Math.abs(G.polyArea(o.pts));
@@ -10284,7 +10437,7 @@ const UI = {
       const o = Model.get(id);
       if (o && o.grp) t.lines = [...t.lines, `В группе: ${Model.groupOf(id).length} объектов (Alt+клик — только этот)`];
       tip.textContent = '';
-      tip.append(U.el('b', {}, t.title), ...t.lines.map(l => U.el('div', {}, l)), t.hint ? U.el('em', {}, t.hint) : null);
+      tip.append(U.el('b', {}, t.title), ...t.lines.map(l => U.el('div', {}, l)), t.norms ? U.el('div', { class: 'tip-norm' }, '§ ' + t.norms) : null, t.hint ? U.el('em', {}, t.hint) : null);
       tip.hidden = false;
       UI._tipId = id;
       const W = App.cw, H = App.ch;
@@ -10343,6 +10496,29 @@ const UI = {
   },
 
   /* -------------------------------- этажи --------------------------------- */
+  /** Панель «Слои» на плане: инженерные системы по отдельности, крыша, размеры; «Чистый план» — одна планировка */
+  renderSysbar() {
+    const bar = $('sysbar');
+    if (!bar) return;
+    const d = App.doc, st = d.settings, sys = st.sys || {}, lay = st.layers;
+    const cnt = {};
+    for (const it of d.items) { const s = sysOf(it); if (s) cnt[s] = (cnt[s] || 0) + 1; }
+    for (const l of d.lines) { const s = sysOfLine(l); if (s) cnt[s] = (cnt[s] || 0) + 1; }
+    const ids = Object.keys(SYSTEMS).filter(id => cnt[id]);
+    bar.textContent = '';
+    if (!ids.length) { bar.hidden = true; return; }
+    bar.hidden = false;
+    const set = (fn) => { fn(); App.redraw(); UI.renderSysbar(); App.saveSoon(); };
+    const chip = (label, on, color, title, fn) => U.el('button', { type: 'button', class: 'sys-chip' + (on ? ' on' : ''), title, onclick: () => set(fn) }, color ? U.el('i', { style: { background: color } }) : null, label);
+    const setSys = (id, v) => { st.sys = { ...(st.sys || {}), [id]: v }; };
+    bar.append(U.el('span', { class: 'sys-title' }, 'Слои:'),
+      ...ids.map(id => chip(SYSTEMS[id].short, sys[id] !== false, SYSTEMS[id].color, `${SYSTEMS[id].name}: ${cnt[id]} объектов и трасс. Нормы: ${SYSTEMS[id].norms}`, () => setSys(id, sys[id] === false))),
+      chip('Крыша', lay.roof !== false, '#8f6b5a', 'Крыши дома и построек', () => { lay.roof = lay.roof === false; }),
+      chip('Размеры', lay.dims !== false, '#555', 'Размеры и надписи', () => { lay.dims = lay.dims === false; }),
+      U.el('span', { class: 'sys-sep' }),
+      chip('Чистый план', false, null, 'Только планировка: стены, окна, двери, мебель и сантехприборы — без сетей, крыши и отметок', () => { st.sys = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, false])); lay.roof = false; lay.checks = false; }),
+      chip('Всё', false, null, 'Показать все системы и крышу', () => { st.sys = {}; lay.roof = true; lay.dims = true; lay.checks = true; }));
+  },
   renderFloorbar() {
     const bar = $('floorbar');
     bar.textContent = '';
@@ -10536,6 +10712,7 @@ const UI = {
     UI.syncUndo();
     UI.syncToggles();
     UI.renderFloorbar();
+    UI.renderSysbar();
     if (View3D.active) { View3D.dirty = true; View3D.redraw(); }
     $('projectName').value = App.doc.name;
     UI.syncTitle();
@@ -11753,6 +11930,14 @@ const Drawing = {
     // габариты
     dims.push({ a: P(s0, t0), b: P(s1, t0), off: -gap2 }, { a: P(s0, t1), b: P(s1, t1), off: gap2 });
     dims.push({ a: P(s0, t0), b: P(s0, t1), off: gap2 }, { a: P(s1, t0), b: P(s1, t1), off: -gap2 });
+    // размеры помещений в чистоте (ширина и глубина) — у прямоугольных комнат
+    for (const r of fd.rooms) {
+      const q = r.floor || r.axis;
+      if (!q || q.length > 6 || r.areaFloor < 2e4) continue;
+      const bb = G.bbox(q), w = bb.x1 - bb.x0, h = bb.y1 - bb.y0, yy = bb.y0 + h * 0.3, xx = bb.x0 + w * 0.3;
+      if (G.pointInPoly({ x: (bb.x0 + bb.x1) / 2, y: yy }, q)) dims.push({ a: { x: bb.x0, y: yy }, b: { x: bb.x1, y: yy }, off: 0, room: true });
+      if (G.pointInPoly({ x: xx, y: (bb.y0 + bb.y1) / 2 }, q)) dims.push({ a: { x: xx, y: bb.y0 }, b: { x: xx, y: bb.y1 }, off: 0, room: true });
+    }
     return dims.filter(d => G.dist(d.a, d.b) > 3);
   },
   /** Выполнить fn с временными авторазмерами на текущем виде этажа */
@@ -13161,7 +13346,8 @@ const IO = {
     Theme.C = Theme.light;
     const layers = { ...App.doc.settings.layers, grid: !!o.grid, lower: false, ...(o.drawing ? { lower: false, checks: false, shadows: false, heat: false } : {}), ...(o.planOnly ? { site: false, siteobj: false, fence: false, roof: false } : {}) };
     try {
-      Render.draw({ ctx, w: cv.width, h: cv.height, dpr: 1, fs: o.fs || 1, scale, ox: cx - cv.width / 2 / scale, oy: cy - cv.height / 2 / scale, C: Theme.light, exporting: true, printGrid: !!o.grid, layers });
+      if (o.noRoof) layers.roof = false;
+      Render.draw({ ctx, w: cv.width, h: cv.height, dpr: 1, fs: o.fs || 1, scale, ox: cx - cv.width / 2 / scale, oy: cy - cv.height / 2 / scale, C: Theme.light, exporting: true, printGrid: !!o.grid, layers, sys: o.sysOnly || o.sys });
       // компас и масштабная линейка
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       const k = Math.max(1, Math.min(W, H) / 900);
@@ -13227,7 +13413,7 @@ const IO = {
       const cx = (sh.region.x0 + sh.region.x1) / 2, cy = (sh.region.y0 + sh.region.y1) / 2;
       const reg = { x0: cx - boxW * N / 20, x1: cx + boxW * N / 20, y0: cy - boxH * N / 20, y1: cy + boxH * N / 20 };
       const draw = () => IO.renderRegion(reg, boxW * dpmm, boxH * dpmm, { ...o, drawing: true, planOnly: sh.dims, fs: dpmm / 4 });
-      const { canvas } = Drawing.onFloor(sh.fid, () => sh.dims ? Drawing.withAutoDims(sh.fid, draw) : draw());
+      const { canvas } = Drawing.onFloor(sh.fid, () => sh.dims && o.autoDims !== false ? Drawing.withAutoDims(sh.fid, draw) : draw());
       const tb = U.el('table', { class: 'tblock' },
         U.el('tr', {}, U.el('td', { colspan: 3, class: 'tb-proj' }, App.doc.name || 'Проект')),
         U.el('tr', {}, U.el('td', { rowspan: 2, class: 'tb-sheet' }, sh.title, U.el('div', { class: 'tb-note' }, sh.note || '')), U.el('td', { class: 'tb-h' }, 'Масштаб'), U.el('td', { class: 'tb-h' }, 'Лист')),
@@ -13239,10 +13425,84 @@ const IO = {
           tb)));
     });
     if (o.expl || o.spec || o.legend || App.doc.notes.length) area.append(IO.reportSheet(PW, PH, M, o));
+    IO.finish(o, PW, PH);
+  },
+  /** После сборки листов: листы по системам, затем предпросмотр или печать */
+  finish(o, PW, PH) {
+    if (o.sysSheets) for (const sh of IO.sysSheets(o, PW, PH)) $('printArea').append(sh);
+    if (o.preview) IO.showPreview(); else IO.doPrint();
+  },
+  doPrint() {
+    const area = $('printArea');
     document.body.classList.add('printing');
     const done = () => { document.body.classList.remove('printing'); area.textContent = ''; window.removeEventListener('afterprint', done); };
     window.addEventListener('afterprint', done);
     setTimeout(() => window.print(), 150);
+  },
+  /** Окно предпросмотра: копии листов в масштабе окна */
+  showPreview() {
+    const body = $('pvBody'), sheets = [...$('printArea').querySelectorAll('.sheet')];
+    body.textContent = '';
+    $('pvTitle').textContent = `Предпросмотр печати — листов: ${sheets.length}`;
+    $('dlgPreview').showModal();
+    const avail = Math.max(300, body.clientWidth - 48);
+    for (const s of sheets) {
+      const c = s.cloneNode(true), wmm = parseFloat(s.style.width) || 297;
+      c.style.zoom = Math.min(1, avail / (wmm * 3.78)).toFixed(3);
+      body.append(c);
+    }
+  },
+  /** Листы по инженерным системам: план только этой сети с авторазмерами, справа — обозначения, трассы, оборудование, нормы */
+  sysSheets(o, PW, PH) {
+    const d = App.doc, ground = d.floors[0], M = 10, tbH = 42, descW = 92;
+    const boxW = PW - 20 - M - descW - 4, boxH = PH - 2 * M - tbH - 2, dpmm = o.paper === 'A2' ? 5 : 7;
+    const std = [20, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 2000];
+    const ids = Object.keys(SYSTEMS).filter(id => (o.sys || {})[id] !== false && (d.items.some(it => sysOf(it) === id) || d.lines.some(l => sysOfLine(l) === id)));
+    const issues = (() => { try { return Analysis.run().issues; } catch (e) { return []; } })();
+    const grp = { power: 'Электрика', lowvolt: 'Видеонаблюдение', vent: 'Вентиляция', gas: 'Газ' };
+    const date = new Date().toLocaleDateString('ru-RU'), out = [];
+    ids.forEach((id, i) => {
+      const S = SYSTEMS[id], lines = d.lines.filter(l => sysOfLine(l) === id), items = d.items.filter(it => sysOf(it) === id);
+      let b = Drawing.regionFor(ground.id);
+      for (const l of lines) b = G.bboxUnion(b, G.bbox(l.pts));
+      for (const it of items) b = G.bboxUnion(b, G.bbox(Model.itemPts(it)));
+      const pad = 120, reg0 = { x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad };
+      const need = Math.max((reg0.x1 - reg0.x0) * 10 / boxW, (reg0.y1 - reg0.y0) * 10 / boxH), N = std.find(x => x >= need) || Math.ceil(need);
+      const cx = (reg0.x0 + reg0.x1) / 2, cy = (reg0.y0 + reg0.y1) / 2, reg = { x0: cx - boxW * N / 20, x1: cx + boxW * N / 20, y0: cy - boxH * N / 20, y1: cy + boxH * N / 20 };
+      const only = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, k === id]));
+      const draw = () => IO.renderRegion(reg, boxW * dpmm, boxH * dpmm, { ...o, drawing: true, noRoof: true, sysOnly: only, fs: dpmm / 4 });
+      const { canvas } = Drawing.onFloor(ground.id, () => o.autoDims !== false ? Drawing.withAutoDims(ground.id, draw) : draw());
+      const len = lines.reduce((s, l) => s + G.polyPerimeter(l.pts, false), 0);
+      const kinds = [...new Set(lines.map(l => l.kind))];
+      const T = (head, rows) => U.el('table', {}, U.el('tr', {}, head.map(h => U.el('th', {}, h))), rows.map(r => U.el('tr', {}, r.map(c => U.el('td', {}, c)))));
+      const lrows = lines.map(l => [l.label || LINE_KINDS[l.kind].code, l.section || (l.dia ? 'Ø' + l.dia : ''), (G.polyPerimeter(l.pts, false) / 100).toFixed(1), l.depth ? (l.depth / 100).toFixed(2) : '—', l.breaker ? `${l.breaker}${l.rcd ? ' / ' + l.rcd : ''}` : '']);
+      const eq = {};
+      for (const it of items) { const k = it.label || catItem(it.key).name; eq[k] = (eq[k] || 0) + 1; }
+      const erows = Object.entries(eq).map(([k, n]) => [k, String(n)]);
+      const cut = (rows, n) => rows.length > n ? rows.slice(0, n).concat([['… ещё ' + (rows.length - n), '', '', '', ''].slice(0, rows[0].length)]) : rows;
+      const iss = issues.filter(x => grp[id] && x.group === grp[id]);
+      const desc = U.el('div', { class: 'sysdesc' },
+        U.el('h3', {}, S.name),
+        kinds.length ? U.el('div', {}, kinds.map(k => U.el('div', {}, U.el('span', { class: 'sw', style: { borderTopColor: LINE_KINDS[k].color, borderTopStyle: LINE_KINDS[k].dash.length ? 'dashed' : 'solid' } }), `${LINE_KINDS[k].code} — ${LINE_KINDS[k].name}`))) : null,
+        lines.length ? U.el('h4', {}, `Трассы (${lines.length}, всего ${(len / 100).toFixed(1)} м)`) : null,
+        lines.length ? T(['Обозн.', 'Марка / Ø', 'Длина, м', 'Глуб., м', id === 'power' ? 'Автомат / УЗО' : ''], cut(lrows, id === 'power' ? 24 : 16)) : null,
+        erows.length ? U.el('h4', {}, 'Оборудование') : null,
+        erows.length ? T(['Наименование', 'Кол.'], cut(erows, 14)) : null,
+        U.el('h4', {}, 'Требования'),
+        U.el('ul', { style: { margin: '0', paddingLeft: '4mm' } }, (SYSTEM_RULES[id] || []).map(r => U.el('li', {}, r))),
+        grp[id] ? U.el('div', { style: { marginTop: '1.5mm' } }, iss.length ? `Замечания анализа: ${iss.length} — ${iss.slice(0, 3).map(x => x.text).join('; ')}` : 'Замечаний анализа нет.') : null,
+        U.el('div', { class: 'norm' }, '§ ' + S.norms));
+      const tb = U.el('table', { class: 'tblock' },
+        U.el('tr', {}, U.el('td', { colspan: 3, class: 'tb-proj' }, d.name || 'Проект')),
+        U.el('tr', {}, U.el('td', { rowspan: 2, class: 'tb-sheet' }, 'План сетей: ' + S.name.toLowerCase(), U.el('div', { class: 'tb-note' }, ground.name + ', участок')), U.el('td', { class: 'tb-h' }, 'Масштаб'), U.el('td', { class: 'tb-h' }, 'Лист')),
+        U.el('tr', {}, U.el('td', {}, '1:' + N), U.el('td', {}, `С-${i + 1} / ${ids.length}`)),
+        U.el('tr', {}, U.el('td', { colspan: 3, class: 'tb-date' }, `Floorplaner · ${date}`)));
+      out.push(U.el('div', { class: 'sheet drawing', style: { width: PW + 'mm', height: PH + 'mm' } },
+        U.el('div', { class: 'dframe', style: { left: '20mm', top: M + 'mm', width: (PW - 20 - M) + 'mm', height: (PH - 2 * M) + 'mm', justifyContent: 'flex-start' } },
+          U.el('img', { src: canvas.toDataURL('image/png'), style: { width: (boxW - 2) + 'mm', height: (boxH - 2) + 'mm', margin: '1mm' }, alt: S.name }),
+          desc, tb)));
+    });
+    return out;
   },
   print(o) {
     if (o.drawing) return IO.printDrawings(o);
@@ -13273,7 +13533,8 @@ const IO = {
     const imgWmm = (region.x1 - region.x0) * 10 / N, imgHmm = (region.y1 - region.y0) * 10 / N;
     const dpmm = o.paper === 'A2' ? 5 : 7;
     // шрифты ≈ 8 pt на бумаге независимо от разрешения
-    const { canvas } = IO.renderRegion(region, imgWmm * dpmm, imgHmm * dpmm, { ...o, fs: dpmm / 4 });
+    const draw = () => IO.renderRegion(region, imgWmm * dpmm, imgHmm * dpmm, { ...o, fs: dpmm / 4 });
+    const { canvas } = o.autoDims ? Drawing.withAutoDims(App.floor, draw) : draw();
     const area = $('printArea');
     area.textContent = '';
     const style = U.el('style', {}, `@page { size: ${PW}mm ${PH}mm; margin: 0; }`);
@@ -13286,10 +13547,7 @@ const IO = {
         U.el('img', { src: canvas.toDataURL('image/png'), style: { width: imgWmm + 'mm', height: imgHmm + 'mm' }, alt: 'План' })));
     area.append(style, sheet);
     if (o.expl || o.spec || o.legend || App.doc.notes.length) area.append(IO.reportSheet(PW, PH, M, o));
-    document.body.classList.add('printing');
-    const done = () => { document.body.classList.remove('printing'); area.textContent = ''; window.removeEventListener('afterprint', done); };
-    window.addEventListener('afterprint', done);
-    setTimeout(() => window.print(), 150);
+    IO.finish(o, PW, PH);
   },
   reportSheet(PW, PH, M, o) {
     const s = Rooms.summary();
@@ -13604,7 +13862,7 @@ const App = {
       Model.add(c, o);
       if (c !== 'openings' && !(c === 'notes' && o.target)) newIds.push(o.id);
     }
-    Model.translate(newIds, dx, dy, { stretch: false });
+    Model.translate(newIds, dx, dy, { stretch: false, links: false });
     App.sel.clear();
     for (const id of newIds) App.sel.add(id);
     Model.commit();

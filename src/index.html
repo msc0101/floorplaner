@@ -196,6 +196,7 @@
         </div>
       </div>
       <div class="floorbar" id="floorbar" aria-label="Этажи"></div>
+      <div class="sysbar" id="sysbar" aria-label="Слои инженерных систем" hidden></div>
       <div class="hovertip" id="hovertip" role="tooltip" hidden></div>
       <div class="statusbar" role="status">
         <span class="st-coords">X <b id="stX">0.00</b> Y <b id="stY">0.00</b> м</span>
@@ -251,10 +252,20 @@
       <label><input type="checkbox" id="prLegend" checked> Условные обозначения сетей</label>
       <label><input type="checkbox" id="prGrid"> Сетка</label>
       <label class="span2"><input type="checkbox" id="prDrawing"> <b>Комплект чертежей</b>: генплан и план каждого этажа на отдельном листе, с размерными цепочками и штампом</label>
+      <label><input type="checkbox" id="prAutoDims" checked> Авторазмеры: габариты, проёмы и окна, размеры комнат</label>
+      <label><input type="checkbox" id="prSysSheets"> <b>Листы по системам</b>: каждая сеть — отдельная страница с описанием и нормами</label>
+      <div class="span2 pr-sys" id="prSysList"></div>
     </div>
     <p class="note">В диалоге печати браузера выберите принтер или «Сохранить как PDF». Масштаб 1:N соблюдается при печати «100%» без подгонки. SVG и DXF — векторные, со слоями (DXF — в миллиметрах, для AutoCAD/nanoCAD/LibreCAD); масштаб влияет на толщину линий и размер шрифтов.</p>
-    <div class="modal-actions"><button value="cancel" formnovalidate>Отмена</button><button value="svg">SVG</button><button value="dxf">DXF</button><button value="png" id="prPng">PNG</button><button value="ok" class="primary">Печать</button></div>
+    <div class="modal-actions"><button value="cancel" formnovalidate>Отмена</button><button value="svg">SVG</button><button value="dxf">DXF</button><button value="png" id="prPng">PNG</button><button value="preview">Просмотр</button><button value="ok" class="primary">Печать</button></div>
   </form>
+</dialog>
+
+<dialog class="modal" id="dlgPreview">
+  <div class="modal-card pv-dlg">
+    <div class="pv-head"><h3 id="pvTitle">Предпросмотр печати</h3><div class="modal-actions"><button id="pvClose">Закрыть</button><button class="primary" id="pvPrint">Печать / PDF</button></div></div>
+    <div class="pv-body" id="pvBody"></div>
+  </div>
 </dialog>
 
 <dialog class="modal" id="dlgAnalysis">

@@ -141,7 +141,7 @@ const App = {
       Model.add(c, o);
       if (c !== 'openings' && !(c === 'notes' && o.target)) newIds.push(o.id);
     }
-    Model.translate(newIds, dx, dy, { stretch: false });
+    Model.translate(newIds, dx, dy, { stretch: false, links: false });
     App.sel.clear();
     for (const id of newIds) App.sel.add(id);
     Model.commit();
