@@ -126,6 +126,7 @@ function itemLinks(it) {
   if (['fridge', 'fridgeSbs', 'hood', 'oven', 'microwave', 'dryer', 'nvr', 'router'].includes(k)) return [L.R];
   if (['faucetOut', 'gardenHydrant', 'tap', 'waterIn', 'filter', 'hydroTank'].includes(k)) return [L.W];
   if (k === 'floorDrain') return [L.K];
+  if (k === 'barrelSauna') return [L.W, L.E, L.D];
   if (['boiler50', 'boiler80', 'boilerFlat'].includes(k)) return [L.W, L.H, L.E];
   if (k === 'indirect') return [L.W, L.H, L.T];
   if (['stoveHeat', 'stoveMetal', 'fireplace', 'fireplaceCorner'].includes(sh) && k !== 'saunaStove') return [L.A];
@@ -342,6 +343,7 @@ const CATALOG = [
     { key: 'ovenTower', name: 'Колонна под духовку и СВЧ', shape: 'tall', w: 60, d: 60, h: 215, label: 'Д' },
     { key: 'cornerUnit', name: 'Угловой нижний модуль', shape: 'kitchenL', w: 100, d: 100, h: 90, flip: true },
     { key: 'barCounter', name: 'Барная стойка', kw: 'бар стойка стулья', shape: 'bar', w: 150, d: 50, h: 110 },
+    { key: 'kitchenIslandCab', name: 'Кухонный стол-остров с глубокими ящиками', kw: 'остров стол кухня ящики тумба столешница', shape: 'islandCab', w: 220, d: 55, h: 90 },
     { key: 'prepTable', name: 'Стол вспомогательный кухонный (отдельно стоящий)', kw: 'стол рабочий разделочный остров тележка', shape: 'prepTable', w: 120, d: 60, h: 90 },
     { key: 'prepTableS', name: 'Стол вспомогательный малый', kw: 'стол рабочий разделочный остров', shape: 'prepTable', w: 80, d: 50, h: 90 },
     { key: 'hood', name: 'Вытяжка', shape: 'hood', w: 60, d: 50, h: 60 },
@@ -395,6 +397,7 @@ const CATALOG = [
   { id: 'heating', name: 'Отопление, печи, камины', layer: 'heating', items: [
     { key: 'stoveRus', name: 'Печь русская', shape: 'stoveHeat', w: 150, d: 200, h: 220 },
     { key: 'stoveBrick', name: 'Печь отопительная (кирпич)', shape: 'stoveHeat', w: 102, d: 89, h: 210 },
+    { key: 'woodRack', name: 'Дровница у печи (металлическая, на 2–3 закладки)', kw: 'дрова дровница поленница печь камин', shape: 'woodRack', w: 45, d: 35, h: 80 },
     { key: 'stoveKitchen', name: 'Печь отопит.-варочная', shape: 'stoveHeat', w: 128, d: 89, h: 200 },
     { key: 'fireplace', name: 'Камин с порталом', shape: 'fireplace', w: 150, d: 55, h: 120 },
     { key: 'fireplaceCorner', name: 'Камин угловой', shape: 'fireplaceCorner', w: 110, d: 110, h: 120 },
@@ -484,7 +487,8 @@ const CATALOG = [
     { key: 'gardenHydrant', name: 'Колонка садовая незамерзающая (гидрант)', kw: 'кран полив вода огород колонка гидрант', shape: 'hydrant', w: 20, d: 20, h: 90, sym: 24 },
     { key: 'waterIn', name: 'Ввод воды', shape: 'labelbox', w: 20, d: 20, h: 50, label: 'В1', sym: 24 },
     { key: 'pumpStation', name: 'Насосная станция', shape: 'pump', w: 50, d: 30, h: 60 },
-    { key: 'filter', name: 'Фильтр / водоподготовка (колонна)', kw: 'обезжелезивание умягчение скважина вода', shape: 'boiler', w: 40, d: 40, h: 150 },
+    { key: 'filter', name: 'Фильтр / водоподготовка (колонна)', kw: 'обезжелезивание умягчение скважина вода', shape: 'boiler', w: 40, d: 40, h: 150,
+      tip: 'Промывка — в дренажный колодец или на рельеф (К2), НЕ в септик: 100–200 л залпом за раз вымывают активный ил, а железо, марганцовка и соль регенерации губят бактерии — септик перестаёт чистить стоки' },
     { key: 'hydroTank', name: 'Гидроаккумулятор 100 л с автоматикой', kw: 'насос скважина бак вода котельная', shape: 'boiler', w: 50, d: 50, h: 85 },
     { key: 'tap', name: 'Кран поливочный', shape: 'tap', w: 10, d: 10, h: 60, sym: 18 },
     { key: 'rainBarrel', name: 'Бочка / ёмкость', shape: 'round', w: 80, d: 80, h: 100, shadow: true },
@@ -505,6 +509,7 @@ const CATALOG = [
     { key: 'carportLean', name: 'Навес пристроенный (односкатный)', shape: 'canopyLean', w: 350, d: 600, h: 300, shadow: true, roof: true },
     { key: 'shed', name: 'Сарай / хозблок', shape: 'building', w: 300, d: 400, h: 280, shadow: true },
     { key: 'bathhouse', name: 'Баня', shape: 'building', w: 400, d: 500, h: 380, shadow: true },
+    { key: 'barrelSauna', name: 'Баня-бочка «квадро» 6 × 2,3 м (парная, моечная, комната отдыха)', kw: 'баня бочка квадро сауна парилка', shape: 'barrelSauna', w: 600, d: 230, h: 240, shadow: true },
     { key: 'coop', name: 'Курятник / птичник', kw: 'птица куры утки гуси кролики крольчатник', shape: 'building', w: 300, d: 250, h: 250, shadow: true },
     { key: 'barn', name: 'Хлев / сарай для скота', kw: 'скот козы овцы свиньи коровы животные', shape: 'building', w: 500, d: 400, h: 300, shadow: true },
     { key: 'gazebo', name: 'Беседка', shape: 'gazebo', w: 300, d: 300, h: 300, shadow: true },
@@ -682,7 +687,10 @@ function pitGeom(it, w, d) {
   const sw = Math.min(Math.max(40, +g('stairW', 70) || 70), acrossLen);
   // ступени: подъём ~20 см, проступь 20–25 см; если не влезает — круче
   const n = Math.max(2, Math.round(depth / 20)), rise = depth / n;
-  let tread = stair === 'ladder' ? 0 : Math.min(25, (along - 30) / n);
+  // площадка внизу после лестницы: в погребе — чтобы сойти со ступеней и развернуться к полкам (≥ 90 см, если хватает длины)
+  const landing = U.clamp(+g('landing', cover === 'open' ? 30 : 90) || 0, 10, 200);
+  let tread = stair === 'ladder' ? 0 : Math.min(25, (along - landing) / n);
+  if (stair === 'stairs' && tread < 16 && landing > 30) tread = Math.min(25, (along - 30) / n);   // не влезает — площадка короче, лестница не круче
   if (stair === 'stairs' && tread < 12) tread = Math.max(8, (along - 10) / n);
   const L = stair === 'stairs' ? tread * n : stair === 'ladder' ? 40 : 0;
   const edge = { x: -dir.x * along / 2, y: -dir.y * along / 2 };                // середина стороны спуска (внутри)
@@ -944,6 +952,29 @@ const Painters = (() => {
 
   const S = {};
 
+  // стол-остров: столешница, фасады ящиков со стороны +y (к основной столешнице)
+  S.islandCab = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d, 0); thin(P); line(P, [-w / 2, d / 2 - 4, w / 2, d / 2 - 4]);
+    const n = Math.max(1, Math.round(w / 60));
+    for (let i = 1; i < n; i++) line(P, [-w / 2 + w * i / n, d / 2 - 4, -w / 2 + w * i / n, d / 2]);
+    for (let i = 0; i < n; i++) { const x = -w / 2 + w * (i + 0.5) / n; line(P, [x - 8, d / 2 - 9, x + 8, d / 2 - 9]); }
+  };
+  // дровница: каркас и торцы поленьев
+  S.woodRack = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d, 0); thin(P);
+    for (let x = -w / 2 + 6; x < w / 2 - 3; x += 9) for (let y = -d / 2 + 6; y < d / 2 - 3; y += 9) circle(P, x, y, 3.5, false);
+  };
+  // баня-бочка «квадро»: скруглённый контур, перегородки парная | моечная | отдых, дверь и топка со стороны +y
+  S.barrelSauna = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d, Math.min(40, d * 0.25)); thin(P);
+    const k = w / 600, x1 = -110 * k, x2 = 30 * k;
+    line(P, [x1, -d / 2 + 6, x1, d / 2 - 6]); line(P, [x2, -d / 2 + 6, x2, d / 2 - 6]);
+    for (const x of [-w / 2 + 40, 0, w / 2 - 40]) line(P, [x, -d / 2, x, -d / 2 + 5]);            // стяжки
+    box(P, x1 - 50 * k, -18, 40 * k, 36, 0, false);                                                 // печь
+    line(P, [60 * k, d / 2, 130 * k, d / 2 + 18]);                                                  // дверь
+    const fs = Math.min(d * 0.13, 13 * k + 4);
+    text(P, 'Парная', (-w / 2 + x1) / 2 + 6, -d * 0.25, fs); text(P, 'Мойка', (x1 + x2) / 2, -d * 0.25, fs); text(P, 'Отдых', (x2 + w / 2) / 2, -d * 0.25, fs);
+  };
   // трап: квадратная решётка в полу
   S.floorDrain = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 1); thin(P);

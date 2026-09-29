@@ -215,7 +215,7 @@ const UI = {
       case 'items': {
         const d = catItem(o.key), nm = normsFor(o, c), s = sysOf(o);
         return { title: o.label || d.name, lines: [o.label ? d.name : '', d.sym ? (o.h ? `Высота установки ${Math.round(o.h)} см` : 'В уровне пола') : `${Math.round(o.w)} × ${Math.round(o.d)} см, высота ${Math.round(o.h)} см`,
-          U.isNum(o.tset) ? `Термоголовка: +${o.tset} °C` : '', o.hob === 'gas' ? 'Варочная панель газовая' : '', o.note || '', s ? `Система: ${SYSTEMS[s].name}` : '', ...tail].filter(Boolean), norms: nm, hint: 'Тяните — переместить (подключённые трубы и кабели — следом), ручки — размер и поворот' };
+          U.isNum(o.tset) ? `Термоголовка: +${o.tset} °C` : '', o.hob === 'gas' ? 'Варочная панель газовая' : '', o.note || '', d.tip || '', s ? `Система: ${SYSTEMS[s].name}` : '', ...tail].filter(Boolean), norms: nm, hint: 'Тяните — переместить (подключённые трубы и кабели — следом), ручки — размер и поворот' };
       }
       case 'lines': {
         const k = LINE_KINDS[o.kind];

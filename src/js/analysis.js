@@ -143,6 +143,35 @@ const Analysis = {
       for (const c of d.items.filter(o => catItem(o.key).shape === 'cctv')) {
         const bld = d.items.find(o => BLD_HOLLOW.has(catItem(o.key).shape) && G.distPoly(c, Model.itemPts(o)) < 40);
         const house = d.roofs.find(r => r.type !== 'flat' && Roof.zAt(r, c) != null && (App.floorData || []).some(f => f.outlines.some(o => G.distPoly(c, o.outer) < 40)));
+        // камера утоплена в стену — выносим на наружную грань (кронштейн)
+        const wIn = d.walls.find(w => { if (w.kind !== 'ext') return false; const pr = G.proj(c, w.a, w.b); return pr.tc > 0.001 && pr.tc < 0.999 && pr.d < w.th / 2 - 1; });
+        if (wIn) add('warn', 'Видеонаблюдение', `${c.label || catItem(c.key).name}: камера внутри стены — её не видно и она ничего не видит; вынести на кронштейн на наружную грань`, 'Паспорт камеры: крепление на кронштейне к фасаду', c, c.id, () => {
+          const u = Model.wallDir(wIn), pr = G.proj(c, wIn.a, wIn.b); let n = G.perp(u);
+          const probe = G.add(pr.q, G.mul(n, wIn.th / 2 + 20));
+          if ((App.floorData || []).some(f => f.outlines.some(o => G.pointInPoly(probe, o.outer)))) n = G.mul(n, -1);
+          const q = G.add(pr.q, G.mul(n, wIn.th / 2 + 8)); c.x = Math.round(q.x); c.y = Math.round(q.y); Model.commit();
+        });
+        // камера смотрит от стены наружу (на участок и забор), и первые 3 м обзора ничем не перекрыты
+        const outl = [...(App.floorData || []).flatMap(f => f.outlines.map(o => o.outer)), ...d.items.filter(o => BLD_HOLLOW.has(catItem(o.key).shape)).map(o => Model.itemPts(o))];
+        const host = outl.map(poly => ({ poly, dd: G.distPoly(c, poly) })).filter(x => x.dd < 60).sort((a, b) => a.dd - b.dd)[0];
+        if (host && !wIn) {
+          const cen = G.polyCentroid(host.poly), rr = U.rad(c.rot || 0), dir = { x: -Math.sin(rr), y: Math.cos(rr) };
+          // наружная нормаль: от ближайшей точки контура к камере (у угла — биссектриса)
+          let best = null;
+          for (let i = 0; i < host.poly.length; i++) { const a2 = host.poly[i], b2 = host.poly[(i + 1) % host.poly.length], pr = G.proj(c, a2, b2); if (!best || pr.d < best.d) best = { d: pr.d, q: pr.q }; }
+          let nOut = G.sub(c, best.q); if (G.len(nOut) < 1) nOut = G.sub(c, cen);
+          nOut = G.unit(nOut);
+          const inside = G.pointInPoly(c, host.poly);
+          const lookIn = dir.x * nOut.x + dir.y * nOut.y < -0.7;                  // вдоль стены с угла — можно, прямо в стену — нет
+          const blocked = [40, 80, 120].some(k => { const p = G.add(c, G.mul(dir, k)); return outl.some(poly => G.pointInPoly(p, poly)); });
+          if (inside || lookIn || blocked) add('warn', 'Видеонаблюдение', `${c.label || catItem(c.key).name}: ${inside ? 'стоит внутри контура здания — снаружи не видна' : lookIn ? 'смотрит на стену, а не от дома на участок' : 'обзор перекрыт стеной или постройкой вплотную (ближе 1,2 м)'} — развернуть от стены в сторону участка и забора`,
+            'Камеры — на углах и фасадах под свесом, объективом от здания; в кадре — подходы, двери, ворота', c, c.id, () => {
+              if (inside) { const q = G.add(best.q, G.mul(nOut, 8)); c.x = Math.round(q.x); c.y = Math.round(q.y); }
+              // новый взгляд: наружу, с сохранением бокового наклона вдоль стены (≤ 50°)
+              const t = { x: -nOut.y, y: nOut.x }, side = Math.sign(dir.x * t.x + dir.y * t.y) || 1, nd = G.unit(G.add(nOut, G.mul(t, side * 0.8)));
+              c.rot = Math.round(U.deg(Math.atan2(-nd.x, nd.y))); Model.commit();
+            });
+        }
         const eave = bld ? bldWallH(bld) : house ? (house.base || 0) : null;
         if (eave != null && (c.h || 0) > eave - 15) add('warn', 'Видеонаблюдение', `${c.label || catItem(c.key).name}: высота ${Math.round(c.h)} см — выше карниза (${Math.round(eave)} см); камеру вешают под свес, на 20–30 см ниже карниза`, 'Паспорт камеры: защита от осадков — под свесом кровли', c, c.id, () => { c.h = Math.round(eave - 25); Model.commit(); });
       }
@@ -605,6 +634,13 @@ const Analysis = {
       const fl = it.floor || f1, poly = Model.itemPts(it);
       const flue = d.items.find(o => catItem(o.key).stack === 'smoke' && (o.floor || f1) === fl && near(o, poly, 60));
       if (!flue) add('bad', 'Печь', `${name(it)}: нет дымохода — поставьте «Дымоход / труба» над печью или вплотную к ней`, 'СП 7.13130.2013', it, it.id);
+      // дровница: не ближе 0,5 м к печи и не перед топкой (там предтопочный лист и 1,25 м свободно)
+      for (const wr of d.items.filter(o => catItem(o.key).shape === 'woodRack' && (o.floor || f1) === fl)) {
+        const rp = Model.itemPts(wr), gap = Math.min(...rp.map(p => G.distPoly(p, poly)), ...poly.map(p => G.distPoly(p, rp)));
+        const inFront = G.toLocal(wr, it.x, it.y, it.rot || 0);
+        if (inFront.y > it.d / 2 && Math.abs(inFront.x) < it.w / 2 + 10 && inFront.y < it.d / 2 + 125) add('bad', 'Печь', `${name(wr)}: стоит перед топкой — там предтопочный лист и 1,25 м свободного места; поставьте сбоку от печи`, 'СП 7.13130.2013 п. 5.21', wr, wr.id);
+        else if (gap < 49) add('warn', 'Печь', `${name(wr)}: ${m(Math.max(0, gap))} до печи — дрова держат не ближе 0,5 м от нагретых стенок`, 'СП 7.13130.2013 п. 5.20; инструкция печника', wr, wr.id);
+      }
       if (sh === 'fireplaceCorner') continue;
       // перед топочной дверкой до противоположной стены — не меньше 1,25 м
       const front = G.toWorld({ x: 0, y: it.d / 2 }, it.x, it.y, it.rot || 0), dir = G.sub(G.toWorld({ x: 0, y: it.d / 2 + 100 }, it.x, it.y, it.rot || 0), front);

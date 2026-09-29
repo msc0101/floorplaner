@@ -45,9 +45,9 @@ const Checks = {
     const as = { house: ['house'], outb: ['outbuilding'], animals: ['outbuilding', 'animals'], bath: ['outbuilding', 'bath'], toilet: ['outbuilding', 'toilet'], none: [] }[it.checkAs];
     if (as) return as;
     if (k === 'house') g.push('house');
-    else if (BLD_ROOF_SHAPES.has(sh) || sh === 'gazebo') g.push('outbuilding');   // гараж, сарай, баня, навесы, теплица, беседка
+    else if (BLD_ROOF_SHAPES.has(sh) || sh === 'gazebo' || sh === 'barrelSauna') g.push('outbuilding');   // гараж, сарай, баня, навесы, теплица, беседка
     if (['coop', 'barn'].includes(k)) g.push('animals');
-    if (['bathhouse', 'showerOut'].includes(k)) g.push('bath');
+    if (['bathhouse', 'showerOut', 'barrelSauna'].includes(k)) g.push('bath');
     if (['outhouse', 'cesspool', 'compost'].includes(k)) g.push('toilet');
     if (['cellar', 'cellarHouse', 'podpol'].includes(k)) g.push('cellar');
     if (['septic2', 'septic3', 'septicRing', 'filterField'].includes(k)) g.push('septic');
