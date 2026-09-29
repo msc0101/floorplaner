@@ -569,11 +569,18 @@ const kit = await page.evaluate(() => {
   View3D.toggle(true);
   for (const m of ['roofFrame', 'masonry', 'found', 'all']) { View3D.opts.mode = m; View3D.dirty = true; View3D.draw(); }
   View3D.opts.clip = { dir: 'u', k: 0.5 }; View3D.draw(); r.clip = View3D.clipPlane()[3] < 1e8; View3D.opts.clip = null;
+  // подсказка в 3D: луч из центра экрана попадает в объект, всплывающее описание заполнено
+  const cv = $('canvas3d'), hit = View3D.pickAt(cv.clientWidth / 2, cv.clientHeight / 2);
+  View3D.tip3d(hit && hit.id, 100, 100); r.tip = !!hit && !$('tip3d').hidden && $('tip3d').textContent.length > 3; View3D.tip3d(null);
   View3D.toggle(false);
+  // варочная панель — по центру модуля, сдвиг на модуль к мойке; трап — с канализацией
+  const K0 = kitchenLayout('kitchenI', 380, 60, {}), K1 = kitchenLayout('kitchenI', 380, 60, { hobShift: 1 });
+  r.hob = Math.abs(K0.hob.x - (190 - 380 / 12)) < 0.5 && Math.abs(K0.hob.x - K1.hob.x - 380 / 6) < 0.5;
+  r.drain = itemLinks({ key: 'floorDrain' }).some(x => x[1].includes('sewer'));
   return r;
 });
 console.log('kit', JSON.stringify(kit));
-if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
+if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

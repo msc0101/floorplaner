@@ -16,8 +16,8 @@ const FIN_FLOORS = {
   concrete:  { name: 'Бетонный пол с топпингом (обеспыленный)', short: 'Бетон', color: '#9d9c98', price: 'fin:topping' },
 };
 const FIN_WALLS = {
-  paint: { name: 'Обои под покраску (флизелин), краска матовая светлая', short: 'Покраска светлая', color: '#f1eee8', price: 'fin:paint' },
-  tile:  { name: 'Керамическая плитка светлая 300×600 мм (мокрые зоны) по гидроизоляции', short: 'Плитка', color: '#e9ecee', price: 'fin:walltile' },
+  paint: { name: 'Обои под покраску (флизелин), краска матовая светлая', short: 'Покраска светлая', color: '#e7e0d4', price: 'fin:paint' },
+  tile:  { name: 'Керамическая плитка светлая 300×600 мм (мокрые зоны) по гидроизоляции', short: 'Плитка', color: '#dfe4e6', price: 'fin:walltile' },
   plaster: { name: 'Цементная штукатурка, покраска фасадной краской', short: 'Штукатурка', color: '#d6d3cc', price: 'fin:paint' },
 };
 const FIN_CEIL = {
@@ -33,7 +33,7 @@ const FIN_BRICK_COLORS = { red: ['Красно-коричневый', '#9b5238']
 const Finish = {
   /** Настройки отделки проекта */
   opt() {
-    return Object.assign({ floor: 'porcelain', living: 'carpet', wet: 'tile', walls: 'paint', wallColor: '#f1eee8', wetWalls: 'tile', ceil: 'stretch', door: '#8b5e3c', winOut: '#383e42', winIn: '#f4f4f2', facade: 'brick', brick: 'red', garageFloor: 'concrete' }, App.doc.settings.finish || {});
+    return Object.assign({ floor: 'porcelain', living: 'carpet', wet: 'tile', walls: 'paint', wallColor: '#e7e0d4', wetWalls: 'tile', ceil: 'stretch', door: '#8b5e3c', winOut: '#383e42', winIn: '#f4f4f2', facade: 'brick', brick: 'red', garageFloor: 'concrete' }, App.doc.settings.finish || {});
   },
   set(k, v) { App.doc.settings.finish = { ...(App.doc.settings.finish || {}), [k]: v }; },
   /** Отделка помещения по его назначению (или заданная у помещения вручную) */

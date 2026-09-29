@@ -125,6 +125,7 @@ function itemLinks(it) {
   if (['washer', 'washerNarrow', 'dishwasher', 'dishwasher45'].includes(k)) return [L.W, L.K, L.R];
   if (['fridge', 'fridgeSbs', 'hood', 'oven', 'microwave', 'dryer', 'nvr', 'router'].includes(k)) return [L.R];
   if (['faucetOut', 'gardenHydrant', 'tap', 'waterIn', 'filter', 'hydroTank'].includes(k)) return [L.W];
+  if (k === 'floorDrain') return [L.K];
   if (['boiler50', 'boiler80', 'boilerFlat'].includes(k)) return [L.W, L.H, L.E];
   if (k === 'indirect') return [L.W, L.H, L.T];
   if (['stoveHeat', 'stoveMetal', 'fireplace', 'fireplaceCorner'].includes(sh) && k !== 'saunaStove') return [L.A];
@@ -447,7 +448,7 @@ const CATALOG = [
     { key: 'lamp36', name: 'Светильник 36 В IP65 (смотровая яма, погреб)', kw: 'свет освещение яма погреб 36 вольт безопасный', shape: 'lamp36', w: 16, d: 10, h: -60, sym: 22, lm: 900 },
     { key: 'transformer36', name: 'Разделительный трансформатор 220/36 В', kw: 'трансформатор 36 вольт яма погреб', shape: 'labelbox', w: 20, d: 12, h: 150, label: 'Тр36', sym: 26 },
     { key: 'jbox', name: 'Распаечная коробка', shape: 'jbox', w: 10, d: 10, h: 250, sym: 16 },
-    { key: 'panel', name: 'Электрощит', shape: 'panel', w: 40, d: 15, h: 60, sym: 30 },
+    { key: 'panel', name: 'Электрощит', shape: 'panel', w: 40, d: 15, h: 150, sym: 30 },
     { key: 'meter', name: 'Счётчик / ВРУ', shape: 'labelbox', w: 30, d: 20, h: 50, label: 'Wh', sym: 28 },
     { key: 'fan', name: 'Вытяжной вентилятор', shape: 'fan', w: 20, d: 20, h: 250, sym: 20 },
     { key: 'pole', name: 'Столб ЛЭП', kw: 'опора лэп вл электричество', shape: 'pole', w: 25, d: 25, h: 1000, sym: 40, layer: 'electric', shadow: true },
@@ -478,6 +479,7 @@ const CATALOG = [
     { key: 'drainChannel', name: 'Лоток водоотводный с решёткой', kw: 'ливнёвка ливневка лоток водоотвод решётка', shape: 'drainChannel', w: 100, d: 14, h: 5 },
     { key: 'filterField', name: 'Поле фильтрации', shape: 'filterfield', w: 300, d: 400, h: 0 },
     { key: 'riser', name: 'Стояк канализации Ø110', shape: 'riser', w: 12, d: 12, h: 300, sym: 16 },
+    { key: 'floorDrain', name: 'Трап в полу с сухим затвором (котельная, санузел)', kw: 'трап слив пол канализация котельная', shape: 'floorDrain', w: 15, d: 15, h: 0, sym: 14 },
     { key: 'faucetOut', name: 'Кран уличный незамерзающий (на фасаде)', kw: 'кран полив вода улица незамерзающий', shape: 'faucetOut', w: 8, d: 15, h: 50, sym: 22 },
     { key: 'gardenHydrant', name: 'Колонка садовая незамерзающая (гидрант)', kw: 'кран полив вода огород колонка гидрант', shape: 'hydrant', w: 20, d: 20, h: 90, sym: 24 },
     { key: 'waterIn', name: 'Ввод воды', shape: 'labelbox', w: 20, d: 20, h: 50, label: 'В1', sym: 24 },
@@ -833,7 +835,27 @@ function radSections(it) { return Math.max(2, Math.round((it.w - 4) / 8)); }
 const KITCHEN_SHAPES = new Set(['kitchenI', 'kitchenL', 'kitchenU', 'kitchenII', 'kitchenIsland', 'kitchenBar', 'kitchenPen', 'kitchenTall']);
 /** Ленты модулей в локальных координатах (центр — 0,0; y вниз). front — сторона фасада,
  *  wall — ряд у стены (над ним навесные шкафы), h — своя высота (барная стойка), tall — пеналы. */
-function kitchenLayout(shape, w, d) {
+function kitchenLayout(shape, w, d, it) {
+  const K = kitchenLayout0(shape, w, d);
+  // мойка и варочная панель — по центру своего модуля (сетка ~60 см, как фасады); it.hobShift — сдвиг панели на N модулей к мойке
+  const along = (r) => r.front === 'down' || r.front === 'up';
+  const snap = (p, shift = 0, avoid = -1) => {
+    const r = p && K.runs.find(q => p.x >= q.x0 - 1 && p.x <= q.x1 + 1 && p.y >= q.y0 - 1 && p.y <= q.y1 + 1);
+    if (!r || r.h) return { p, r: null, i: -1 };
+    const ax = along(r), s0 = ax ? r.x0 : r.y0, len = (ax ? r.x1 : r.y1) - s0, n = Math.max(1, Math.round(len / 60)), ml = len / n;
+    let i = U.clamp(Math.floor(((ax ? p.x : p.y) - s0) / ml), 0, n - 1);
+    const dir = i >= n / 2 ? -1 : 1;
+    for (let k = 0; k < shift; k++) { const j = i + dir; if (j < 0 || j >= n) break; i = j; if (i === avoid) { i += dir; if (i < 0 || i >= n) { i -= 2 * dir; break; } } }
+    const c = s0 + (i + 0.5) * ml;
+    return { p: ax ? { ...p, x: c } : { ...p, y: c }, r, i };
+  };
+  const sk = snap(K.sink);
+  if (sk.r) K.sink = sk.p;
+  const hb = snap(K.hob, Math.max(0, Math.round((it && it.hobShift) || 0)), sk.r ? sk.i : -1);
+  if (hb.r) K.hob = hb.p;
+  return K;
+}
+function kitchenLayout0(shape, w, d) {
   const D = Math.min(60, d), R = (x0, y0, x1, y1, front, wall = true, h) => ({ x0, y0, x1, y1, front, wall, h });
   const back = R(-w / 2, -d / 2, w / 2, -d / 2 + D, 'down');
   const bc = -d / 2 + D / 2;
@@ -922,6 +944,11 @@ const Painters = (() => {
 
   const S = {};
 
+  // трап: квадратная решётка в полу
+  S.floorDrain = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d, 1); thin(P);
+    for (let k = -2; k <= 2; k++) line(P, [-w / 2 + 2, k * d / 6, w / 2 - 2, k * d / 6]);
+  };
   S.labelbox = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 0);
     const lbl = P.it.label ?? P.def.label ?? '';
@@ -1073,11 +1100,9 @@ const Painters = (() => {
   S.ksink = (P, w, d) => { S.counter(P, w, d); sinkBowl(P, 0, -2, w - 16, d - 20); };
   S.kitchenI = (P, w, d) => {
     S.counter(P, w, d);
-    if (w >= 120) {
-      sinkBowl(P, -w / 2 + 40, -2, 44, d - 20);
-      P.ctx.fillStyle = P.C.itemFill;
-      burners(P, w / 2 - 45, 0, 54, d - 12);
-    }
+    const K = kitchenLayout('kitchenI', w, d, P.it);
+    if (K.sink) sinkBowl(P, K.sink.x, -2, 44, d - 20);
+    if (K.hob) { P.ctx.fillStyle = P.C.itemFill; burners(P, K.hob.x, 0, 54, d - 12); }
   };
   S.kitchenL = (P, w, d) => {
     const c = P.ctx, D = 60;
@@ -1087,12 +1112,13 @@ const Painters = (() => {
     line(P, [-w / 2, -d / 2 + D - 4, w / 2 - D + 4, -d / 2 + D - 4, w / 2 - D + 4, d / 2]);
     for (let x = -w / 2 + 60; x < w / 2 - D - 10; x += 60) line(P, [x, -d / 2 + D - 4, x, -d / 2 + D]);
     for (let y = -d / 2 + D + 60; y < d / 2 - 10; y += 60) line(P, [w / 2 - D + 4, y, w / 2 - D, y]);
-    if (w >= 180) sinkBowl(P, -w / 2 + 40, -d / 2 + D / 2 - 2, 44, D - 20);
-    if (d >= 150) burners(P, w / 2 - D / 2 - 2, d / 2 - 40, D - 12, 54);
+    const K = kitchenLayout('kitchenL', w, d, P.it);
+    if (K.sink) sinkBowl(P, K.sink.x, -d / 2 + D / 2 - 2, 44, D - 20);
+    if (K.hob) burners(P, w / 2 - D / 2 - 2, K.hob.y, D - 12, 54);
   };
   /** Гарнитуры из «лент» модулей (П-образная, параллельная, с островом и т. д.) */
   const kitchenRuns = (P, w, d) => {
-    const K = kitchenLayout(P.def.shape, w, d);
+    const K = kitchenLayout(P.def.shape, w, d, P.it);
     const run = (r, tall) => {
       const rw = r.x1 - r.x0, rd = r.y1 - r.y0;
       P.ctx.fillStyle = P.C.itemFill; lw(P, 1.4); box(P, r.x0, r.y0, rw, rd, 0);
@@ -1234,7 +1260,17 @@ const Painters = (() => {
     P.ctx.fillStyle = P.C.inkSoft; box(P, -w / 2, -d / 2, w, d, 0); thin(P); P.ctx.fillStyle = P.C.itemFill;
     for (let i = 0; i < n; i++) { const x = -w / 2 + 4 + i * cw; box(P, x + (i ? 2 : 0), -d / 2 + 4, cw - (i < n - 1 ? 2 : 0) - (i ? 2 : 0), d - 8, 0); line(P, [x + 2, d / 2 - 6, x + cw - 2, -d / 2 + 6]); }
   };
-  S.ventPipe = (P, w, d) => { circle(P, 0, 0, Math.min(w, d) / 2); thin(P); circle(P, 0, 0, Math.min(w, d) * 0.32, false); line(P, [-w * 0.22, w * 0.22, w * 0.22, -w * 0.22]); };
+  S.ventPipe = (P, w, d) => {
+    circle(P, 0, 0, Math.min(w, d) / 2); thin(P); circle(P, 0, 0, Math.min(w, d) * 0.32, false); line(P, [-w * 0.22, w * 0.22, w * 0.22, -w * 0.22]);
+    // отвод под полом из погреба к стояку у стены — пунктиром
+    const f = P.it.feed;
+    if (f && U.isNum(f.x)) {
+      const q = G.toLocal(f, P.it.x, P.it.y, P.it.rot || 0), m = G.toLocal({ x: P.it.x, y: f.y }, P.it.x, P.it.y, P.it.rot || 0), fl = P.it.flip ? -1 : 1;
+      P.ctx.save(); P.ctx.setLineDash([6 * P.px, 4 * P.px]); P.ctx.strokeStyle = P.C.ink; P.ctx.lineWidth = 1.4 * P.px;
+      P.ctx.beginPath(); P.ctx.moveTo(0, 0); P.ctx.lineTo(m.x * fl, m.y); P.ctx.lineTo(q.x * fl, q.y); P.ctx.stroke(); P.ctx.restore();
+      circle(P, q.x * fl, q.y, Math.min(w, d) * 0.35, false);
+    }
+  };
   // решётки и клапаны — символы: вытяжка — стрелка из комнаты, приток — стрелка в комнату
   const ventArrow = (P, w, d, up) => {
     const c = P.ctx, a = d / 2, b = -d / 2 - d * 1.2;

@@ -53,7 +53,7 @@ const Walk = {
   },
   stop() {
     if (!Walk.on) return;
-    Walk.on = false; Walk.keys.clear();
+    Walk.on = false; Walk.keys.clear(); View3D.tip3d(null);
     document.body.classList.remove('walking');
     if (Walk._saved) Object.assign(View3D.cam, Walk._saved);
     UI.render3dPanel();

@@ -214,7 +214,7 @@ const UI = {
       }
       case 'items': {
         const d = catItem(o.key), nm = normsFor(o, c), s = sysOf(o);
-        return { title: o.label || d.name, lines: [o.label ? d.name : '', d.sym ? `Высота установки ${Math.round(o.h)} см` : `${Math.round(o.w)} × ${Math.round(o.d)} см, высота ${Math.round(o.h)} см`,
+        return { title: o.label || d.name, lines: [o.label ? d.name : '', d.sym ? (o.h ? `Высота установки ${Math.round(o.h)} см` : 'В уровне пола') : `${Math.round(o.w)} × ${Math.round(o.d)} см, высота ${Math.round(o.h)} см`,
           U.isNum(o.tset) ? `Термоголовка: +${o.tset} °C` : '', o.hob === 'gas' ? 'Варочная панель газовая' : '', o.note || '', s ? `Система: ${SYSTEMS[s].name}` : '', ...tail].filter(Boolean), norms: nm, hint: 'Тяните — переместить (подключённые трубы и кабели — следом), ручки — размер и поворот' };
       }
       case 'lines': {
@@ -226,7 +226,11 @@ const UI = {
         return { title: o.name || AREA_KINDS[o.kind].name, lines: [o.kind === 'plot' ? `${(ar / 1e6).toFixed(2)} сот. (${(ar / 1e4).toFixed(1)} м²)` : U.fmtArea(ar), `Периметр ${L(G.polyPerimeter(o.pts))}`, ...tail] };
       }
       case 'roads': return { title: o.name || ROAD_KINDS[o.kind].name, lines: [ROAD_KINDS[o.kind].name, `Ширина ${L(o.width)}, длина ${L(G.polyPerimeter(o.pts, false))}`, ...tail] };
-      case 'roofs': { const P = Roof.params(o); return { title: 'Крыша: ' + ROOF_TYPES[o.type].name.toLowerCase(), lines: [`Кровля ${U.fmtArea(P.area)} · ${(ROOF_MATERIALS[o.mat] || {}).name || ''}`, o.type !== 'flat' ? `Уклон ${Math.round(o.pitch)}°, конёк на ${L(P.top)}` : '', ...tail].filter(Boolean) }; }
+      case 'roofs': {
+        const P = Roof.params(o), F = Roof.frame(o);
+        return { title: 'Крыша: ' + ROOF_TYPES[o.type].name.toLowerCase(), lines: [`Кровля ${U.fmtArea(P.area)} · ${(ROOF_MATERIALS[o.mat] || {}).name || ''}`, o.type !== 'flat' ? `Уклон ${Math.round(o.pitch)}°, конёк на ${L(P.top)}` : '',
+          F ? `${F.scheme === 'truss' ? 'Фермы на МЗП' : 'Стропила'} ${F.b}×${F.h} мм, шаг ${Math.round(F.step * 100)} см` : '', F ? `Основание: ${F.bat}` : '', F ? `Снеговой район ${F.snow.district}: Sg = ${F.snow.Sg} кПа` : '', F ? `Утеплитель чердака ${F.attic.ins} мм` : '', ...tail].filter(Boolean), norms: F ? 'СП 20.13330.2016, СП 64.13330.2017, СП 17.13330.2017' : '' };
+      }
       case 'dims': return { title: 'Размер', lines: [o.text || L(G.dist(o.a, o.b))] };
       case 'texts': return { title: 'Надпись', lines: [String(o.text || '').slice(0, 80)] };
       case 'notes': return { title: 'Примечание №' + (App.doc.notes.indexOf(o) + 1), lines: [String(o.text || '(пусто)').slice(0, 160), o.target && Model.get(o.target) ? 'К объекту: ' + UI.targetName(o.target) : ''].filter(Boolean) };
@@ -1005,6 +1009,8 @@ const UI = {
       body.append(F.section('Варочная панель',
         F.select('Тип', it.hob === 'gas' ? 'gas' : 'el', [['el', 'электрическая / индукция'], ['gas', 'газовая']], (v) => { it.hob = v === 'gas' ? 'gas' : undefined; Model.commit(); }),
         F.check('Духовой шкаф под панелью', it.oven !== false, (v) => { it.oven = v ? undefined : false; Model.commit(); }),
+        F.num('Сдвиг к мойке, модулей', it.hobShift || 0, (v) => { const n = U.clamp(Math.round(v), 0, 6); if (n) it.hobShift = n; else delete it.hobShift; Model.commit(); }, { min: 0, max: 6, step: 1 }),
+        F.note('Панель стоит по центру модуля над духовкой; по бокам — рабочие зоны ≥ 30–40 см. От окна, вентклапана и газового крана — не ближе 30–50 см, от мойки — ≥ 40 см.'),
         it.hob === 'gas' ? F.note('Газовая плита — только в кухне с окном (форточкой) и высотой потолка от 2,2 м; вытяжка 90 м³/ч (СП 402.1325800, СП 54.13330). Перед плитой — кран на опуске газопровода, подключение гибкой подводкой до 1,5 м.') : null));
     }
     if (def.shape === 'gateSlide') {
