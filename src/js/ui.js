@@ -273,9 +273,18 @@ const UI = {
     head.onclick = () => { p.classList.toggle('collapsed'); try { localStorage.setItem('fp:p3d', p.classList.contains('collapsed') ? '1' : ''); } catch (e) { /* нет хранилища */ } };
     try { p.classList.toggle('collapsed', localStorage.getItem('fp:p3d') === '1'); } catch (e) { /* нет хранилища */ }
     p.append(head,
-      chk('Этажи выше текущего', 'upper'), chk('Крыша', 'roof'), chk('Мебель и предметы', 'items'), chk('Участок', 'site'),
-      chk('Инженерные сети (как слои на плане)', 'nets'), chk('Прозрачная земля: подземные сети и фундамент', 'xray'),
-      F.select('Показать', o.mode || 'all', [['all', 'Дом целиком'], ['roofFrame', 'Каркас крыши (без кровли)'], ['masonry', 'Кладка (без отделки)'], ['found', 'Только фундамент']], (v) => { o.mode = v; if (v === 'found') o.xray = true; View3D.dirty = true; UI.render3dPanel(); View3D.redraw(); }),
+      chk('Этажи выше текущего', 'upper'),
+      F.select('Крыша', o.mode === 'roofFrame' ? 'frame' : o.roof === false ? 'none' : o.roofView || 'full', [['full', 'Кровля (стропила и чердак внутри)'], ['frame', 'Стропила, обрешётка и чердак — без кровли'], ['none', 'Без крыши и потолков — комнаты сверху']], (v) => {
+        o.roofView = v; o.roof = v !== 'none'; if (o.mode === 'roofFrame') o.mode = 'all'; View3D.dirty = true; UI.render3dPanel(); View3D.redraw();
+      }),
+      chk('Мебель и предметы', 'items'), chk('Участок', 'site'),
+      F.check('Инженерные сети', o.nets, (v) => { o.nets = v; View3D.dirty = true; UI.render3dPanel(); View3D.redraw(); }),
+      o.nets ? U.el('div', { class: 'chips sys3d' }, ...Object.entries(SYSTEMS).map(([id, S]) => {
+        const on = (o.sys3d || {})[id] !== false;
+        return U.el('button', { type: 'button', class: 'chip' + (on ? ' on' : ''), style: on ? { borderColor: S.color, color: S.color } : null, 'aria-pressed': on ? 'true' : 'false', title: S.name + ' — показать / скрыть в 3D', onclick: () => { o.sys3d = { ...(o.sys3d || {}), [id]: !on }; View3D.dirty = true; UI.render3dPanel(); View3D.redraw(); } }, S.short);
+      })) : null,
+      chk('Прозрачная земля: подземные сети и фундамент', 'xray'),
+      F.select('Показать', o.mode === 'roofFrame' ? 'all' : o.mode || 'all', [['all', 'Дом целиком'], ['masonry', 'Кладка (без отделки)'], ['found', 'Только фундамент']], (v) => { o.mode = v; if (v === 'found') o.xray = true; View3D.dirty = true; UI.render3dPanel(); View3D.redraw(); }),
       F.select('Разрез', o.clip ? o.clip.dir : '', [['', 'нет'], ['u', 'поперёк конька'], ['v', 'вдоль конька']], (v) => { o.clip = v ? { dir: v, k: (o.clip && o.clip.k) ?? 0.5 } : null; UI.render3dPanel(); View3D.redraw(); }),
       ...(o.clip ? [F.range('Положение разреза', Math.round((o.clip.k ?? 0.5) * 100), 0, 100, 1, (v) => { o.clip.k = v / 100; View3D.redraw(); }, null, (v) => v + ' %')] : []),
       F.check('Свет от солнца (дата/время — «Участок»)', o.sun, (v) => { o.sun = v; View3D.redraw(); }),

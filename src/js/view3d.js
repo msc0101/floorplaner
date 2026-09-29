@@ -67,7 +67,11 @@ const View3D = {
   active: false, gl: null, canvas: null, prog: null, dirty: true,
   mesh: null, glass: null,
   cam: { yaw: -0.75, pitch: 0.5, dist: 40, tx: 0, ty: 1, tz: 0 },
-  opts: { upper: true, roof: true, items: true, site: true, sun: true, shadows: true, nets: true, xray: false, mode: 'all', clip: null },
+  opts: { upper: true, roof: true, roofView: 'full', items: true, site: true, sun: true, shadows: true, nets: true, sys3d: {}, xray: false, mode: 'all', clip: null },
+  /** Система инженерных сетей видна в 3D (свои переключатели в панели 3D, не зависят от слоёв плана) */
+  sysOn(id) { return !id || (View3D.opts.nets !== false && (View3D.opts.sys3d || {})[id] !== false); },
+  /** Каркас крыши без кровли: список «Крыша» или старый режим «Показать» */
+  roofFrameOnly() { return View3D.opts.roofView === 'frame' || View3D.opts.mode === 'roofFrame'; },
 
   hex(c) {
     const m = /^#?([0-9a-f]{6})$/i.exec(c || '');
@@ -208,6 +212,17 @@ const View3D = {
     };
     View3D._g = { face, prism, box, cyl, cone, blob, ring, wire, tri, V3 };
     const d = App.doc, active = Model.floorIdx(App.floor);
+    // габарит того, что реально нарисовано у каждого предмета (см, оси плана) — по нему подсказки в 3D
+    const IB = new Map();
+    const ibox = (id, n0, g0) => {
+      let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+      for (const [A, k0] of [[P, n0], [GP, g0]]) for (let k = k0; k < A.length; k += 3) {
+        const x = A[k] * 100, z = A[k + 1] * 100, y = A[k + 2] * 100;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z;
+      }
+      if (x1 >= x0) IB.set(id, { x0, y0, z0, x1, y1, z1 });
+    };
+    View3D._ibox = IB; View3D._pk = null;
     View3D._spoutQ = []; View3D._eaves = []; View3D.lights = [];
     View3D._spouts = View3D.opts.items ? d.items.filter(o => catItem(o.key).shape === 'downspout') : [];
     const floors = d.floors.filter((f, i) => i <= active || View3D.opts.upper);
@@ -281,7 +296,7 @@ const View3D = {
       const fd = (App.floorData || []).find(x => x.floor.id === f.id);
       // «Только фундамент»: без дома — ленты с арматурой, подушка, утепление, пол по грунту, ямы и подземные сети
       if (mode === 'found') {
-        if (first) { View3D.found3d(e, true); for (const it of App.V.items) if (catItem(it.key).shape === 'pit') View3D.item(it, catItem(it.key), e, top => top); }
+        if (first) { View3D.found3d(e, true); for (const it of App.V.items) if (catItem(it.key).shape === 'pit') { const n0 = P.length, g0 = GP.length; View3D.item(it, catItem(it.key), e, top => top); ibox(it.id, n0, g0); } }
         View3D.nets3d(f, e);
         return;
       }
@@ -434,8 +449,10 @@ const View3D = {
       }
       if (View3D.opts.items && mode !== 'masonry') for (const it of App.V.items) {
         const def = catItem(it.key);
-        if (def.shape === 'rug') continue;
+        if (def.shape === 'rug' || (def.sym && !View3D.sysOn(sysOf(it)))) continue;     // розетки, краны и т. п. — вместе со своей системой
+        const n0 = P.length, g0 = GP.length;
         View3D.item(it, def, e + View3D.deckZ(it), top => top);
+        ibox(it.id, n0, g0);
       }
       // инженерные сети (как включены слои на плане), фундамент и кладка
       View3D.nets3d(f, e);
@@ -443,7 +460,7 @@ const View3D = {
       if (App.doc.settings.layers.masonry || mode === 'masonry') View3D.masonry3d(f, e);
       // надземный газопровод: жёлтая труба на высоте, стойки на участке (у стен — кронштейны)
       for (const l of App.V.lines) {
-        if (l.kind !== 'gasAir') continue;
+        if (l.kind !== 'gasAir' || !View3D.sysOn('gas')) continue;
         const z = e + (l.height ?? LINE_KINDS.gasAir.height), yel = View3D.hex('#e3b000'), post = View3D.hex('#8a8f94');
         const nearWall = (p) => App.V.walls.some(w => w.kind !== 'fence' && G.distSeg(p, w.a, w.b) <= w.th / 2 + 40);
         for (let i = 0; i + 1 < l.pts.length; i++) {
@@ -488,7 +505,7 @@ const View3D = {
     // ---------------- крыши ----------------
     if (View3D.opts.roof && mode !== 'found') for (const r of d.roofs) {
       if (!View3D.opts.upper && Model.floorIdx(r.floor) > active) continue;
-      if (mode === 'roofFrame') View3D.roofFrame3d(r); else View3D.roof(r);
+      if (View3D.roofFrameOnly()) View3D.roofFrame3d(r); else View3D.roof(r);
     }
     View3D.downspouts();
     View3D.arrays = { P, N, C: Cc, GP, GN, GC };
@@ -536,7 +553,7 @@ const View3D = {
       const z = l.kind === 'warmfloor' ? e + 3.5 : ['power', 'lowvolt', 'ground'].includes(l.kind) ? top : l.kind === 'freon' ? top - 10 : e + 8;
       return l.pts.map(() => z);
     };
-    const shown = App.doc.lines.filter(l => (l.floor || f1) === f.id && l.kind !== 'overhead' && l.kind !== 'gasAir' && Render.sysOn({}, sysOfLine(l)) && l.pts.length >= 2 && (!(l.depth > 0) || View3D.opts.xray) && (View3D.opts.mode !== 'found' || l.depth > 0));
+    const shown = App.doc.lines.filter(l => (l.floor || f1) === f.id && l.kind !== 'overhead' && l.kind !== 'gasAir' && View3D.sysOn(sysOfLine(l)) && l.pts.length >= 2 && (!(l.depth > 0) || View3D.opts.xray) && (View3D.opts.mode !== 'found' || l.depth > 0));
     const Z = new Map(shown.map(l => [l, zOf(l)]));
     const rOf = (l) => {
       const r = l.kind === 'warmfloor' ? 0.9 : l.dia >= 50 ? l.dia / 20 : ['power', 'lowvolt'].includes(l.kind) ? 0.8 : Math.max(1, (l.dia || 16) / 20);
@@ -622,7 +639,7 @@ const View3D = {
   /** Объекты для выбора лучом: коробки (предметы, стены, проёмы) и отрезки (трассы), см; кэш по ревизии */
   pickables() {
     const o3 = View3D.opts, md = o3.mode || 'all', active = Model.floorIdx(App.floor);
-    const key = [App.rev, md, !!o3.xray, !!o3.roof, !!o3.items, !!o3.upper, !!o3.nets, active].join('|');
+    const key = [App.rev, md, !!o3.xray, !!o3.roof, o3.roofView, !!o3.items, !!o3.upper, JSON.stringify(o3.sys3d), !!o3.nets, active].join('|');
     if (View3D._pk && View3D._pk.key === key) return View3D._pk.list;
     // выбираем только то, что сейчас нарисовано: этажи выше текущего, «только фундамент», «кладка», выключенные предметы и сети — не в счёт
     const d = App.doc, list = [], f1 = d.floors[0].id, SKIP = new Set(['building', 'garage', 'veranda', 'canopy', 'canopyLean', 'rug']);
@@ -642,7 +659,9 @@ const View3D = {
       else if (sh === 'pit') { z0 = e - pitGeom(it, it.w, it.d).depth; z1 = e + 5; hollow = true; }
       else if (def.stack) { z0 = e + (U.isNum(it.z0) ? it.z0 : 0); z1 = e + Checks.stackH(it); }
       else { z0 = e + (U.isNum(it.z0) ? it.z0 : 0); z1 = z0 + Math.max(4, it.h || 60); }
-      list.push({ id: it.id, box: true, x: it.x, y: it.y, hw: Math.max(6, it.w / 2), hd: Math.max(6, it.d / 2), rot: it.rot || 0, z0, z1, pri: def.sym ? 0 : 1, hollow });
+      const B = !hollow && View3D._ibox && View3D._ibox.get(it.id);                 // по нарисованной геометрии (ТВ на тумбе, котёл на стене…)
+      if (B) list.push({ id: it.id, box: true, x: (B.x0 + B.x1) / 2, y: (B.y0 + B.y1) / 2, hw: Math.max(4, (B.x1 - B.x0) / 2), hd: Math.max(4, (B.y1 - B.y0) / 2), rot: 0, z0: Math.min(B.z0, (B.z0 + B.z1) / 2 - 4), z1: Math.max(B.z1, (B.z0 + B.z1) / 2 + 4), pri: def.sym ? 0 : 1 });
+      else list.push({ id: it.id, box: true, x: it.x, y: it.y, hw: Math.max(6, it.w / 2), hd: Math.max(6, it.d / 2), rot: it.rot || 0, z0, z1, pri: def.sym ? 0 : 1, hollow });
     }
     for (const w of d.walls) {
       if (w.kind === 'fence' || md === 'found' || !shown(w.floor)) continue;
@@ -654,11 +673,11 @@ const View3D = {
         list.push({ id: o.id, box: true, x: c.x, y: c.y, hw: g.width / 2, hd: w.th / 2 + 3, rot: ang, z0: e + sill, z1: e + sill + (o.h || 200), pri: 1 });
       }
     }
-    if (o3.roof && md !== 'found' && md !== 'roofFrame') for (const r of d.roofs) if (shown(r.floor)) for (const fc of Roof.faces(r)) {
+    if (o3.roof && md !== 'found' && !View3D.roofFrameOnly()) for (const r of d.roofs) if (shown(r.floor)) for (const fc of Roof.faces(r)) {
       for (let i = 1; i < fc.length - 1; i++) list.push({ id: r.id, tri: [fc[0], fc[i], fc[i + 1]].map(p => [p.x, p.y, p.z]), pri: 3 });
     }
     for (const l of d.lines) {
-      if ((!o3.nets && l.kind !== 'gasAir') || l.kind === 'overhead' || l.pts.length < 2 || !shown(l.floor) || !Render.sysOn({}, sysOfLine(l)) || (l.depth > 0 && !o3.xray) || (md === 'found' && !(l.depth > 0))) continue;
+      if (l.kind === 'overhead' || l.pts.length < 2 || !shown(l.floor) || !View3D.sysOn(l.kind === 'gasAir' ? 'gas' : sysOfLine(l)) || (l.depth > 0 && !o3.xray) || (md === 'found' && !(l.depth > 0))) continue;
       const e = elev(l.floor), f = d.floors.find(x => x.id === (l.floor || f1)) || d.floors[0], top = e + (f.h || 300) - 30;
       const zs = l.depth > 0 ? lineDepths(l).map(dd => e - dd) : l.pts.map(() => l.kind === 'gasAir' ? e + (l.height ?? LINE_KINDS.gasAir.height) : ['power', 'lowvolt', 'ground'].includes(l.kind) ? top : l.kind === 'warmfloor' ? e + 3.5 : e + 8);
       for (let i = 1; i < l.pts.length; i++) list.push({ id: l.id, seg: true, a: [l.pts[i - 1].x, l.pts[i - 1].y, zs[i - 1]], b: [l.pts[i].x, l.pts[i].y, zs[i]], r: Math.max(4, (l.dia || 20) / 20 + 3), pri: 0 });
@@ -677,9 +696,14 @@ const View3D = {
     const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]], th = Math.tan(v.fov / 2);
     const dg = [f[0] + r[0] * nx * th * v.aspect + u[0] * ny * th, f[1] + r[1] * nx * th * v.aspect + u[1] * ny * th, f[2] + r[2] * nx * th * v.aspect + u[2] * ny * th];
     const dl = Math.hypot(...dg), D = [dg[0] / dl, dg[2] / dl, dg[1] / dl];     // в осях плана: x, y (план), z (высота)
-    const O = [e[0], e[2], e[1]], clip = View3D.clipPlane();
+    return View3D.rayHit([e[0], e[2], e[1]], D);
+  },
+  /** Ближайший объект на луче из точки O (см, оси плана x, y, высота) по направлению D (единичный) или null */
+  rayHit(O, D) {
+    const clip = View3D.clipPlane();
     const cut = (t) => clip[3] < 1e8 && ((O[0] + D[0] * t) * clip[0] + (O[1] + D[1] * t) * clip[2]) / 100 > clip[3];
     let best = null;
+    const hits = [];
     for (const P of View3D.pickables()) {
       let t = null;
       if (P.box) {
@@ -714,9 +738,12 @@ const View3D = {
         if (Math.hypot(pc[0] - qc[0], pc[1] - qc[1], pc[2] - qc[2]) <= P.r) t = sc;
       }
       if (t == null || t < 20 || cut(t)) continue;                            // вплотную к глазу и за плоскостью разреза — не считаем
-      const score = t + P.pri * 8;                                              // мелкие приборы и трассы — чуть предпочтительнее стены
-      if (!best || score < best.score) best = { id: P.id, t, score };
+      hits.push({ id: P.id, t, pri: P.pri });
     }
+    // ближайшее попадание; если рядом (≤ 6 см) — прибор или трасса на стене важнее самой стены. Предметы за стеной не выигрывают
+    if (!hits.length) return null;
+    const tmin = Math.min(...hits.map(h => h.t));
+    for (const h of hits) if (h.t <= tmin + 6 && (!best || h.pri < best.pri || (h.pri === best.pri && h.t < best.t))) best = h;
     return best;
   },
   /** Подсказка у объекта: в обзоре — у курсора, на прогулке — у перекрестья */
@@ -884,7 +911,7 @@ const View3D = {
       for (const e2 of [A, B]) { const c2 = G.add(G.add(e2, G.mul(G.sub(m, e2), 1 / Math.max(1, G.dist(m, e2)) * 1)), G.mul(n, 7)); box(c2.x, c2.y, 1.5, 12, ang, z - 17, z - 4, col); }   // заглушки
       const cnt = Math.max(1, Math.round(len / 70));                                            // крюки
       for (let k = 0; k <= cnt; k++) { const p = G.add(G.add(A, G.mul(G.sub(B, A), k / cnt)), G.mul(n, 7)); box(p.x, p.y, 1.5, 14, ang, z - 18, z - 17, col.map(x => x * 0.8)); }
-      View3D._eaves.push({ A: G.add(A, G.mul(n, 7)), B: G.add(B, G.mul(n, 7)), z: z - 16 });
+      View3D._eaves.push({ A: G.add(A, G.mul(n, 7)), B: G.add(B, G.mul(n, 7)), z: z - 17 });           // z — низ желоба
     }
   },
   SPOUT_COLOR: '#6d4c3d',
@@ -901,7 +928,7 @@ const View3D = {
         const ab = G.sub(g.B, g.A), t = U.clamp(G.dot(G.sub(it, g.A), ab) / (G.dot(ab, ab) || 1), 0, 1), q = G.add(g.A, G.mul(ab, t)), dd = G.dist(q, it);
         if (dd < 150 && g.z > e + 100 && (!best || dd < best.d)) best = { q, z: g.z, d: dd };
       }
-      const top = best ? best.z - 22 - Math.max(20, best.d) : e + (it.h || 300);
+      const top = best ? best.z - 14 - Math.max(20, best.d) : e + (it.h || 300);
       const f1 = App.doc.floors[0].id, inlet = App.doc.items.find(o => (o.floor || f1) === (it.floor || f1) && catItem(o.key).shape === 'stormInlet' && G.dist(o, it) < 45);
       const z0 = e + 22;
       cyl(it.x, it.y, R, z0, top, col, 12);
@@ -910,12 +937,13 @@ const View3D = {
         const b = P(0, -R - 3); box(b.x, b.y, 2, 6, rot, z, z + 3, col.map(x => x * 0.75));
       }
       if (best) {
-        const p2 = [best.q.x, best.q.y, best.z - 22];
+        // воронка вплотную под дном желоба, от неё — колено к трубе у стены: вода из желоба уходит в трубу
+        const gz = best.z, p2 = [best.q.x, best.q.y, gz - 14];
         cyl(it.x, it.y, R + 0.6, top - 4, top + 2, col, 12);
         wire([it.x, it.y, top], p2, R, col);
-        cyl(best.q.x, best.q.y, R + 0.6, best.z - 25, best.z - 19, col, 12);
-        cyl(best.q.x, best.q.y, R, best.z - 20, best.z - 14, col, 12);
-        View3D._g.cone(best.q.x, best.q.y, R + 1, R + 4, best.z - 16, best.z - 12, col, 12);   // воронка
+        cyl(best.q.x, best.q.y, R + 0.6, gz - 17, gz - 11, col, 12);
+        cyl(best.q.x, best.q.y, R, gz - 12, gz - 5, col, 12);
+        View3D._g.cone(best.q.x, best.q.y, R + 1, R + 4.5, gz - 6, gz + 0.5, col, 12);   // воронка
       } else {
         const p2 = P(0, 18); wire([it.x, it.y, top], [p2.x, p2.y, top + 8], R, col);
       }
@@ -2155,41 +2183,72 @@ const View3D = {
   },
   /** Автомобиль: кузов со скруглёнными углами, салон-трапеция со стёклами, круглые колёса, фары и фонари */
   car(it, e) {
-    const { prism, face, box } = View3D._g, C = View3D.hex, rot = it.rot || 0, w = it.w, d = it.d, H = it.h || 150;
+    // кроссовер / паркетник: клиренс ~20 см, пластиковый обвес по низу и аркам, высокая линия капота,
+    // почти вертикальная пятая дверь, рейлинги на крыше, крупные колёса с литыми дисками
+    const { prism, face, box, wire } = View3D._g, C = View3D.hex, rot = it.rot || 0, w = it.w, d = it.d, H = Math.max(it.h || 165, 160);
     const L = (x, y) => G.toWorld({ x, y }, it.x, it.y, rot), V = (x, y, z) => { const q = L(x, y); return [q.x / 100, z / 100, q.y / 100]; };
-    const body = it.color ? C(it.color) : C('#5d7898'), glass = [0.16, 0.2, 0.26], trim = C('#2b2e33');
-    // кузов: скруглённый прямоугольник в плане
-    const rr = (hw, hd, r, n = 5) => { const pts = []; for (const [cx, cy, a0] of [[hw - r, hd - r, 0], [-hw + r, hd - r, 90], [-hw + r, -hd + r, 180], [hw - r, -hd + r, 270]]) for (let i = 0; i <= n; i++) { const a = U.rad(a0 + 90 * i / n); pts.push(L(cx + Math.cos(a) * r, cy + Math.sin(a) * r)); } return pts; };
-    prism(rr(w / 2, d / 2, Math.min(40, w * 0.22)), e + 24, e + 70, body, { topK: 1.08 });
-    prism(rr(w / 2 - 2, d / 2 - 2, Math.min(38, w * 0.2)), e + 18, e + 24, trim);      // пороги / бамперы снизу
-    // салон: низ шире, верх уже; перед −d/2 — лобовое наклонное
-    const zb = e + 70, zt = e + H;
-    const b = [[-w / 2 + 8, -d * 0.2], [w / 2 - 8, -d * 0.2], [w / 2 - 8, d * 0.3], [-w / 2 + 8, d * 0.3]];
-    const t = [[-w / 2 + 22, -d * 0.06], [w / 2 - 22, -d * 0.06], [w / 2 - 22, d * 0.22], [-w / 2 + 22, d * 0.22]];
-    const ref = V(0, d * 0.05, (zb + zt) / 2);
-    for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; face([V(...b[i], zb), V(...b[j], zb), V(...t[j], zt), V(...t[i], zt)], glass, ref); }
-    face(t.map(p => V(...p, zt)), body.map(x => Math.min(1, x * 1.1)), V(0, d * 0.08, zt - 50));
-    // стойки между стёклами (светлее кузова по краям крыши)
-    for (const sx of [-1, 1]) face([V(sx * (w / 2 - 8), -d * 0.2 + 1, zb), V(sx * (w / 2 - 8), -d * 0.2 + 12, zb), V(sx * (w / 2 - 22), -d * 0.06 + 8, zt), V(sx * (w / 2 - 22), -d * 0.06, zt)], body, V(0, 0, zb));
-    // колёса — цилиндры поперёк машины
-    const wheel = (cx, cy) => {
-      const R = 32, n = 12, zc = e + R, sx = Math.sign(cx), tyre = C('#1c1d20');
-      const ring = (r, m) => Array.from({ length: m }, (_, k) => { const a = k / m * Math.PI * 2; return [cy + Math.cos(a) * r, zc + Math.sin(a) * r]; });
-      for (const xs of [cx - 11, cx + 11]) face(ring(R, n).map(([y, z]) => V(xs, y, z)), tyre, V(cx, cy, zc));
-      const rg = ring(R, n);
-      for (let k = 0; k < n; k++) { const [y0, z0] = rg[k], [y1, z1] = rg[(k + 1) % n]; face([V(cx - 11, y0, z0), V(cx + 11, y0, z0), V(cx + 11, y1, z1), V(cx - 11, y1, z1)], tyre, V(cx, cy, zc)); }
-      face(ring(17, 10).map(([y, z]) => V(cx + sx * 11.4, y, z)), C('#a9aeb5'), V(cx, cy, zc));    // диск
-    };
-    for (const cy of [-d * 0.31, d * 0.3]) for (const sx of [-1, 1]) wheel(sx * (w / 2 - 12), cy);
-    // фары, фонари, решётка, номера
+    const body = it.color ? C(it.color) : C('#5d7898'), bodyL = body.map(x => Math.min(1, x * 1.1)), glass = [0.13, 0.16, 0.21], trim = C('#26282c'), chromeC = C('#b9bec4');
+    const rr = (hw, hd, r, n = 5, dy = 0) => { const pts = []; for (const [cx, cy, a0] of [[hw - r, hd - r, 0], [-hw + r, hd - r, 90], [-hw + r, -hd + r, 180], [hw - r, -hd + r, 270]]) for (let i = 0; i <= n; i++) { const a = U.rad(a0 + 90 * i / n); pts.push(L(cx + Math.cos(a) * r, cy + dy + Math.sin(a) * r)); } return pts; };
+    const R = 36, zc = e + R, axF = -d * 0.32, axR = d * 0.31, zBelt = e + 100, zRoof = e + H - 6;
+    // низ: чёрный обвес с арками, кузов до линии окон
+    prism(rr(w / 2 - 1, d / 2 - 1, Math.min(34, w * 0.2)), e + 22, e + 44, trim);
+    prism(rr(w / 2, d / 2 - 3, Math.min(34, w * 0.2)), e + 44, zBelt, body, { topK: 1.06 });
+    for (const cy of [axF, axR]) for (const sx of [-1, 1]) { const q = L(sx * (w / 2 + 1.5), cy); box(q.x, q.y, 5, 2 * R + 20, rot, zc + R - 3, zc + R + 6, trim); }   // расширители арок над колёсами
+    // капот чуть ниже линии окон, к лобовому — подъём
+    face([V(-w / 2 + 12, -d / 2 + 6, e + 94), V(w / 2 - 12, -d / 2 + 6, e + 94), V(w / 2 - 10, -d * 0.2, zBelt + 2), V(-w / 2 + 10, -d * 0.2, zBelt + 2)], bodyL, V(0, -d * 0.3, e + 40));
+    // салон: лобовое наклонное, задняя дверь почти вертикальная
+    const b = [[-w / 2 + 7, -d * 0.2], [w / 2 - 7, -d * 0.2], [w / 2 - 7, d / 2 - 8], [-w / 2 + 7, d / 2 - 8]];
+    const t = [[-w / 2 + 17, -d * 0.02], [w / 2 - 17, -d * 0.02], [w / 2 - 17, d / 2 - 16], [-w / 2 + 17, d / 2 - 16]];
+    const ref = V(0, d * 0.1, (zBelt + zRoof) / 2);
+    for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; face([V(...b[i], zBelt), V(...b[j], zBelt), V(...t[j], zRoof), V(...t[i], zRoof)], glass, ref); }
+    face(t.map(p => V(...p, zRoof)), body, V(0, d * 0.1, zRoof - 50));
+    prism(t.map(([x, y]) => L(x * 1.02, y + (y > 0 ? 2 : -2))), zRoof, zRoof + 3, body);                   // панель крыши
+    // стойки: A и C — цвет кузова, B — чёрная; рамка по низу окон
+    const pill = (y0b, y1b, y0t, y1t, col) => { for (const sx of [-1, 1]) { const xb = sx * (w / 2 - 6.6), xt = sx * (w / 2 - 16.6); face([V(xb, y0b, zBelt), V(xb, y1b, zBelt), V(xt, y1t, zRoof), V(xt, y0t, zRoof)], col, V(0, 0, zBelt)); } };
+    pill(-d * 0.2, -d * 0.2 + 12, -d * 0.02, -d * 0.02 + 9, body);
+    pill(d * 0.07, d * 0.1, d * 0.1, d * 0.13, trim);
+    pill(d / 2 - 30, d / 2 - 8, d / 2 - 40, d / 2 - 16, body);
+    for (const sx of [-1, 1]) { const q = L(sx * (w / 2 - 4), (-d * 0.2 + d / 2 - 8) / 2); box(q.x, q.y, 2, d * 0.66, rot, zBelt - 2, zBelt + 1, chromeC); }
+    // рейлинги на крыше
     for (const sx of [-1, 1]) {
-      const f = L(sx * w * 0.33, -d / 2 + 2), r = L(sx * w * 0.36, d / 2 - 2);
-      box(f.x, f.y, w * 0.2, 4, rot, e + 52, e + 62, [1, 0.97, 0.82]);
-      box(r.x, r.y, w * 0.18, 4, rot, e + 52, e + 62, C('#c4362c'));
+      const a0 = L(sx * (w / 2 - 22), 0), a1 = L(sx * (w / 2 - 22), d / 2 - 24);
+      wire([a0.x, a0.y, zRoof + 8], [a1.x, a1.y, zRoof + 8], 1.8, chromeC);
+      for (const q of [a0, a1]) box(q.x, q.y, 4, 8, rot, zRoof + 2, zRoof + 8, trim);
     }
-    const g = L(0, -d / 2 + 1), n2 = L(0, d / 2 - 1);
-    box(g.x, g.y, w * 0.3, 3, rot, e + 36, e + 48, trim);
-    box(n2.x, n2.y, 52, 3, rot, e + 36, e + 47, [0.95, 0.95, 0.95]);
+    // зеркала
+    for (const sx of [-1, 1]) { const q = L(sx * (w / 2 + 6), -d * 0.17); box(q.x, q.y, 14, 8, rot, zBelt + 4, zBelt + 16, body); }
+    // колёса: шина, литой диск со спицами, ступица
+    const wheel = (cx, cy) => {
+      const n = 14, sx = Math.sign(cx), tyre = C('#1b1c1f'), rim = C('#aeb3ba');
+      const ring = (r, m, a0 = 0) => Array.from({ length: m }, (_, k) => { const a = a0 + k / m * Math.PI * 2; return [cy + Math.cos(a) * r, zc + Math.sin(a) * r]; });
+      for (const xs of [cx - 12, cx + 12]) face(ring(R, n).map(([y, z]) => V(xs, y, z)), tyre, V(cx, cy, zc));
+      const rg = ring(R, n);
+      for (let k = 0; k < n; k++) { const [y0, z0] = rg[k], [y1, z1] = rg[(k + 1) % n]; face([V(cx - 12, y0, z0), V(cx + 12, y0, z0), V(cx + 12, y1, z1), V(cx - 12, y1, z1)], tyre, V(cx, cy, zc)); }
+      const xo = cx + sx * 12.3;
+      face(ring(24, 12).map(([y, z]) => V(xo, y, z)), C('#3a3d42'), V(cx, cy, zc));                    // тень внутри диска
+      for (let k = 0; k < 5; k++) {                                                                      // 5 спиц
+        const a = k / 5 * Math.PI * 2, c = Math.cos(a), s2 = Math.sin(a), pc = -s2 * 2.6, ps = c * 2.6;
+        face([V(xo + sx * 0.2, cy + pc, zc + ps), V(xo + sx * 0.2, cy - pc, zc - ps), V(xo + sx * 0.2, cy + c * 23 - pc, zc + s2 * 23 - ps), V(xo + sx * 0.2, cy + c * 23 + pc, zc + s2 * 23 + ps)], rim, V(cx, cy, zc));
+      }
+      face(ring(24, 16).map(([y, z]) => V(xo + sx * 0.1, y, z)).reverse(), rim.map(x => x * 0.9), V(cx, cy, zc));
+      face(ring(6, 8).map(([y, z]) => V(xo + sx * 0.4, y, z)), chromeC, V(cx, cy, zc));
+    };
+    for (const cy of [axF, axR]) for (const sx of [-1, 1]) wheel(sx * (w / 2 - 9), cy);                      // колёса чуть выступают из кузова — видны диски
+    // перед: решётка, узкие LED-фары, противотуманки, защита картера; зад: фонари, номер, защита
+    const g = L(0, -d / 2 + 1);
+    box(g.x, g.y, w * 0.46, 3, rot, e + 60, e + 84, trim);
+    for (let z = e + 64; z < e + 82; z += 5) box(g.x, g.y, w * 0.44, 3.4, rot, z, z + 1, C('#3c4046'));
+    for (const sx of [-1, 1]) {
+      const f = L(sx * w * 0.37, -d / 2 + 4), fog = L(sx * w * 0.36, -d / 2 + 2), r = L(sx * w * 0.38, d / 2 - 4), rs = L(sx * (w / 2 - 3), d / 2 - 14);
+      box(f.x, f.y, w * 0.2, 5, rot, e + 82, e + 90, [1, 0.97, 0.86]);
+      box(fog.x, fog.y, 12, 3, rot, e + 38, e + 44, [1, 0.97, 0.86]);
+      box(r.x, r.y, w * 0.2, 5, rot, e + 84, e + 94, C('#b8262a'));
+      box(rs.x, rs.y, 3, 20, rot, e + 84, e + 94, C('#b8262a'));                                    // фонари заходят на борт
+    }
+    const sk = L(0, -d / 2 + 3), sk2 = L(0, d / 2 - 3), n2 = L(0, d / 2 - 2);
+    box(sk.x, sk.y, w * 0.5, 4, rot, e + 24, e + 34, chromeC);
+    box(sk2.x, sk2.y, w * 0.5, 4, rot, e + 24, e + 34, chromeC);
+    box(n2.x, n2.y, 52, 3, rot, e + 58, e + 69, [0.95, 0.95, 0.95]);
   },
   BLD_FLOOR: 10,
   /** Постройка «как дом», внутри которой стоит объект (погреб/яма) — или null */
@@ -2955,6 +3014,8 @@ const View3D = {
     g.fillStyle = '#d21f3c'; g.beginPath(); g.moveTo(cx + n.x * (r - 20), cy + n.y * (r - 20)); g.lineTo(cx - n.y * 5, cy + n.x * 5); g.lineTo(cx + n.y * 5, cy - n.x * 5); g.closePath(); g.fill();
     g.fillStyle = '#9aa0a8'; g.beginPath(); g.moveTo(cx - n.x * (r - 20), cy - n.y * (r - 20)); g.lineTo(cx - n.y * 5, cy + n.x * 5); g.lineTo(cx + n.y * 5, cy - n.x * 5); g.closePath(); g.fill();
     const lt = v.lt, s = View3D.opts.sun && !lt.night ? Sun.current() : null;
+    // солнце не «светит» сквозь потолок и крышу: внутри дома или если луч к солнцу упирается в стену / скат — диск не рисуем
+    const ec = v.eye.map(x => x * 100), sunHidden = () => (Walk.on && View3D.indoorAt(ec[0], ec[2], ec[1])) || !!View3D.rayHit([ec[0], ec[2], ec[1]], [lt.L[0], lt.L[2], lt.L[1]].map((x, i, A) => x / Math.hypot(...A)));
     if (s && s.alt > 0) {
       const sd = toScr(Sun.planDir(s.az));
       g.fillStyle = '#f5b301'; g.beginPath(); g.arc(cx + sd.x * r, cy + sd.y * r, 6, 0, Math.PI * 2); g.fill();
@@ -2964,7 +3025,7 @@ const View3D = {
       // солнце на небе: точка далеко по направлению на солнце, спроецированная камерой
       const L = lt.L, P = [v.eye[0] + L[0] * 1500, v.eye[1] + L[1] * 1500, v.eye[2] + L[2] * 1500], M = v.VP;
       const X = M[0] * P[0] + M[4] * P[1] + M[8] * P[2] + M[12], Y = M[1] * P[0] + M[5] * P[1] + M[9] * P[2] + M[13], Wc = M[3] * P[0] + M[7] * P[1] + M[11] * P[2] + M[15];
-      if (Wc > 0) {
+      if (Wc > 0 && !sunHidden()) {
         const sx = (X / Wc * 0.5 + 0.5) * W, sy = (1 - (Y / Wc * 0.5 + 0.5)) * H;
         if (sx > -60 && sx < W + 60 && sy > -60 && sy < H + 60) {
           const gr = g.createRadialGradient(sx, sy, 0, sx, sy, 60);

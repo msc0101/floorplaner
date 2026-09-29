@@ -577,10 +577,18 @@ const kit = await page.evaluate(() => {
   const K0 = kitchenLayout('kitchenI', 380, 60, {}), K1 = kitchenLayout('kitchenI', 380, 60, { hobShift: 1 });
   r.hob = Math.abs(K0.hob.x - (190 - 380 / 12)) < 0.5 && Math.abs(K0.hob.x - K1.hob.x - 380 / 6) < 0.5;
   r.drain = itemLinks({ key: 'floorDrain' }).some(x => x[1].includes('sewer'));
+  // 3D: свои переключатели систем и режимы крыши
+  View3D.toggle(true);
+  const cnt = () => { View3D.dirty = true; View3D.build(); return View3D.arrays.P.length; };
+  const all = cnt(); View3D.opts.sys3d = { power: false, lowvolt: false }; const less = cnt(); View3D.opts.sys3d = {};
+  View3D.opts.roofView = 'none'; View3D.opts.roof = false; const nor = cnt(); View3D.opts.roofView = 'frame'; View3D.opts.roof = true; cnt(); View3D.opts.roofView = 'full'; cnt();
+  r.sys3d = less <= all && nor < all;
+  View3D.toggle(false);
+  r.mounts = typeof Analysis.mounts === 'function';
   return r;
 });
 console.log('kit', JSON.stringify(kit));
-if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
+if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain || !kit.sys3d || !kit.mounts) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

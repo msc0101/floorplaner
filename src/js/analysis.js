@@ -80,7 +80,16 @@ const Analysis = {
         rooms.push({ name: r.name, floor: f.floor.name, area: r.areaFloor, windows: ws.length, ratio: glass ? r.areaFloor / glass : Infinity, living, kitchen });
         // освещённость: площадь окон к площади пола жилых комнат и кухни — не менее 1:8
         if ((living || kitchen) && !ws.length) add('bad', 'Освещённость', `${r.name}: нет окон — жилой комнате и кухне нужно естественное освещение`, 'СП 55.13330, СанПиН 1.2.3685-21', at);
-        else if ((living || kitchen) && r.areaFloor / glass > 8.05) add('bad', 'Освещённость', `${r.name}: окна 1:${(r.areaFloor / glass).toFixed(1)} к площади пола (норма не меньше 1:8 — нужно ещё ≈ ${m2(r.areaFloor / 8 - glass)} остекления)`, 'СП 55.13330.2016', at);
+        else if ((living || kitchen) && r.areaFloor / glass > 8.05) add('bad', 'Освещённость', `${r.name}: окна 1:${(r.areaFloor / glass).toFixed(1)} к площади пола (норма не меньше 1:8 — нужно ещё ≈ ${m2(r.areaFloor / 8 - glass)} остекления)`, 'СП 55.13330.2016', at, null, () => {
+          // расширить самое широкое окно комнаты на недостающую площадь (в пределах стены и простенков по 30 см)
+          const need = r.areaFloor / 8 - glass, big = ws.map(x => x.op).sort((a, b) => b.w - a.w)[0], g = Model.opGeom(big);
+          if (!big || !g) return;
+          const others = App.V.openings.filter(o => o !== big && o.wall === big.wall).map(o => Model.opGeom(o)).filter(Boolean);
+          let room = Math.min(g.pos, g.L - g.pos) * 2 - 60;                                        // до углов
+          for (const q of others) room = Math.min(room, 2 * (Math.abs(q.pos - g.pos) - q.width / 2 - 30));
+          big.w = Math.round(Math.min(Math.max(big.w, room), big.w + Math.ceil(need / big.h / 5) * 5));
+          Model.commit();
+        });
         // минимальные площади
         const minA = /спальн|детск/.test(nm) ? [80000, 'спальни — 8 м²'] : /гостин|общ.*комнат/.test(nm) ? [120000, 'общей комнаты — 12 м²'] : kitchen && !/гостин/.test(nm) ? [60000, 'кухни — 6 м²'] : null;
         if (minA && r.areaFloor < minA[0] - 50) add('bad', 'Помещения', `${r.name}: ${m2(r.areaFloor)} — меньше минимума (${minA[1]})`, 'СП 55.13330.2016 п. 5.7', at);
@@ -119,6 +128,7 @@ const Analysis = {
 
     // ---------------- электрика: группы щита, автомат против сечения, УЗО на розетках ----------------
     Analysis.electric(d, add, stats);
+    Analysis.mounts(d, add);
 
     // ---------------- освещение помещений и гаража (СП 52.13330) ----------------
     Analysis.lighting(d, fd, add, stats);
@@ -129,6 +139,13 @@ const Analysis = {
       const at = stats.findIndex(x => /Смета/.test(x.title));
       stats.splice(at < 0 ? stats.length : at, 0, { title: 'Видеонаблюдение', rows: [['Камер', String(cov.cams)], ['Подходы к дому и гаражу в обзоре', `${cov.pctHouse.toFixed(0)}%`], ['Въезды и калитки в обзоре', `${cov.doors - cov.blind.length} из ${cov.doors}`], ['Периметр участка (справочно)', `${cov.pct.toFixed(0)}%`]] });
       for (const g of cov.hGaps.slice(0, 4)) add('warn', 'Видеонаблюдение', `подход к стене ${m(g.len)} не попадает ни в одну камеру — поверните камеру на углу или добавьте`, 'Камеры на углах дома и гаража под свесом: каждая стена и вход — в обзоре соседней камеры', g.at);
+      // камера на стене дома или постройки — под свесом, ниже карниза (иначе висит над кровлей и мокнет)
+      for (const c of d.items.filter(o => catItem(o.key).shape === 'cctv')) {
+        const bld = d.items.find(o => BLD_HOLLOW.has(catItem(o.key).shape) && G.distPoly(c, Model.itemPts(o)) < 40);
+        const house = d.roofs.find(r => r.type !== 'flat' && Roof.zAt(r, c) != null && (App.floorData || []).some(f => f.outlines.some(o => G.distPoly(c, o.outer) < 40)));
+        const eave = bld ? bldWallH(bld) : house ? (house.base || 0) : null;
+        if (eave != null && (c.h || 0) > eave - 15) add('warn', 'Видеонаблюдение', `${c.label || catItem(c.key).name}: высота ${Math.round(c.h)} см — выше карниза (${Math.round(eave)} см); камеру вешают под свес, на 20–30 см ниже карниза`, 'Паспорт камеры: защита от осадков — под свесом кровли', c, c.id, () => { c.h = Math.round(eave - 25); Model.commit(); });
+      }
       for (const x of cov.blind) add('warn', 'Видеонаблюдение', `${x.it.label || catItem(x.it.key).name}: въезд не в обзоре камер`, 'ГОСТ Р 51558-2014: зона входа — с различением лица', x.p, x.it.id);
     }
 
@@ -234,6 +251,27 @@ const Analysis = {
         const clear = dist - other.th / 2 + (G.dot(dir, no) > 0.5 ? wallClad(other) : 0);
         if (clear < 30 && clear > -1) add('warn', 'Конструкции', `${OPENING_TYPES[o.type].name}: простенок до угла ${m(Math.max(0, clear))} — перемычке нужно опирание не меньше 25 см, а угол кладки ослаблен. Сдвиньте проём от угла`, 'СП 15.13330.2020 п. 9.33; СП 339.13330 (перемычки)', G.add(end, G.mul(G.unit(G.sub(end === w.a ? w.b : w.a, end)), Math.max(dist, 20))), o.id);
       }
+    }
+    // верх проёмов (перемычки) в одной несущей стене — на одном уровне: одна отметка U-блоков, ровный фасад
+    for (const w of d.walls) {
+      if (w.kind !== 'ext' && w.kind !== 'int') continue;
+      const ops = d.openings.filter(o => o.wall === w.id).map(o => { const T = OPENING_TYPES[o.type] || {}, win = T.cat === 'window'; return { o, win, top: (win ? o.sill || 0 : 0) + (o.h || T.h || 0) }; });
+      if (ops.length < 2) continue;
+      const tops = ops.map(x => x.top), lo = Math.min(...tops), hi = Math.max(...tops);
+      if (hi - lo <= 5) continue;
+      const doors = ops.filter(x => !x.win && OPENING_TYPES[x.o.type] && x.o.type !== 'gate' && x.o.type !== 'arch');
+      const target = doors.length ? Math.max(...doors.map(x => x.top)) : hi;
+      const wins = ops.filter(x => x.win && Math.abs(x.top - target) > 5);
+      if (!wins.length) continue;
+      add('warn', 'Конструкции', `Стена ${m(Model.wallLen(w))}: верх проёмов на разных отметках (${[...new Set(tops.map(Math.round))].sort((a, b) => a - b).join(', ')} см) — перемычки на одном уровне проще в кладке и ровнее на фасаде; выровнять окна по верху дверей (${Math.round(target)} см)`,
+        'СП 15.13330.2020 (перемычки); единая отметка перемычек — один ряд U-блоков', G.mid(w.a, w.b), w.id, () => {
+          for (const x of wins) {
+            const o = x.o, keepSill = (o.sill || 0) >= 120;                                    // высокие окна (санузел, котельная) — сохраняем высоту
+            if (keepSill || target - (o.h || 0) >= 80) o.sill = Math.max(0, target - o.h);
+            else { o.sill = 80; o.h = Math.max(60, target - 80); }
+          }
+          Model.commit();
+        });
     }
     // пролёт перекрытия: по коротким сторонам помещений (деревянные балки — до 6 м без промежуточной опоры)
     for (const f of fd) for (const r of f.rooms) {
@@ -384,6 +422,50 @@ const Analysis = {
     }
   },
   /** Группы электрощита — внутренние кабельные линии (глубина 0) с автоматом; проверки по ПУЭ */
+  /** Розетки, выключатели и прочее на стене: не внутри стены и не на проёме / наличнике двери или окна */
+  mounts(d, add) {
+    const WALLY = new Set(['socket', 'socket2', 'socketP', 'switch', 'switch2', 'lan', 'tvSocket', 'thermostat', 'intercom']);
+    const f1 = d.floors[0].id;
+    for (const it of d.items) {
+      const def = catItem(it.key);
+      if (!def.sym || !WALLY.has(def.shape)) continue;
+      let best = null;
+      for (const w of d.walls) {
+        if (w.kind === 'fence' || (w.floor || f1) !== (it.floor || f1)) continue;
+        const pr = G.proj(it, w.a, w.b);
+        if (pr.tc <= 0 || pr.tc >= 1) continue;
+        const dd = pr.d - w.th / 2;
+        if (dd < 12 && (!best || dd < best.dd)) best = { w, dd, pr };
+      }
+      if (!best) continue;
+      const { w, pr } = best, u = Model.wallDir(w), L = Model.wallLen(w), s = pr.tc * L, n = G.perp(u);
+      const side = Math.sign(G.dot(G.sub(it, w.a), n)) || 1, ang = U.deg(Math.atan2(u.y, u.x));
+      const name = it.label || def.name;
+      // внутри стены или повёрнут поперёк неё — ставим на лицевую сторону, вдоль стены
+      const diff = ((((it.rot || 0) - ang) % 180) + 180) % 180;
+      if (best.dd < -1 || Math.abs(diff - 90) < 30) {
+        add('warn', 'Электрика', `${name}: стоит ${best.dd < -1 ? 'внутри стены' : 'поперёк стены'} — поставить на стену, вдоль неё`, 'ПУЭ 7.1.48–7.1.51; монтаж — в подрозетник на лицевой стороне стены', it, it.id, () => {
+          const q = G.add(G.add(w.a, G.mul(u, s)), G.mul(n, side * (w.th / 2 + (it.d || 4) / 2)));
+          it.x = Math.round(q.x * 10) / 10; it.y = Math.round(q.y * 10) / 10; it.rot = Math.round(side > 0 ? ang : ang + 180) % 360; Model.commit();
+        });
+        continue;
+      }
+      // на двери / окне / наличнике: до кромки проёма ≥ 10 см (наличник 7 см + зазор), у окна — ниже подоконника
+      for (const o of d.openings.filter(x => x.wall === w.id)) {
+        const T = OPENING_TYPES[o.type] || {}, win = T.cat === 'window', g = Model.opGeom(o);
+        if (!g) continue;
+        const half = g.width / 2 + 10 + (it.w || 8) / 2, off = s - g.pos, h = it.h || 0;
+        const zHit = win ? h > (o.sill || 0) - 8 && h < (o.sill || 0) + (o.h || 0) + 10 : h < (o.h || 210) + 12;
+        if (Math.abs(off) >= half || !zHit) continue;
+        const ns = g.pos + Math.sign(off || 1) * (half + 1), ok = ns > (it.w || 8) / 2 + 5 && ns < L - (it.w || 8) / 2 - 5;
+        add('warn', 'Электрика', `${name}: заходит на ${win ? 'окно' : 'дверной проём или наличник'} — сдвинуть вдоль стены на ${Math.round(Math.abs(half - Math.abs(off)))} см`, 'Выключатель — у двери со стороны ручки, 10–15 см от наличника; розетки — не на откосах и наличниках', it, it.id, ok ? () => {
+          const q = G.add(G.add(w.a, G.mul(u, ns)), G.mul(n, side * (w.th / 2 + (it.d || 4) / 2)));
+          it.x = Math.round(q.x * 10) / 10; it.y = Math.round(q.y * 10) / 10; Model.commit();
+        } : null);
+        break;
+      }
+    }
+  },
   electric(d, add, stats) {
     const groups = d.lines.filter(l => l.kind === 'power' && !(l.depth > 0) && (l.breaker || l.rcd));
     if (!groups.length) return;
