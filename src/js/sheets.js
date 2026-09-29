@@ -47,7 +47,7 @@ const Sheets = {
         toggles: { dims: ['Размеры', true], furniture: ['Мебель и сантехника', true], rooms: ['Помещения', true], nets: ['Все сети', false] }, panel: () => Sheets.explPanel(f) });
     }
     if (house && typeof Detail !== 'undefined') out.push({ key: 'section', kind: 'detail', detail: 'section', fid: g.id, title: 'Разрез 1-1', sub: 'Фундамент, стены, перекрытие, крыша — отметки и узлы', panel: (sp) => Detail.sectionPanel(sp) });
-    if (d.roofs.length && typeof Detail !== 'undefined') {
+    if (d.roofs.some(r => Roof.frame(r)) && typeof Detail !== 'undefined') {
       out.push({ key: 'roof', kind: 'detail', detail: 'roofPlan', fid: g.id, title: 'Кровля: стропильная система', sub: 'Стропила, обрешётка, мауэрлат, снеговая нагрузка', panel: () => Sheets.roofPanel() });
       out.push({ key: 'roof-node', kind: 'detail', detail: 'roofNode', fid: g.id, title: 'Узел: карниз и опирание стропил', sub: 'Армопояс, опорный брус, стропило, утепление, кровельный пирог', fixedN: 10, panel: (sp) => Detail.nodePanel(sp, 'Узел карниза', /Конструкции/) });
     }
@@ -102,7 +102,8 @@ const Sheets = {
       const padMM = spec.kind === 'detail' ? 4 : (c.t && 'dims' in c.t ? c.t.dims : spec.toggles && spec.toggles.dims && spec.toggles.dims[1]) ? 24 : 8;
       const bw = bbox.x1 - bbox.x0, bh = bbox.y1 - bbox.y0;
       const n = Math.max((bw * 10) / (box.w - 2 * padMM), (bh * 10) / (box.h - 2 * padMM)), fixed = U.isNum(+c.scale) && +c.scale > 0 ? +c.scale : spec.fixedN || 0;
-      const N = fixed || Sheets.STD.find(x => x >= n) || Math.ceil(n);
+      // свой масштаб пользователя — как есть; типовой масштаб узла (1:10, 1:20) — если узел в него помещается
+      const fit = Sheets.STD.find(x => x >= n) || Math.ceil(n), N = U.isNum(+c.scale) && +c.scale > 0 ? +c.scale : Math.max(fixed, fit);
       if (below) box.h = Math.min(box.h, Math.ceil(bh * 10 / N + 2 * padMM + 4));
       const pnl = !hasPanel ? null : below ? { x: 21, y: 6 + box.h + 2, w: fw - 2, h: fh - tbH - box.h - 5 } : { x: 20 + fw - panelW, y: 6, w: panelW - 1, h: fh - tbH - 3 };
       const draw = (bw * bh * 100 / N / N) / (fw * fh);                        // доля листа под чертежом
@@ -275,6 +276,7 @@ const Sheets = {
       U.el('label', {}, 'Формат ', U.el('select', { onchange: (e) => { Sheets._o = { ...Sheets._o, paper: e.target.value }; App.doc.settings.sheetPaper = e.target.value; Sheets.preview(Sheets._o); } }, Object.keys(Sheets.PAPER).map(k => U.el('option', { value: k, selected: k === o.paper }, k)))),
       U.el('span', { class: 'note' }, 'Масштаб и ориентация подбираются сами, чтобы чертёж занял лист. У листа можно выбрать своё.'));
     body.append(top);
+    if (!$('dlgPreview').open) $('dlgPreview').showModal();                // ширина окна известна только после показа
     const avail = Math.max(300, body.clientWidth - 48);
     let n = 0;
     specs.forEach((spec) => {

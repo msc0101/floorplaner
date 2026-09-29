@@ -552,6 +552,28 @@ const sy = await page.evaluate(() => {
 });
 console.log('systems', JSON.stringify(sy));
 if (!sy.sys || !sy.follow || !sy.breaker || !sy.cctv || !sy.night || !(sy.sheets >= 3)) errors.push('Инженерные системы: ' + JSON.stringify(sy));
+// комплект для строителей, разрез, 3D-режимы, подключения, отделка
+const kit = await page.evaluate(() => {
+  const r = {};
+  const sink = Model.add('items', { key: 'sink', x: 5600, y: 5600, w: 60, d: 45, h: 85, rot: 0 });
+  Model.commit();
+  r.links = Analysis.run().issues.some(x => x.group === 'Подключения' && x.id === sink.id);
+  Model.remove([sink.id]); Model.commit();
+  const specs = Sheets.list();
+  r.kinds = [...new Set(specs.map(s => s.kind))].join(',');
+  Sheets.preview({ paper: 'A3' });
+  r.sheets = document.querySelectorAll('#pvBody .sheet').length;
+  r.auto = [...document.querySelectorAll('#pvBody .sheet')].every(el => !el._layout || el._layout.N > 0);
+  $('pvClose').click();
+  r.q = Finish.quantities().rooms.length;
+  View3D.toggle(true);
+  for (const m of ['roofFrame', 'masonry', 'found', 'all']) { View3D.opts.mode = m; View3D.dirty = true; View3D.draw(); }
+  View3D.opts.clip = { dir: 'u', k: 0.5 }; View3D.draw(); r.clip = View3D.clipPlane()[3] < 1e8; View3D.opts.clip = null;
+  View3D.toggle(false);
+  return r;
+});
+console.log('kit', JSON.stringify(kit));
+if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);
