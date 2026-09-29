@@ -2339,6 +2339,7 @@ const View3D = {
     const wc = (View3D.camView && View3D.camEye(w / Math.max(1, h))) || (Walk.on ? Walk.camera() : null);
     const eye = wc ? wc.eye : [c.tx + c.dist * Math.cos(c.pitch) * Math.sin(c.yaw), c.ty + c.dist * Math.sin(c.pitch), c.tz + c.dist * Math.cos(c.pitch) * Math.cos(c.yaw)];
     const VP = M4.mul(M4.persp(wc ? wc.fov : 0.8, w / Math.max(1, h), wc ? 0.05 : 0.1, 4000), M4.lookAt(eye, wc ? wc.at : [c.tx, c.ty, c.tz], [0, 1, 0]));
+    View3D._view = { VP, eye, at: wc ? wc.at : [c.tx, c.ty, c.tz], lt };
     gl.uniformMatrix4fv(L.uVP, false, VP);
     gl.uniformMatrix4fv(L.uLVP, false, LVP);
     gl.uniform3fv(L.uL, lt.L); gl.uniform3fv(L.uSky, lt.sky); gl.uniform3fv(L.uGround, lt.ground); gl.uniform3fv(L.uEye, eye); gl.uniform3fv(L.uSunCol, lt.sunCol);
@@ -2363,6 +2364,51 @@ const View3D = {
     if (lt.night) gl.uniform1f(L.uGlow, 1);                           // ночью окна светятся изнутри
     drawMesh(View3D.glass, lt.night ? 0.7 : 0.42);
     gl.depthMask(true); gl.disable(gl.BLEND);
+    View3D.hud();
+  },
+  /** Поверх 3D: компас (поворачивается с камерой, на кольце — азимут солнца) и солнце на небе */
+  hud() {
+    const cv = $('hud3d'), v = View3D._view;
+    if (!cv || !v) return;
+    const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    // направление взгляда на плане и «право» экрана
+    const f0 = { x: v.at[0] - v.eye[0], y: v.at[2] - v.eye[2] }, fl = Math.hypot(f0.x, f0.y) || 1, F = { x: f0.x / fl, y: f0.y / fl }, Rt = { x: -F.y, y: F.x };
+    const toScr = (p) => ({ x: G.dot(p, Rt), y: -G.dot(p, F) });
+    const cx = W - 62, cy = 62, r = 40;
+    g.save();
+    g.fillStyle = 'rgba(255,255,255,.88)'; g.strokeStyle = 'rgba(40,44,52,.55)'; g.lineWidth = 1.2;
+    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.font = '600 11px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (const [b, t] of [[0, 'С'], [90, 'В'], [180, 'Ю'], [270, 'З']]) {
+      const s = toScr(Sun.planDir(b));
+      g.fillStyle = b === 0 ? '#d21f3c' : '#333'; g.fillText(t, cx + s.x * (r - 10), cy + s.y * (r - 10));
+    }
+    const n = toScr(Sun.planDir(0));
+    g.fillStyle = '#d21f3c'; g.beginPath(); g.moveTo(cx + n.x * (r - 20), cy + n.y * (r - 20)); g.lineTo(cx - n.y * 5, cy + n.x * 5); g.lineTo(cx + n.y * 5, cy - n.x * 5); g.closePath(); g.fill();
+    g.fillStyle = '#9aa0a8'; g.beginPath(); g.moveTo(cx - n.x * (r - 20), cy - n.y * (r - 20)); g.lineTo(cx - n.y * 5, cy + n.x * 5); g.lineTo(cx + n.y * 5, cy - n.x * 5); g.closePath(); g.fill();
+    const lt = v.lt, s = View3D.opts.sun && !lt.night ? Sun.current() : null;
+    if (s && s.alt > 0) {
+      const sd = toScr(Sun.planDir(s.az));
+      g.fillStyle = '#f5b301'; g.beginPath(); g.arc(cx + sd.x * r, cy + sd.y * r, 6, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(20,24,30,.75)'; g.font = '11px system-ui, sans-serif';
+      const st = Sun.state();
+      g.fillText(`☀ ${Math.round(s.alt)}° · ${String(Math.floor(st.min / 60)).padStart(2, '0')}:${String(st.min % 60).padStart(2, '0')}`, cx, cy + r + 12);
+      // солнце на небе: точка далеко по направлению на солнце, спроецированная камерой
+      const L = lt.L, P = [v.eye[0] + L[0] * 1500, v.eye[1] + L[1] * 1500, v.eye[2] + L[2] * 1500], M = v.VP;
+      const X = M[0] * P[0] + M[4] * P[1] + M[8] * P[2] + M[12], Y = M[1] * P[0] + M[5] * P[1] + M[9] * P[2] + M[13], Wc = M[3] * P[0] + M[7] * P[1] + M[11] * P[2] + M[15];
+      if (Wc > 0) {
+        const sx = (X / Wc * 0.5 + 0.5) * W, sy = (1 - (Y / Wc * 0.5 + 0.5)) * H;
+        if (sx > -60 && sx < W + 60 && sy > -60 && sy < H + 60) {
+          const gr = g.createRadialGradient(sx, sy, 0, sx, sy, 60);
+          gr.addColorStop(0, 'rgba(255,250,220,1)'); gr.addColorStop(0.18, 'rgba(255,236,160,.95)'); gr.addColorStop(0.4, 'rgba(255,220,120,.35)'); gr.addColorStop(1, 'rgba(255,220,120,0)');
+          g.fillStyle = gr; g.beginPath(); g.arc(sx, sy, 60, 0, Math.PI * 2); g.fill();
+        }
+      }
+    } else if (lt.night) { g.fillStyle = 'rgba(20,24,30,.75)'; g.font = '11px system-ui, sans-serif'; g.fillText('☾ ночь', cx, cy + r + 12); }
+    g.restore();
   },
   /** Вид с камеры видеонаблюдения: её точка, направление, наклон к земле и угол обзора */
   camEye(aspect) {
