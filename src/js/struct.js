@@ -78,7 +78,7 @@ const Struct = {
     const fd = (App.floorData || [])[0], area = fd ? fd.outlines.reduce((a, x) => a + x.area, 0) / 1e4 : 0;
     // нагрузки, кН: стены всех этажей над основанием, крыша со снегом, перекрытия
     let Gw = 0;
-    for (const w of d.walls) if (w.kind === 'ext' || w.kind === 'int') Gw += (WALL_GAMMA[w.mat] || 10) * (w.th / 100) * (w.h / 100) * Model.wallLen(w) / 100;
+    for (const w of d.walls) if (w.kind === 'ext' || w.kind === 'int') Gw += ((WALL_GAMMA[w.mat] || 10) * wallCore(w) + (w.clad > 0 ? WALL_GAMMA.brick * w.clad : 0) + 1.2 * (w.ins || 0)) / 100 * (w.h / 100) * Model.wallLen(w) / 100;
     const roofA = d.roofs.reduce((a, r) => a + Roof.params(r).area / 1e4, 0) || area * 1.25;
     const roofDead = d.roofs.some(r => ['ceramic', 'slate'].includes(r.mat)) ? 0.8 : 0.5;
     const pitch = d.roofs.length ? Math.max(...d.roofs.map(r => r.type === 'flat' ? 0 : r.pitch || 0)) : 30;
@@ -101,7 +101,7 @@ const Struct = {
     const segs = P.map((a, i) => ({ a, b: P[(i + 1) % 4] }));
     const Lext = 2 * (aw + ad) / 100, area = it.w * it.d / 1e4;
     const opA = sh.ops.reduce((a, op) => a + op.w * Math.min(op.h, wh), 0) / 1e4;
-    const Gw = (WALL_GAMMA[mat] || 10) * (t / 100) * Math.max(0, Lext * wh / 100 - opA);
+    const ck = it.clad > 0 ? it.clad : 0, Gw = ((WALL_GAMMA[mat] || 10) * (t - ck - (ck ? it.gap ?? 1 : 0)) + WALL_GAMMA.brick * ck) / 100 * Math.max(0, Lext * wh / 100 - opA);
     const R = bldRoof(it), rr = bldRoofRect(it, it.w, it.d);
     let Groof = 0, snow = 0, Lroof = Lext;
     if (R.type !== 'none') {
@@ -184,8 +184,8 @@ const Struct = {
     for (const w of d.walls) {
       if (w.kind === 'fence') continue;
       const R = WALL_REINF[w.mat] || { every: 0, how: '', ring: false, src: '' }, M = WALL_MATERIALS[w.mat] || {};
-      const k = w.mat + ':' + w.th, L = Model.wallLen(w) / 100;
-      const r = rows.get(k) || rows.set(k, { mat: w.mat, name: M.name || w.mat, th: w.th, len: 0, lenBear: 0, h: 0, rule: R, ops: 0, opLen: 0 }).get(k);
+      const th = wallCore(w), k = w.mat + ':' + th, L = Model.wallLen(w) / 100;
+      const r = rows.get(k) || rows.set(k, { mat: w.mat, name: M.name || w.mat, th, len: 0, lenBear: 0, h: 0, rule: R, ops: 0, opLen: 0 }).get(k);
       r.len += L; r.h = Math.max(r.h, w.h / 100);
       if (w.kind === 'ext' || w.kind === 'int') r.lenBear += L;
       for (const o of d.openings) if (o.wall === w.id) { r.ops++; r.opLen += (o.w + 50) / 100; }   // перемычка: проём + 2 × 25 см опирания
@@ -193,8 +193,8 @@ const Struct = {
     // стены построек (гараж, баня, сарай): кольцо по оси, несущие; проёмы — ворота и двери
     for (const it of Struct.blds()) {
       const sh = bldShell(it, it.w, it.d), mat = bldWallMat(it), R = WALL_REINF[mat] || { every: 0, how: '', ring: false, src: '' }, M = WALL_MATERIALS[mat] || {};
-      const k = mat + ':' + sh.t, L = 2 * (it.w + it.d - 2 * sh.t) / 100;
-      const r = rows.get(k) || rows.set(k, { mat, name: M.name || mat, th: sh.t, len: 0, lenBear: 0, h: 0, rule: R, ops: 0, opLen: 0 }).get(k);
+      const core = sh.t - (it.clad > 0 ? it.clad + (it.gap ?? 1) : 0), k = mat + ':' + core, L = 2 * (it.w + it.d - 2 * sh.t) / 100;
+      const r = rows.get(k) || rows.set(k, { mat, name: M.name || mat, th: core, len: 0, lenBear: 0, h: 0, rule: R, ops: 0, opLen: 0 }).get(k);
       r.len += L; r.lenBear += L; r.h = Math.max(r.h, bldWallH(it) / 100);
       for (const o of sh.ops) { r.ops++; r.opLen += (o.w + 50) / 100; }
     }
@@ -281,10 +281,26 @@ const Struct = {
     if (G.segInter(s.a, s.b, t.a, t.b)) return 0;
     return Math.min(G.distSeg(s.a, t.a, t.b), G.distSeg(s.b, t.a, t.b), G.distSeg(t.a, s.a, s.b), G.distSeg(t.b, s.a, s.b));
   },
+  /** Размеры лент для листа фундамента: длина каждой ленты по оси (снаружи контура) и ширина подошвы */
+  drawDims(env) {
+    const c = Theme.C.dim || '#333';
+    for (const F of Struct.all()) {
+      if (F.type === 'slab') continue;
+      const all = F.segs.flatMap(sg => [sg.a, sg.b]), cen = { x: all.reduce((a, p) => a + p.x, 0) / all.length, y: all.reduce((a, p) => a + p.y, 0) / all.length };
+      for (const sg of F.segs) {
+        if (G.dist(sg.a, sg.b) < 80) continue;
+        const u = G.unit(G.sub(sg.b, sg.a)), n = G.perp(u), m = G.mid(sg.a, sg.b), out = G.dot(n, G.sub(m, cen)) > 0 ? 1 : -1;
+        // внешние ленты — размер снаружи, внутренние — рядом с лентой
+        const edge = F.segs.filter(o => o !== sg).every(o => G.dot(G.sub(G.mid(o.a, o.b), m), G.mul(n, out)) <= 5);
+        Render.dimLine(env, sg.a, sg.b, (edge ? 70 + F.width * 50 : F.width * 50 + 25) * out, null, c);
+      }
+    }
+  },
   /** Контур фундаментов на плане: ленты под несущими стенами дома и стенами построек (пунктир), для УШП — плита */
   draw(env) {
     const A = Struct.all();
     if (!A.length) return;
+    if (env.foundDims) Struct.drawDims(env);
     const { ctx, px } = env, col = '#6b5b45';
     ctx.save();
     ctx.strokeStyle = col; ctx.lineWidth = 1.8 * px; ctx.setLineDash([10 * px, 5 * px]);

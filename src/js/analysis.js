@@ -227,7 +227,11 @@ const Analysis = {
       for (const [end, dist] of [[w.a, o.pos - o.w / 2], [w.b, L - o.pos - o.w / 2]]) {
         const uw = G.unit(G.sub(w.b, w.a)), other = d.walls.find(x => x !== w && x.kind !== 'fence' && (x.floor || f1) === (w.floor || f1) && (G.dist(x.a, end) < 2 || G.dist(x.b, end) < 2) && Math.abs(G.dot(uw, G.unit(G.sub(x.b, x.a)))) < 0.9);   // соосное продолжение — не угол
         if (!other) continue;
-        const clear = dist - other.th / 2;
+        // облицовка соседней стены — не кладка: если она обращена к проёму (внутренний угол у крыльца), простенок — до несущего слоя
+        const dir = end === w.a ? uw : G.mul(uw, -1), fdo = fd.find(x => x.floor.id === (w.floor || f1));
+        let no = G.perp(G.unit(G.sub(other.b, other.a)));
+        if (fdo && fdo.outlines.some(ol => G.pointInPoly(G.add(G.mid(other.a, other.b), G.mul(no, other.th / 2 + 10)), ol.outer))) no = G.mul(no, -1);
+        const clear = dist - other.th / 2 + (G.dot(dir, no) > 0.5 ? wallClad(other) : 0);
         if (clear < 30 && clear > -1) add('warn', 'Конструкции', `${OPENING_TYPES[o.type].name}: простенок до угла ${m(Math.max(0, clear))} — перемычке нужно опирание не меньше 25 см, а угол кладки ослаблен. Сдвиньте проём от угла`, 'СП 15.13330.2020 п. 9.33; СП 339.13330 (перемычки)', G.add(end, G.mul(G.unit(G.sub(end === w.a ? w.b : w.a, end)), Math.max(dist, 20))), o.id);
       }
     }

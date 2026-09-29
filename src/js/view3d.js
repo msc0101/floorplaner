@@ -282,18 +282,32 @@ const View3D = {
         for (const o of fd.outlines) prism(o.outer, e - (first ? 0 : 25), e + 2, View3D.hex(first ? '#b9b4ab' : '#d8d2c6'), { noSides: first });
         // отмостка вокруг дома и построек
         if (first) for (const b of Model.blindAreas()) for (const q of b.quads) prism(q, e, e + 6, View3D.hex('#bdbab2'));
+        const FO = Finish.opt(), finOn = App.doc.settings.layers.finish !== false;
         for (const r of fd.rooms) {
-          const nm = (r.name || '').toLowerCase();
-          const tile = /сануз|ванн|туалет|котел|котёл|душ/.test(nm), kitchen = /кухн|прихож|холл|коридор/.test(nm);
-          prism(r.floor, e + 2, e + 3, View3D.hex(tile ? '#d9dde0' : kitchen ? '#cfc2ad' : '#c8a47a'), { noSides: true });
+          // чистовой пол по отделке: керамогранит со швами раскладки, ковролин, плитка
+          const F = Finish.room(r), M = FIN_FLOORS[F.floor] || FIN_FLOORS.porcelain;
+          prism(r.floor, e + 2, e + 3, View3D.hex(M.color), { noSides: true });
+          if (finOn && M.tile) {
+            const b = G.bbox(r.floor), [tw, th2] = M.tile, cx = (b.x0 + b.x1) / 2, cyy = (b.y0 + b.y1) / 2, gc = View3D.hex(M.color).map(x => x * 0.82);
+            for (let x = cx - Math.ceil((cx - b.x0) / tw) * tw; x <= b.x1; x += tw) for (const seg of View3D.clipLine(r.floor, { x, y: b.y0 - 1 }, { x, y: b.y1 + 1 })) prism(View3D.lineQuad(seg[0], seg[1], 0.25), e + 3, e + 3.08, gc, { noSides: true });
+            for (let y = cyy - Math.ceil((cyy - b.y0) / th2) * th2; y <= b.y1; y += th2) for (const seg of View3D.clipLine(r.floor, { x: b.x0 - 1, y }, { x: b.x1 + 1, y })) prism(View3D.lineQuad(seg[0], seg[1], 0.25), e + 3, e + 3.08, gc, { noSides: true });
+          }
+          // натяжной потолок — когда крыша включена (изнутри, в режиме прогулки); сверху при снятой крыше не мешает
+          if (View3D.opts.roof && finOn) prism(r.floor, e + (f.h || 300) - 10, e + (f.h || 300) - 9.5, View3D.hex((FIN_CEIL[F.ceil] || FIN_CEIL.stretch).color), { noSides: true });
         }
+        void FO;
       }
       const cache = Render.endCache(), f1id = d.floors[0].id;
       for (const w of App.V.walls) {
         const top = e + w.h;
         if (w.kind === 'fence') { View3D.fence(w, e, top); continue; }
-        const M = WALL_MATERIALS[w.mat];
-        const col = View3D.hex(M ? M.color : '#dddddd').map(x => x * 0.95);
+        const M = WALL_MATERIALS[w.mat], FO = Finish.opt(), finOn = App.doc.settings.layers.finish !== false;
+        // с отделкой: стены окрашены (светлые), облицовка — кирпичом; без — цвет материала кладки
+        const col = finOn && w.kind !== 'fence' ? View3D.hex(FO.wallColor) : View3D.hex(M ? M.color : '#dddddd').map(x => x * 0.95);
+        const brickC = View3D.hex(Finish.brickColor()), cl = wallClad(w);
+        // наружная сторона стены (для облицовки и окон): +n — наружу
+        let nOut = G.perp(Model.wallDir(w));
+        if (w.kind === 'ext' && fd && fd.outlines.some(o => G.pointInPoly(G.add(G.mid(w.a, w.b), G.mul(nOut, w.th / 2 + 10)), o.outer))) nOut = G.mul(nOut, -1);
         const plinthH = first && w.kind === 'ext' ? 45 : 0;
         const plinth = View3D.hex('#8a857d');
         // крыши этого этажа: верх стены не выше ската (стены мансарды не протыкают кровлю)
@@ -314,7 +328,21 @@ const View3D = {
             if (strip.length >= 3) prismTop(strip, z0, (p) => Math.max(z0, Math.min(z1, roofTop(p))), col, cut);
           }
         };
-        for (const poly of Render.wallPieces(w, cache)) body(poly, e, top);
+        for (const poly0 of Render.wallPieces(w, cache)) {
+          if (!(w.clad > 0)) { body(poly0, e, top); continue; }
+          // облицовка: несущая часть и кирпич отдельными телами, по кирпичу — растворные швы через 77 мм
+          const mOut = G.mid(w.a, w.b), inner = View3D.clipSlab(poly0, mOut, nOut, -w.th / 2 - 1, w.th / 2 - cl), brick = View3D.clipSlab(poly0, mOut, nOut, w.th / 2 - w.clad, w.th / 2 + 1);
+          if (inner.length >= 3) body(inner, e, top);
+          if (brick.length >= 3) {
+            prism(brick, e + (first ? 45 : 0), top, brickC, { topK: 0.9 });
+            if (first) prism(brick, e, e + 45, plinth, { topK: 0.9 });
+            const ks = brick.map(p => G.dot(G.sub(p, mOut), nOut)), kmax = Math.max(...ks), fpts = brick.filter((p, i) => ks[i] > kmax - 0.5);
+            if (fpts.length >= 2) {
+              const u = Model.wallDir(w), ss = fpts.map(p => G.dot(p, u)), a = fpts[ss.indexOf(Math.min(...ss))], b2 = fpts[ss.indexOf(Math.max(...ss))], o2 = G.mul(nOut, 0.15), mort = brickC.map(x => Math.min(1, x * 1.35));
+              for (let z = e + 45 + 7.7; z < top - 2; z += 7.7) face([V3(G.add(a, o2), z - 0.5), V3(G.add(b2, o2), z - 0.5), V3(G.add(b2, o2), z + 0.5), V3(G.add(a, o2), z + 0.5)], mort, V3(G.sub(G.mid(a, b2), G.mul(nOut, 20)), z));
+            }
+          }
+        }
         for (const op of App.V.openings) {
           if (op.wall !== w.id) continue;
           const g = Model.opGeom(op); if (!g) continue;
@@ -332,11 +360,13 @@ const View3D = {
           const at = (s2, k) => P2(s2, k);
           if (win) {
             const z0 = e + sill, z1 = z0 + oh;
-            // рама
-            for (const [s0, s1] of [[0, fr], [g.width - fr, g.width]]) prism(rect(s0, s1, -4, 4), z0, z1, white);
-            prism(rect(0, g.width, -4, 4), z0, z0 + fr, white); prism(rect(0, g.width, -4, 4), z1 - fr, z1, white);
+            // рама: изнутри белая, снаружи — цвет ламинации (антрацит)
+            const so = w.kind === 'ext' ? Math.sign(G.dot(g.n, nOut)) || 1 : 1, outC = w.kind === 'ext' ? View3D.hex(Finish.opt().winOut) : white, inC = View3D.hex(Finish.opt().winIn);
+            const fr2 = (s0, s1, za, zb) => { prism(rect(s0, s1, so > 0 ? 0 : -4, so > 0 ? 4 : 0), za, zb, outC); prism(rect(s0, s1, so > 0 ? -4 : 0, so > 0 ? 0 : 4), za, zb, inC); };
+            for (const [s0, s1] of [[0, fr], [g.width - fr, g.width]]) fr2(s0, s1, z0, z1);
+            fr2(0, g.width, z0, z0 + fr); fr2(0, g.width, z1 - fr, z1);
             const leaves = op.type === 'win1' || op.type === 'winfix' || op.type === 'balcony' ? 1 : op.type === 'win3' ? 3 : 2;
-            for (let i = 1; i < leaves; i++) { const s2 = g.width * i / leaves; prism(rect(s2 - 3, s2 + 3, -4, 4), z0, z1, white); }
+            for (let i = 1; i < leaves; i++) { const s2 = g.width * i / leaves; fr2(s2 - 3, s2 + 3, z0, z1); }
             // подоконник и отлив
             if (sill > 0) prism(rect(-4, g.width + 4, -t - 5, t + 5), z0 - 3, z0, [0.86, 0.86, 0.85]);
             // стекло
@@ -345,7 +375,7 @@ const View3D = {
           } else if (op.type !== 'arch') {
             const z0 = e, z1 = e + oh;
             prism(rect(0, 5, -t, t), z0, z1, white); prism(rect(g.width - 5, g.width, -t, t), z0, z1, white); prism(rect(0, g.width, -t, t), z1 - 5, z1, white);
-            const leafCol = op.type === 'gate' ? View3D.hex('#9aa3ab') : w.kind === 'ext' ? View3D.hex('#6b4a33') : View3D.hex('#b08a64');
+            const leafCol = op.type === 'gate' ? View3D.hex('#9aa3ab') : w.kind === 'ext' ? View3D.hex(Finish.opt().door).map(x => x * 0.82) : View3D.hex(Finish.opt().door);
             const W2 = g.width, chrome = [0.78, 0.8, 0.82];
             if (op.type === 'gate') {
               prism(rect(5, W2 - 5, -2, 2), z0, z1 - 5, leafCol);
@@ -811,6 +841,21 @@ const View3D = {
     View3D.roof({ x: c.x, y: c.y, w: r.w, d: r.d, rot: rotW, type: r.type, pitch: g.pitch, base: eave, mat: R.mat, floor: null, open: R.open, gableGlass: !!opt.gableGlass }, col);
   },
   /** Часть многоугольника между плоскостями s = a и s = b (s — координата вдоль направления u от точки o) */
+  /** Части отрезка a–b внутри многоугольника: [[p, q], …] */
+  clipLine(poly, a, b) {
+    const ts = [0, 1];
+    for (let i = 0; i < poly.length; i++) { const x = G.segInter(a, b, poly[i], poly[(i + 1) % poly.length]); if (x) ts.push(x.t); }
+    ts.sort((x, y) => x - y);
+    const out = [];
+    for (let i = 0; i + 1 < ts.length; i++) {
+      if (ts[i + 1] - ts[i] < 1e-6) continue;
+      const m = G.add(a, G.mul(G.sub(b, a), (ts[i] + ts[i + 1]) / 2));
+      if (G.pointInPoly(m, poly)) out.push([G.add(a, G.mul(G.sub(b, a), ts[i])), G.add(a, G.mul(G.sub(b, a), ts[i + 1]))]);
+    }
+    return out;
+  },
+  /** Тонкая полоса (прямоугольник) вдоль отрезка полушириной h */
+  lineQuad(a, b, h) { const n = G.mul(G.perp(G.unit(G.sub(b, a))), h); return [G.add(a, n), G.add(b, n), G.sub(b, n), G.sub(a, n)]; },
   clipSlab(poly, o, u, a, b) {
     const clip = (pts, keep) => {
       const out = [];
@@ -1872,10 +1917,22 @@ const View3D = {
       const s = bldShell(it, it.w, it.d);
       const bx = (r, z0, z1, col, opt) => { const q = bldWorld(it, { x: (r.x0 + r.x1) / 2, y: (r.y0 + r.y1) / 2 }); box(q.x, q.y, r.x1 - r.x0, r.y1 - r.y0, rot, z0, z1, col, opt); };
       View3D.slab(it, s.inner, e, e + View3D.BLD_FLOOR, C(sh === 'garage' ? '#b9b8b2' : '#b08a64'));
-      const wm = WALL_MATERIALS[bldWallMat(it)], wallC = C(it.wallMat ? wm.color : it.key === 'bathhouse' ? '#c79a64' : '#ddd3c3'), baseC = C('#8a857d');
-      const band = (r, z0, z1, col, opt) => { if (z1 - z0 > 0.5) { bx(r, z0, Math.min(z1, e + 40), baseC); bx(r, Math.max(z0, e + 40), z1, col, opt); } };
-      const piece = (r, z0, z1, col, opt) => { if (z1 - z0 < 0.5) return; if (z0 < e + 40) band(r, z0, z1, col, opt); else bx(r, z0, z1, col, opt); };
-      for (const r of s.walls) { bx(r, e, e + 40, baseC); bx(r, e + 40, eave, wallC, { topK: 0.8 }); }
+      const wm = WALL_MATERIALS[bldWallMat(it)], finOn = App.doc.settings.layers.finish !== false;
+      const wallC = it.clad > 0 && finOn ? C(Finish.opt().wallColor) : C(it.wallMat ? wm.color : it.key === 'bathhouse' ? '#c79a64' : '#ddd3c3'), baseC = C('#8a857d'), brickC = C(Finish.brickColor());
+      // облицовка: наружная полоса стены — кирпич (по сторонам от внутреннего контура)
+      const cladR = (r) => {
+        if (!(it.clad > 0)) return null;
+        const I = s.inner, c = it.clad;
+        if (r.y1 <= I.y0 + 0.5) return [{ ...r, y0: r.y0 + c }, { ...r, y1: r.y0 + c }];
+        if (r.y0 >= I.y1 - 0.5) return [{ ...r, y1: r.y1 - c }, { ...r, y0: r.y1 - c }];
+        if (r.x1 <= I.x0 + 0.5) return [{ ...r, x0: r.x0 + c }, { ...r, x1: r.x0 + c }];
+        if (r.x0 >= I.x1 - 0.5) return [{ ...r, x1: r.x1 - c }, { ...r, x0: r.x1 - c }];
+        return null;
+      };
+      const wbx = (r, z0, z1, col, opt) => { const sp = col === wallC ? cladR(r) : null; if (!sp) { bx(r, z0, z1, col, opt); return; } bx(sp[0], z0, z1, col, opt); bx(sp[1], z0, z1, z0 < e + 40 ? baseC : brickC, opt); };
+      const band = (r, z0, z1, col, opt) => { if (z1 - z0 > 0.5) { bx(r, z0, Math.min(z1, e + 40), baseC); wbx(r, Math.max(z0, e + 40), z1, col, opt); } };
+      const piece = (r, z0, z1, col, opt) => { if (z1 - z0 < 0.5) return; if (z0 < e + 40) band(r, z0, z1, col, opt); else wbx(r, z0, z1, col, opt); };
+      for (const r of s.walls) { bx(r, e, e + 40, baseC); wbx(r, e + 40, eave, wallC, { topK: 0.8 }); }
       const F0 = e + View3D.BLD_FLOOR;
       for (const o of s.ops) {
         const top = Math.min(e + o.sill + o.h, eave - 5), bot = e + o.sill;

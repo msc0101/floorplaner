@@ -122,11 +122,14 @@ const UI = {
     // печать
     { const dp = $('dlgPrint'), show = dp.showModal.bind(dp); dp.showModal = () => { UI.fillPrintSys(); show(); }; }
     $('pvClose').onclick = () => { $('dlgPreview').close(); $('printArea').textContent = ''; };
-    $('pvPrint').onclick = () => { $('dlgPreview').close(); IO.doPrint(); };
+    $('pvPrint').onclick = () => { $('dlgPreview').close(); if (Sheets._kit) Sheets.build(Sheets._o); IO.doPrint(); };
     $('dlgPrint').addEventListener('close', () => {
       const v = $('dlgPrint').returnValue;
-      if (v === 'ok') IO.print(UI.printOpts());
-      else if (v === 'preview') IO.print({ ...UI.printOpts(), preview: true });
+      const po = UI.printOpts();
+      Sheets._kit = po.drawing;
+      if (po.drawing) { if (v === 'ok') { if (Sheets.build(po)) IO.doPrint(); } else if (v === 'preview') Sheets.preview(po); }
+      else if (v === 'ok') IO.print(po);
+      else if (v === 'preview') IO.print({ ...po, preview: true });
       else if (v === 'png') IO.exportPNG(UI.printOpts());
       else if (v === 'svg' || v === 'dxf') Vector.exportFile(v, UI.printOpts());
     });
@@ -325,8 +328,9 @@ const UI = {
       chip('Размеры', lay.dims !== false, '#555', 'Размеры и надписи', () => { lay.dims = lay.dims === false; }),
       chip('Фундамент', !!lay.found, '#6b5b45', 'Контур фундамента под несущими стенами (авторасчёт — «Проект» → «Конструкции»)', () => { lay.found = !lay.found; }),
       chip('Кладка', !!lay.masonry, '#b45309', 'Материал стен, армирование рядов и перемычки над проёмами (по СП 15.13330, СП 339.13330)', () => { lay.masonry = !lay.masonry; }),
+      chip('Отделка', lay.finish === true, '#8b5e3c', 'Чистовая отделка: раскладка плитки, ковролин, покрытия стен и потолков (в 3D — всегда, если не выключена)', () => { lay.finish = lay.finish !== true; }),
       U.el('span', { class: 'sys-sep' }),
-      chip('Чистый план', false, null, 'Только планировка: стены, окна, двери, мебель и сантехприборы — без сетей, крыши и отметок', () => { st.sys = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, false])); lay.roof = false; lay.checks = false; lay.found = false; lay.masonry = false; }),
+      chip('Чистый план', false, null, 'Только планировка: стены, окна, двери, мебель и сантехприборы — без сетей, крыши и отметок', () => { st.sys = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, false])); lay.roof = false; lay.checks = false; lay.found = false; lay.masonry = false; if (lay.finish === true) delete lay.finish; }),
       chip('Всё', false, null, 'Показать все системы и крышу', () => { st.sys = {}; lay.roof = true; lay.dims = true; lay.checks = true; }));
   },
   renderFloorbar() {
@@ -667,6 +671,26 @@ const UI = {
       s.plotArea ? F.info('Участок', `${(s.plotArea / 1e6).toFixed(2)} сот.`) : null,
       F.btns([['Все площади →', () => UI.showTab('summary')]])));
     body.append(UI.notesList());
+  },
+  /** Чистовая отделка: полы по назначению помещений, стены, потолки, двери, окна, фасад */
+  finishSection() {
+    const o = Finish.opt(), set = (k, v) => { Finish.set(k, v); Model.commit(); UI.refresh(); };
+    const opts = (T) => Object.entries(T).map(([k, v]) => [k, v.name]);
+    const color = (label, v, k) => F.row(label, U.el('input', { type: 'color', value: v, onchange: (e) => set(k, e.target.value) }));
+    const clad = App.doc.walls.some(w => w.kind === 'ext' && w.clad > 0);
+    return F.section('Отделка',
+      F.select('Полы (основное)', o.floor, opts(FIN_FLOORS), (v) => set('floor', v)),
+      F.select('Полы в спальнях', o.living, opts(FIN_FLOORS), (v) => set('living', v)),
+      F.select('Полы в санузлах', o.wet, opts(FIN_FLOORS), (v) => set('wet', v)),
+      F.select('Стены', o.walls, opts(FIN_WALLS), (v) => set('walls', v)),
+      color('Цвет стен', o.wallColor, 'wallColor'),
+      F.select('Стены санузлов', o.wetWalls, opts(FIN_WALLS), (v) => set('wetWalls', v)),
+      F.select('Потолки', o.ceil, opts(FIN_CEIL), (v) => set('ceil', v)),
+      color('Двери (дерево)', o.door, 'door'), color('Окна снаружи', o.winOut, 'winOut'), color('Окна внутри', o.winIn, 'winIn'),
+      F.select('Фасад', o.facade, opts(FIN_FACADE), (v) => set('facade', v)),
+      o.facade !== 'none' ? F.select('Цвет кирпича', o.brick, Object.entries(FIN_BRICK_COLORS).map(([k, v]) => [k, v[0]]), (v) => set('brick', v)) : null,
+      o.facade !== 'none' && !clad ? F.btns([['Облицевать наружные стены', () => { const n = Finish.cladWalls(o.facade); Model.commit(); UI.toast(`Облицовка добавлена: стены толще наружу на ${FIN_FACADE[o.facade].th + FIN_FACADE[o.facade].gap} см, внутренние размеры не изменились${n ? `; сдвинуто у фасада: ${n}` : ''}`); UI.refresh(); }, 'primary']]) : null,
+      F.note('Отделка видна в 3D и на листе «План отделки», площади — в смете. Слой «Отделка» на плане — раскладка плитки и коды покрытий. Облицовка утолщает стены наружу, фундамент пересчитывается сам.'));
   },
   /** Конструкции: грунт → авторасчёт фундамента; кладка и армирование стен по материалам */
   structSection() {
@@ -1746,6 +1770,7 @@ const UI = {
       U.isNum(s.frost) ? F.btns([[`По городу (${U.fmtLen(Climate.get().frost)})`, () => { delete s.frost; Model.commit(); }]]) : F.note(`По климату: ${Climate.get().city}${Climate.get().exact ? '' : ' (ближайший город из списка)'}.`),
       F.note('Нормативная глубина промерзания (СП 22.13330, СП 131.13330): Москва и область — 1,1–1,5 м (глина — меньше, песок — больше), Санкт-Петербург — 1,2–1,5, Екатеринбург — 1,6–2, Новосибирск — 2,2–2,4 м. По ней проверяется глубина водопровода: низ трубы на 0,5 м ниже.')));
     body.append(UI.structSection());
+    body.append(UI.finishSection());
     body.append(F.section('Стены по типам', tbl,
       F.check('Применять к уже нарисованным стенам', s.wallDefaultsLive !== false, (v) => { s.wallDefaultsLive = v; App.saveSoon(); }),
       F.btns([['Применить сейчас ко всем стенам', () => { for (const w of d.walls) { const dd = d.defaults.wall[w.kind]; w.th = dd.th + (w.ins || 0); w.h = dd.h; w.mat = dd.mat; } Model.commit(); UI.toast('Материал, толщина и высота стен обновлены (Ctrl+Z — отменить)'); }]]),

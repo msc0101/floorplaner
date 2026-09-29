@@ -151,6 +151,63 @@ const Roof = {
     return f.elev + h;
   },
 
+  /* ------------------------ стропильная система -------------------------- */
+  /** Опоры крыши: пролёт между осями наружных стен поперёк конька (по дому под крышей), см */
+  support(r) {
+    const fd = (App.floorData || []).find(f => f.floor.id === r.floor) || (App.floorData || [])[0];
+    const pts = fd ? fd.outlines.flatMap(o => o.outer) : [];
+    const loc = pts.map(p => G.toLocal(p, r.x, r.y, r.rot || 0)).filter(q => Math.abs(q.x) <= r.w / 2 + 1 && Math.abs(q.y) <= r.d / 2 + 1);
+    if (!loc.length) return { v0: -r.d / 2 + 50, v1: r.d / 2 - 50, u0: -r.w / 2 + 50, u1: r.w / 2 - 50, th: 40 };
+    const th = Math.max(20, ...App.doc.walls.filter(w => w.kind === 'ext' && (w.floor || App.doc.floors[0].id) === (fd ? fd.floor.id : w.floor)).map(w => w.th));
+    const b = G.bbox(loc.map(q => ({ x: q.x, y: q.y })));
+    return { v0: b.y0 + th / 2, v1: b.y1 - th / 2, u0: b.x0 + th / 2, u1: b.x1 - th / 2, th, outer: b };
+  },
+  /** Расчёт стропильной системы (упрощённо по СП 20.13330.2016 и СП 64.13330.2017): схема, сечения, шаг,
+   *  проверка по прочности и прогибу, обрешётка по материалу кровли, объёмы пиломатериала */
+  frame(r) {
+    if (!r || r.type === 'flat') return null;
+    const cl = Climate.get(), S = Roof.support(r), P = Roof.params(r), a = P.angle;
+    const span = (r.type === 'shed' ? S.v1 - S.v0 : S.v1 - S.v0) / 100;           // м между осями стен
+    const half = r.type === 'shed' ? span : span / 2;
+    const mu = U.clamp((60 - U.deg(a)) / 30, 0, 1), Sg = cl.snowKpa, s0 = mu * Sg, sD = s0 * 1.4;   // снег: нормативный и расчётный
+    const heavy = ['ceramic', 'slate'].includes(r.mat);
+    const gRoof = heavy ? 0.65 : r.mat === 'soft' ? 0.35 : 0.25;                    // кровля + основание, кПа
+    const gD = gRoof * 1.2 / Math.cos(a);
+    const step = 0.6;
+    // схема: до 6,5 м — наслонные стропила с затяжкой (потолочная балка), больше — заводские фермы на МЗП
+    const truss = span > 6.5;
+    const L = truss ? half / 2 : half;                                            // горизонтальный пролёт верхнего пояса / стропила между опорами
+    const q = (gD + sD) * step;                                                   // кН/м по горизонтальной проекции
+    const SECT = [[50, 150], [50, 200], [50, 250], [75, 200], [75, 250], [100, 250]];
+    const R = 13, E = 10000;                                                       // МПа: изгиб (сосна 2 сорт с коэфф. условий), модуль упругости
+    let pick = null;
+    for (const [b, h] of SECT) {
+      const W = b * h * h / 6 / 1e9, I = b * h ** 3 / 12 / 1e12;                  // м³, м⁴
+      const M = q * L * L / 8;                                                    // кН·м
+      const sig = M / W / 1000;                                                   // МПа
+      const Ln = L / Math.cos(a), qn = (gRoof / Math.cos(a) + s0) * step * Math.cos(a);
+      const f = 5 * qn * Ln ** 4 / (384 * E * 1000 * I) * 1000;                   // мм
+      const fmax = Ln * 1000 / 200;
+      if (sig <= R && f <= fmax) { pick = { b, h, sig, f, fmax, M }; break; }
+    }
+    pick = pick || { b: 100, h: 250, sig: NaN, f: NaN, fmax: NaN };
+    const len = r.w / 100, n = Math.floor((S.u1 - S.u0) / 100 / step) + 1 + (r.type === 'hip' ? 0 : 0);
+    const rafterL = (r.type === 'shed' ? r.d : r.d / 2) / 100 / Math.cos(a);        // со свесом, м
+    const nRaft = r.type === 'shed' ? n : 2 * n;
+    const BAT = { metaltile: ['25×100 шаг 350 (по шагу волны)', 0.35], profile: ['25×100 шаг 500', 0.5], seam: ['сплошная 25×100 с зазором 20 мм', 0.12], soft: ['сплошной настил OSB-3 12 мм по обрешётке 25×100 шаг 300', 0.3], ceramic: ['50×50 шаг 320–340', 0.33], ondulin: ['40×50 шаг 610', 0.6], slate: ['50×50 шаг 500', 0.5], polycarb: ['прогоны по расчёту', 0.6] }[r.mat] || ['25×100 шаг 350', 0.35];
+    const slope = P.area / 1e4;
+    const batM = slope / BAT[1];
+    const woodV = (truss ? n * (2 * rafterL + span * 1.05 + span * 0.9) : nRaft * rafterL + n * span) * pick.b * pick.h / 1e6
+      + batM * 0.025 * 0.1 + slope / step * 0.05 * 0.05 + 2 * len * 0.15 * 0.15;
+    return {
+      scheme: truss ? 'truss' : 'rafter', name: truss ? 'Фермы деревянные заводские на МЗП (W-образные), опора — наружные стены' : 'Наслонные стропила с затяжкой (потолочная балка), опора — мауэрлат и коньковый прогон',
+      span, half, L, pitch: U.deg(a), step, n, nRaft, rafterL, b: pick.b, h: pick.h, sig: pick.sig, f: pick.f, fmax: pick.fmax, R,
+      snow: { district: cl.snow, Sg, mu, s0, sD }, gRoof, q, len, slope, bat: BAT[0], batStep: BAT[1], batM, counter: slope / step, osb: r.mat === 'soft' ? slope : 0,
+      membrane: slope * 1.15, mauerlat: 2 * len, anchors: Math.ceil(2 * len) + 2, woodV, S,
+      attic: { ins: 200, vent: (S.v1 - S.v0) * (S.u1 - S.u0) / 1e4 / 300 },
+    };
+  },
+
   /* ------------------------------ план ----------------------------------- */
   draw(env, r) {
     const { ctx, px, C } = env;

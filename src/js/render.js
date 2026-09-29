@@ -109,9 +109,10 @@ const Render = {
     if (L.heat && App.heat && !ctx.isVector) Render.heat(env);
     lay('ROOMS');
     if (L.rooms) Render.roomFills(env);
+    if (L.finish && typeof Finish !== 'undefined') Finish.draw(env);
     if (L.shadows && !ctx.isVector) Render.shadows(env);
     lay('ITEMS');
-    const items = App.V.items.filter(it => L[catItem(it.key).layer] !== false && Render.sysOn(env, sysOf(it)));
+    const items = App.V.items.filter(it => L[catItem(it.key).layer] !== false && Render.sysOn(env, sysOf(it)) && (!env.itemFilter || env.itemFilter(it)));
     // «напольные» объекты — под стенами и дверьми (крыльцо и веранда не закрывают открытую дверь)
     const isGround = (it) => { const d = catItem(it.key); return !d.sym && (it.h <= 20 || d.shape === 'rug' || d.shape === 'veranda') && !['tree', 'conifer', 'bush'].includes(d.shape); };
     const isCanopy = (it) => ['tree', 'conifer', 'bush', 'hedge'].includes(catItem(it.key).shape);
@@ -141,7 +142,7 @@ const Render = {
     lay('CHECKS');
     if (L.checks !== false && typeof Checks !== 'undefined') Checks.draw(env);
     lay('DIMS');
-    if (L.walls && App.doc.settings.showWallDims) Render.wallDims(env);
+    if (L.walls && App.doc.settings.showWallDims && !env.ghostWalls) Render.wallDims(env);
     if (L.dims) { Render.dims(env); lay('TEXT'); Render.texts(env); }
     if (L.rooms) Render.roomLabels(env);
     lay('UNDERLAY');
@@ -278,7 +279,8 @@ const Render = {
         const areaTxt = a.kind === 'plot' ? `${(ar / 1e6).toFixed(2)} сот. · ${(ar / 1e4).toFixed(1)} м²` : U.fmtArea(ar);
         const blk = Render._blk || (Render._blk = Render._itemBlockers());
         const smaller = App.V.areas.filter(o => o !== a && Math.abs(G.polyArea(o.pts)) < ar);
-        const blocked = (p) => App.rooms.some(r => G.pointInPoly(p, r.axis)) || Render._inBlk(p, blk) || smaller.some(o => G.pointInPoly(p, o.pts))
+        const outl = ((App.floorData || [])[0] || {}).outlines || [];
+        const blocked = (p) => App.rooms.some(r => G.pointInPoly(p, r.axis)) || outl.some(o => G.distPoly(p, o.outer) < 150) || Render._inBlk(p, blk) || smaller.some(o => G.pointInPoly(p, o.pts))
           || App.V.walls.some(w => w.kind !== 'fence' && G.distSeg(p, w.a, w.b) < w.th / 2 + 30);
         const spots = Render.freeSpots(a.pts, lp, blocked);
         const main = spots.length ? spots[0] : lp;
@@ -539,6 +541,12 @@ const Render = {
     const cache = Render.endCache();
     const solid = App.V.walls.filter(w => w.kind !== 'fence');
     const pieces = solid.map(w => ({ w, polys: Render.wallPieces(w, cache) }));
+    if (env.ghostWalls) {                                                    // листы фундамента: стены — тонким контуром, без проёмов и заливки
+      ctx.save(); ctx.strokeStyle = '#9aa1ab'; ctx.lineWidth = 0.8 * px; ctx.setLineDash([]);
+      for (const w of solid.filter(x => x.kind === 'ext' || x.kind === 'int')) { Render.polyPath(ctx, Model.wallRect(w)); ctx.stroke(); }
+      ctx.restore();
+      return;
+    }
     // 1) контур
     ctx.strokeStyle = C.wallStroke; ctx.lineWidth = 2.4 * px; ctx.lineJoin = 'miter';
     for (const { polys } of pieces) for (const poly of polys) { Render.polyPath(ctx, poly); ctx.stroke(); }
@@ -551,20 +559,27 @@ const Render = {
       ctx.fillStyle = fill; ctx.strokeStyle = fill; ctx.lineWidth = 0.6 * px;
       for (const poly of polys) { Render.polyPath(ctx, poly); ctx.fill(); if (!detailed) ctx.stroke(); }
       // утеплитель — полоса с наружной стороны
-      if (w.ins > 0 && w.kind !== 'fence') {
+      if ((w.ins > 0 || w.clad > 0) && w.kind !== 'fence') {
         const u = Model.wallDir(w), n = G.perp(u), m = G.mid(w.a, w.b);
         const outSide = Rooms.at(G.add(m, G.mul(n, w.th / 2 + 15))) && !Rooms.at(G.sub(m, G.mul(n, w.th / 2 + 15))) ? -1 : 1;
-        const ins = Math.min(w.ins, w.th);
-        ctx.fillStyle = detailed ? (Render.matFill(env, 'insulation') || '#f7e89a') : (Theme.isDark() && !env.exporting ? '#6e6534' : '#f2dc6a');
-        for (const [sp, ep, em, sm] of polys) {
-          const band = outSide > 0 ? [sp, ep, G.sub(ep, G.mul(n, ins)), G.sub(sp, G.mul(n, ins))] : [sm, em, G.add(em, G.mul(n, ins)), G.add(sm, G.mul(n, ins))];
-          Render.polyPath(ctx, band); ctx.fill();
+        // полоса от наружной грани на глубину k0…k1
+        const band = (sp, ep, em, sm, k0, k1) => outSide > 0 ? [G.sub(sp, G.mul(n, k0)), G.sub(ep, G.mul(n, k0)), G.sub(ep, G.mul(n, k1)), G.sub(sp, G.mul(n, k1))] : [G.add(sm, G.mul(n, k0)), G.add(em, G.mul(n, k0)), G.add(em, G.mul(n, k1)), G.add(sm, G.mul(n, k1))];
+        const cl = wallClad(w), ins = Math.min(w.ins || 0, w.th - cl);
+        if (w.clad > 0) {                                                       // облицовочный кирпич и вентзазор
+          ctx.fillStyle = detailed ? (Render.matFill(env, 'brick') || '#d98b6a') : (Theme.isDark() && !env.exporting ? '#6b3b2c' : '#d99a7c');
+          for (const [sp, ep, em, sm] of polys) { Render.polyPath(ctx, band(sp, ep, em, sm, 0, w.clad)); ctx.fill(); }
+          ctx.fillStyle = env.exporting || !Theme.isDark() ? '#ffffff' : '#1d2126';
+          for (const [sp, ep, em, sm] of polys) { Render.polyPath(ctx, band(sp, ep, em, sm, w.clad, cl)); ctx.fill(); }
         }
-        // граница утеплителя
+        if (ins > 0) {
+          ctx.fillStyle = detailed ? (Render.matFill(env, 'insulation') || '#f7e89a') : (Theme.isDark() && !env.exporting ? '#6e6534' : '#f2dc6a');
+          for (const [sp, ep, em, sm] of polys) { Render.polyPath(ctx, band(sp, ep, em, sm, cl, cl + ins)); ctx.fill(); }
+        }
+        // границы слоёв
         ctx.strokeStyle = C.wallStroke; ctx.lineWidth = 0.7 * px;
-        for (const [sp, ep, em, sm] of polys) {
-          const [a, b] = outSide > 0 ? [G.sub(sp, G.mul(n, ins)), G.sub(ep, G.mul(n, ins))] : [G.add(sm, G.mul(n, ins)), G.add(em, G.mul(n, ins))];
-          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        for (const [sp, ep, em, sm] of polys) for (const k of [w.clad > 0 ? w.clad : 0, cl, cl + ins].filter((x, i, a) => x > 0 && a.indexOf(x) === i)) {
+          const q = band(sp, ep, em, sm, k, k);
+          ctx.beginPath(); ctx.moveTo(q[0].x, q[0].y); ctx.lineTo(q[1].x, q[1].y); ctx.stroke();
         }
       }
     }
@@ -734,9 +749,11 @@ const Render = {
   lines(env) {
     const { ctx, px } = env;
     const L = env.layers;
+    if (env.noLines) return;
+    const lf = env.lineFilter;
     for (const l of App.V.lines) {
       const k = LINE_KINDS[l.kind];
-      if (L[k.layer] === false || !Render.sysOn(env, sysOfLine(l))) continue;
+      if (L[k.layer] === false || !Render.sysOn(env, sysOfLine(l)) || (lf && !lf(l))) continue;
       const color = l.color || k.color;
       // ЛЭП: охранная зона (по умолчанию 2 м в каждую сторону — ВЛ 0,4 кВ) — строить под проводами нельзя
       if (l.kind === 'overhead' && (l.zone ?? 200) > 0) {

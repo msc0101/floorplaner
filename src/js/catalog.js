@@ -25,6 +25,7 @@ const LAYERS = [
   { id: 'checks', name: 'Проверка отступов' },
   { id: 'found', name: 'Фундамент (контур под стенами)' },
   { id: 'masonry', name: 'Кладка: армирование и перемычки' },
+  { id: 'finish', name: 'Отделка: полы, стены, потолки' },
   { id: 'shadows', name: 'Тени (солнце)' },
   { id: 'heat', name: 'Карта инсоляции' },
 ];
@@ -90,6 +91,9 @@ function sysOf(it) {
   if (def.layer === 'electric' && def.sym) return 'power';
   return null;
 }
+/** Облицовка стены (кирпич + вентзазор), см, и несущий слой кладки без утеплителя и облицовки */
+function wallClad(w) { return w.clad > 0 ? w.clad + (w.gap ?? 3) : 0; }
+function wallCore(w) { return Math.max(3, w.th - (w.ins || 0) - wallClad(w)); }
 /** Уклон самотечной трассы: канализация Ø ≤ 110 — 2 %, больше — 1 %, ливнёвка — 0,5 % (СП 30, СП 32) */
 function lineSlope(l) { return l.kind === 'sewer' ? ((l.dia || 110) <= 110 ? 0.02 : 0.01) : l.kind === 'drain' ? 0.005 : 0; }
 /** Глубина трассы в каждой вершине, см: у самотечных — растёт по уклону по ходу трассы */
@@ -759,7 +763,7 @@ const BLD_SIDES = { front: 'спереди (+Г)', back: 'сзади (−Г)', l
 function bldWallT(it) {
   const def = catItem(it.key), w = it.w, d = it.d;
   const tDef = def.key === 'house' ? 40 : def.shape === 'garage' ? 25 : Math.min(w, d) < 160 ? 5 : 15;
-  return U.clamp(+(it.wallT ?? def.wallT ?? tDef) || tDef, 3, Math.max(3, Math.min(w, d) / 4));
+  return U.clamp(+(it.wallT ?? def.wallT ?? tDef) || tDef, 3, Math.max(3, Math.min(w, d) / 4)) + (it.clad > 0 ? it.clad + (it.gap ?? 1) : 0);
 }
 /** Материал стен постройки (как у стен дома): задан вручную или типовой для вида постройки */
 function bldWallMat(it) {

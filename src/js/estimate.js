@@ -18,6 +18,9 @@ const PRICE_DEFAULTS = {
   'roof:ondulin': 1000, 'roof:polycarb': 1100, 'roof:slate': 900, 'roof:membrane': 2200, 'roof:frame': 2500,
   // фундамент, перекрытия, полы
   'found:strip': 14000, 'found:concrete': 14000, 'found:rebar': 110, 'found:sand': 1500, 'found:xps': 700, 'found:pile': 9000, 'wall:rebar': 110, 'wall:ring': 16000, 'slab:floor': 4500, 'floor:screed': 1200,
+  // чистовая отделка (за м² с работой)
+  'fin:porcelain': 3800, 'fin:carpet': 1600, 'fin:tile': 2600, 'fin:laminate': 1900, 'fin:topping': 900, 'fin:paint': 950, 'fin:walltile': 3200,
+  'fin:stretch': 1100, 'fin:gkl': 1600, 'fin:brick': 4800,
   // окна и двери
   'win:m2': 11000, 'door:int': 15000, 'door:ext': 45000, 'door:gate': 110000, 'door:slide': 25000,
   // сети (за м)
@@ -116,6 +119,12 @@ const Estimate = {
     add('Окна и двери', 'door:int', 'Двери межкомнатные', 'шт.', doorsInt);
     add('Окна и двери', 'door:slide', 'Двери раздвижные', 'шт.', slides);
     add('Окна и двери', 'door:gate', 'Ворота', 'шт.', gates);
+    // чистовая отделка: полы, стены, потолки по помещениям; облицовка фасада
+    const FQ = Finish.quantities();
+    for (const [k, v] of Object.entries(FQ.floor)) { const M = FIN_FLOORS[k]; if (M) add('Чистовая отделка', 'fin:floor:' + k, 'Пол: ' + M.name, 'м²', v, M.price); }
+    for (const [k, v] of Object.entries(FQ.walls)) { const M = FIN_WALLS[k]; if (M) add('Чистовая отделка', 'fin:walls:' + k, 'Стены: ' + M.name, 'м²', v, M.price); }
+    for (const [k, v] of Object.entries(FQ.ceil)) { const M = FIN_CEIL[k]; if (M) add('Чистовая отделка', 'fin:ceil:' + k, 'Потолок: ' + M.name, 'м²', v, M.price); }
+    if (FQ.facade > 0) add('Чистовая отделка', 'fin:facade', `Фасад: ${FIN_FACADE[Finish.opt().facade].name} (≈ ${FQ.bricks} шт.)`, 'м²', FQ.facade, 'fin:brick');
     // благоустройство: покрытия зон участка
     const cover = { asphalt: 'Асфальтирование', concrete: 'Бетонная площадка', paving: 'Мощение плиткой / отмостка', gravel: 'Отсыпка щебнем / гравием', lawn: 'Газон' };
     const byKind = {};

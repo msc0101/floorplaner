@@ -203,9 +203,10 @@ const Rooms = {
       const M = WALL_MATERIALS[w.mat];
       const holes = App.doc.openings.filter(o => o.wall === w.id).reduce((s, o) => s + Math.min(o.w, L) * Math.min(o.h || 0, w.h), 0);
       const area = Math.max(0, L * w.h - holes);
-      const ins = Math.max(0, Math.min(w.ins || 0, w.th));
-      const r = row('m:' + w.mat + ':' + (w.th - ins), `${M ? M.name : w.mat}, ${+(w.th - ins).toFixed(1)} см`, { mat: w.mat, th: w.th - ins });
-      r.len += L; r.area += area; r.vol += area * (w.th - ins);
+      const ins = Math.max(0, Math.min(w.ins || 0, w.th)), core = wallCore(w);
+      const r = row('m:' + w.mat + ':' + core, `${M ? M.name : w.mat}, ${+core.toFixed(1)} см`, { mat: w.mat, th: core });
+      r.len += L; r.area += area; r.vol += area * core;
+      if (w.clad > 0) { const rc = row('clad:' + w.clad, `Облицовочный кирпич, ${w.clad} см`, { mat: 'brick', th: w.clad }); rc.len += L; rc.area += area; rc.vol += area * w.clad; }
       if (ins > 0) { const ri = row('ins:' + ins, `Утеплитель (минвата), ${ins} см`, { th: ins }); ri.len += L; ri.area += area; ri.vol += area * ins; }
     }
     const rows = [...map.values()];

@@ -111,14 +111,15 @@ const IO = {
     try {
       if (o.noRoof) layers.roof = false;
       if (o.found) layers.found = true;
-      Render.draw({ ctx, w: cv.width, h: cv.height, dpr: 1, fs: o.fs || 1, scale, ox: cx - cv.width / 2 / scale, oy: cy - cv.height / 2 / scale, C: Theme.light, exporting: true, printGrid: !!o.grid, layers, sys: o.sysOnly || o.sys });
+      if (o.layersOver) Object.assign(layers, o.layersOver);
+      Render.draw({ ctx, w: cv.width, h: cv.height, dpr: 1, fs: o.fs || 1, scale, ox: cx - cv.width / 2 / scale, oy: cy - cv.height / 2 / scale, C: Theme.light, exporting: true, printGrid: !!o.grid, layers, sys: o.sysOnly || o.sys, ghostWalls: o.ghostWalls, noLines: o.noLines, lineFilter: o.lineFilter, foundDims: o.foundDims, itemFilter: o.itemFilter, noCompass: o.noCompass });
       // компас и масштабная линейка
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       const k = Math.max(1, Math.min(W, H) / 900);
       ctx.save(); ctx.scale(k, k);
       const env = { ctx, C: Theme.light, w: cv.width / k, h: cv.height / k, scale: scale / k, layers };
       const saveCw = App.cw; App.cw = cv.width / k;
-      Render.compass(env); Render.scaleBar(env);
+      if (!o.noCompass) Render.compass(env); Render.scaleBar(env);
       App.cw = saveCw;
       ctx.restore();
     } finally { Theme.C = prevC; }
