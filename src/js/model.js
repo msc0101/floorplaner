@@ -7,7 +7,7 @@ const DOC_VERSION = 1;
 const COLLECTIONS = ['areas', 'roads', 'walls', 'openings', 'items', 'roofs', 'lines', 'dims', 'texts', 'roomTags', 'notes'];
 
 /** Настройки вида — не часть «правки», undo/redo их не трогает */
-const VIEW_SETTINGS = ['hoverTips', 'layers', 'sys', 'sun', 'showWallDims', 'showItemDims', 'showGuides', 'showSwing', 'wallHatch', 'showChecks', 'showChecksOk', 'roofFill', 'wallDefaultsLive'];
+const VIEW_SETTINGS = ['hoverTips', 'liveChecks', 'layers', 'sys', 'sun', 'showWallDims', 'showItemDims', 'showGuides', 'showSwing', 'wallHatch', 'showChecks', 'showChecksOk', 'roofFill', 'wallDefaultsLive'];
 
 const Model = {
   newDoc() {

@@ -54,6 +54,7 @@ const IO = {
     r.readAsText(f);
   },
   load(doc, keepHistory) {
+    Analysis._prev = null;                          // новый проект — без уведомлений о «новых» замечаниях
     App.doc = doc;
     App.sel.clear();
     App.heat = null;

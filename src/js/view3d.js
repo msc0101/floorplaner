@@ -471,6 +471,18 @@ const View3D = {
     if (r.type === 'flat') prism(G.rectPts(r.x, r.y, r.w, r.d, r.rot || 0), r.base, r.base + 20, col);
     else if (!(ROOF_MATERIALS[r.mat] || {}).glass) prism(G.rectPts(r.x, r.y, r.w, r.d, r.rot || 0), r.base - 15, r.base, View3D.hex('#efece6'), { noTop: true, bottom: true });
     View3D.gutters(r);
+    if (r.snowGuard && r.type !== 'flat') View3D.snowGuards(r);
+  },
+  /** Трубчатые снегозадержатели в ~60 см от карниза по скатам */
+  snowGuards(r) {
+    const { wire, box } = View3D._g, W = r.w / 2, D = r.d / 2, t = Math.tan(U.rad(r.pitch || 0)), b = r.base || 0, col = [0.35, 0.36, 0.38];
+    const T = (u, v) => G.toWorld({ x: u, y: v }, r.x, r.y, r.rot || 0);
+    const rows = r.type === 'shed' ? [D - 60] : r.type === 'gable' ? [D - 60, -(D - 60)] : [];
+    for (const v of rows) {
+      const z = b + t * 60 + 8, u0 = -W + 30, u1 = W - 30;
+      for (const dz of [0, 7]) { const A = T(u0, v), B = T(u1, v); wire([A.x, A.y, z + dz], [B.x, B.y, z + dz], 1.3, col); }
+      for (let u = u0; u <= u1 + 1; u += 110) { const p = T(u, v); box(p.x, p.y, 3, 3, r.rot || 0, z - 8, z + 9, col); }
+    }
   },
   /** Водосточные желоба по карнизам крыши — там, где рядом стоит водосточная труба */
   gutters(r) {

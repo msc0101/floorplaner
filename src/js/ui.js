@@ -553,6 +553,21 @@ const UI = {
     } else el.hidden = true;
   },
   setInput(s) { const el = $('stInput'); el.hidden = !s; el.textContent = s ? 'Ввод: ' + s + ' ↵' : ''; },
+  /** Уведомление о нарушении нормы (автопроверка): текст, пункт норм; клик — открыть «Анализ» */
+  warnToast(x) {
+    const t = U.el('div', { class: 'toast warn', title: 'Открыть «Анализ»', onclick: () => Analysis.open() }, U.el('b', {}, (x.sev === 'bad' ? '⚠ ' : '• ') + x.group + ': '), x.text, x.src ? U.el('small', {}, '§ ' + x.src) : null);
+    $('toasts').append(t);
+    setTimeout(() => t.classList.add('hide'), 6500);
+    setTimeout(() => t.remove(), 7000);
+  },
+  setAnalyzeBadge(n) {
+    const b = $('btnAnalyze');
+    if (!b) return;
+    let s = b.querySelector('.an-badge');
+    if (!n) { if (s) s.remove(); return; }
+    if (!s) { s = U.el('span', { class: 'an-badge' }); b.append(s); }
+    s.textContent = String(n); b.title = `Анализ проекта: нарушений норм — ${n}`;
+  },
   toast(msg, type) {
     const t = U.el('div', { class: 'toast' + (type === 'err' ? ' err' : '') }, msg);
     $('toasts').append(t);
@@ -630,6 +645,7 @@ const UI = {
       return;
     }
     UI.head(body, 'Ничего не выделено');
+    body.append(UI.stepsCard());
     body.append(F.note('Кликните по объекту, чтобы изменить его размеры, поворот и свойства. Рамкой слева направо — выбрать целиком попавшие, справа налево — задетые.'));
     body.append(F.section('Весь план',
       F.note('Поворот всего плана — участка, построек, сетей — относительно сторон света.'),
@@ -646,6 +662,26 @@ const UI = {
       s.plotArea ? F.info('Участок', `${(s.plotArea / 1e6).toFixed(2)} сот.`) : null,
       F.btns([['Все площади →', () => UI.showTab('summary')]])));
     body.append(UI.notesList());
+  },
+  /** «Шаги проекта»: что уже сделано и что дальше — с кнопкой нужного инструмента */
+  stepsCard() {
+    const d = App.doc, has = (fn) => d.items.some(fn), sys = (id) => d.items.some(it => sysOf(it) === id) || d.lines.some(l => sysOfLine(l) === id);
+    let issues = null;
+    try { issues = Analysis.run().issues.filter(x => x.sev === 'bad').length; } catch (e) { issues = null; }
+    const steps = [
+      ['Участок: граница и стороны света', d.areas.some(a => a.kind === 'plot'), () => { Tools.opts.areaKind = 'plot'; Tools.set('area', { force: true }); }, 'Зона → Граница участка (B), затем поверните компас'],
+      ['Дом: стены', d.walls.some(w => w.kind === 'ext'), () => Tools.set('wall'), 'Стена (W) или Комната (Q)'],
+      ['Окна и двери', d.openings.length > 0, () => Tools.set('window'), 'Окно (O), Дверь (D) — клик по стене'],
+      ['Помещения названы', App.rooms.length > 0 && App.rooms.every(r => r.tag), () => UI.showTab('summary'), 'Двойной клик по комнате — имя'],
+      ['Крыша', d.roofs.length > 0, () => Tools.set('roof'), 'Крыша (R) — по контуру дома'],
+      ['Мебель и сантехника', has(it => ['furniture', 'plumbing'].includes(catItem(it.key).layer)), () => $('libSearch').focus(), 'Библиотека слева — перетащите на план'],
+      ['Сети: вода, канализация, электрика, отопление', sys('water') && sys('sewer') && sys('power'), () => Tools.set('line'), 'Инструмент «Сети» (L) и приборы из библиотеки'],
+      ['Проверка по нормам', issues === 0, () => Analysis.open(), issues ? `Замечаний: ${issues} — откройте «Анализ»` : 'Нарушений нет'],
+      ['Печать комплекта', false, () => { $('prDrawing').checked = true; $('dlgPrint').showModal(); }, 'Чертежи по этажам и листы по системам'],
+    ];
+    const done = steps.filter(s => s[1]).length;
+    return F.section(`Шаги проекта · ${done} из ${steps.length}`,
+      U.el('div', { class: 'steps' }, steps.map(([t, ok, fn, hint]) => U.el('button', { type: 'button', class: 'step' + (ok ? ' ok' : ''), title: hint, onclick: fn }, U.el('span', { class: 'step-ic' }, ok ? '✓' : '○'), U.el('span', {}, t, U.el('small', {}, hint))))));
   },
   rotateRow(fn) {
     const inp = U.el('input', { type: 'number', value: 15, step: 1, inputmode: 'decimal' });
@@ -1002,7 +1038,7 @@ const UI = {
       l.kind === 'overhead' || l.kind === 'gasAir' ? null : F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
       l.kind === 'water' || l.kind === 'hotwater' ? F.check('Греющий кабель и утеплитель (можно мельче промерзания)', !!l.heated, (v) => UI.set(l, 'heated', v || undefined)) : null,
       l.kind === 'water' ? F.check('В стальном футляре на пересечениях с канализацией', !!l.sleeve, (v) => UI.set(l, 'sleeve', v || undefined)) : null,
-      l.kind === 'water' ? F.note(`Водопровод кладут ниже промерзания на 0,5 м: сейчас нужно ≥ ${U.fmtLen((App.doc.settings.frost ?? 130) + 50)} (глубина промерзания — вкладка «Проект»). Канализация — на 0,4 м ниже водопровода в местах пересечения; параллельно — не ближе 1,5 м.`) : null,
+      l.kind === 'water' ? F.note(`Водопровод кладут ниже промерзания на 0,5 м: сейчас нужно ≥ ${U.fmtLen(Climate.frost() + 50)} (глубина промерзания — вкладка «Проект»). Канализация — на 0,4 м ниже водопровода в местах пересечения; параллельно — не ближе 1,5 м.`) : null,
       l.kind === 'gasAir' ? F.num('Высота прокладки', l.height ?? LINE_KINDS.gasAir.height, (v) => UI.set(l, 'height', U.clamp(v, 30, 800)), { min: 30, max: 800 }) : null,
       l.kind === 'gasAir' ? F.note('Надземный газопровод: не ниже 2,2 м там, где ходят люди, и не ниже 5 м над проездами; по фасаду — на кронштейнах, не ближе 0,5 м к окнам и дверям. Ввод в котельную — через футляр в стене.') : null,
       l.kind === 'overhead' ? F.num('Охранная зона (в каждую сторону)', (l.zone ?? 200) / 100, (v) => UI.set(l, 'zone', Math.round(v * 100)), { unit: 'м', min: 0, max: 50, step: 0.5 }) : null,
@@ -1074,6 +1110,10 @@ const UI = {
       F.num('Ширина', r.d, (v) => UI.set(r, 'd', Math.max(50, v)), { min: 50 }),
       F.num('Низ крыши (карниз) от земли', r.base, (v) => UI.set(r, 'base', Math.max(0, v)), { min: 0 }),
       F.btns([['Высота по стенам', () => UI.set(r, 'base', Roof.autoBase(r.floor))], ['Повернуть конёк на 90°', () => { [r.w, r.d] = [r.d, r.w]; r.rot = U.normDeg((r.rot || 0) + 90); Model.commit(); }]]),
+      F.check('Снегозадержатели по карнизам', !!r.snowGuard, (v) => UI.set(r, 'snowGuard', v || undefined)),
+      (() => { const cl = Climate.get(), mu = r.type === 'flat' ? 1 : U.clamp((60 - (r.pitch || 0)) / 30, 0, 1), S = 0.7 * cl.snowKpa * mu * 1.4;
+        return F.info('Снег на кровлю (расчётно)', `${(S * 102).toFixed(0)} кг/м² — район ${Climate.roman(cl.snow)}, μ ${mu.toFixed(2)} (СП 20.13330 п. 10)`); })(),
+      (ROOF_MATERIALS[r.mat] || {}).min ? F.note(`Минимальный уклон для «${ROOF_MATERIALS[r.mat].name.toLowerCase()}» — ${ROOF_MATERIALS[r.mat].min}° (СП 17.13330).${r.type !== 'flat' && r.pitch < ROOF_MATERIALS[r.mat].min ? ' <b style="color:var(--danger)">Сейчас меньше — смените кровлю или уклон.</b>' : ''}`) : null,
     ));
     body.append(F.section('Расчёт кровли',
       F.info('Площадь кровли', U.fmtArea(P.area)),
@@ -1278,7 +1318,8 @@ const UI = {
       F.check('Расстояния до стен у выделенного', s.showGuides !== false, (v) => { s.showGuides = v; App.redraw(); App.saveSoon(); }),
       F.check('Открывание окон (дуги)', s.showSwing !== false, (v) => { s.showSwing = v; App.redraw(); App.saveSoon(); }),
       F.check('Штриховка материалов стен (при приближении)', s.wallHatch !== false, (v) => { s.wallHatch = v; App.redraw(); App.saveSoon(); }),
-      F.check('Подсказки при наведении на объекты', s.hoverTips !== false, (v) => { s.hoverTips = v; if (!v) UI.hideTip(); App.saveSoon(); })));
+      F.check('Подсказки при наведении на объекты', s.hoverTips !== false, (v) => { s.hoverTips = v; if (!v) UI.hideTip(); App.saveSoon(); }),
+      F.check('Автопроверка норм при рисовании (уведомления о нарушениях)', s.liveChecks !== false, (v) => { s.liveChecks = v; App.saveSoon(); })));
     const used = [...new Set(App.doc.walls.filter(w => w.kind !== 'fence').map(w => w.mat))].filter(k => WALL_MATERIALS[k]);
     const usedF = [...new Set(App.doc.walls.filter(w => w.kind === 'fence').map(w => w.mat))].filter(k => FENCE_MATERIALS[k]);
     if (used.length || usedF.length) {
@@ -1343,14 +1384,23 @@ const UI = {
       F.btns([['С ↑', () => { d.north = 0; Model.commit(); }], ['С →', () => { d.north = 90; Model.commit(); }], ['С ↓', () => { d.north = 180; Model.commit(); }], ['С ←', () => { d.north = -90; Model.commit(); }]]),
       F.note('Угол — куда указывает север относительно верха экрана (по часовой). Компас на плане можно вращать мышью. Чтобы развернуть сам участок с постройками — выделите их и поверните ручкой ⟳ или на вкладке «Свойства».')));
     // место
-    const citySel = F.select('Город', g.city || '', [['', '— свои координаты —'], ...CITIES.map(c => [c[0], c[0]])], (v) => {
-      const c = CITIES.find(x => x[0] === v); if (!c) return;
-      g.city = c[0]; g.lat = c[1]; g.lon = c[2]; g.tz = c[3]; Model.commit();
-    });
-    body.append(F.section('Местоположение', citySel,
+    // город — поиском по списку (≈190 городов): вводите название, координаты и климат подставятся сами
+    const cityIn = U.el('input', { type: 'text', value: g.city || '', list: 'cityList', placeholder: 'Начните вводить город…', 'data-field': 'city' });
+    const cityList = U.el('datalist', { id: 'cityList' }, [...CITIES].sort((a, b) => a[0].localeCompare(b[0], 'ru')).map(c => U.el('option', { value: c[0] })));
+    cityIn.addEventListener('change', () => { const c = CITIES.find(x => x[0].toLowerCase() === cityIn.value.trim().toLowerCase()); if (!c) { UI.toast('Нет в списке — введите широту и долготу, климат возьмётся по ближайшему городу'); return; } g.city = c[0]; g.lat = c[1]; g.lon = c[2]; g.tz = c[3]; Model.commit(); });
+    const citySel = F.row('Город', cityIn, '');
+    const cl = Climate.get();
+    body.append(F.section('Местоположение', citySel, cityList,
       F.num('Широта', g.lat, (v) => { g.lat = U.clamp(v, -89, 89); g.city = ''; Model.commit(); }, { unit: '°', step: 0.01 }),
       F.num('Долгота', g.lon, (v) => { g.lon = U.clamp(v, -180, 180); g.city = ''; Model.commit(); }, { unit: '°', step: 0.01 }),
       F.num('Часовой пояс UTC+', g.tz, (v) => { g.tz = U.clamp(v, -12, 14); Model.commit(); }, { unit: 'ч', step: 1 })));
+    body.append(F.section('Климат и нагрузки (считается сам)',
+      F.info('Климатический подрайон', cl.zone + ' (СП 131.13330)'),
+      F.info('Снеговой район', `${Climate.roman(cl.snow)} — Sg ${cl.snowKpa.toFixed(1)} кПа (${Math.round(cl.snowKpa * 102)} кг/м²)`),
+      F.info('Ветровой район', `${Climate.roman(cl.wind)} — w0 ${cl.windKpa.toFixed(2)} кПа`),
+      F.info('Расчётная зимняя t', `${cl.t5} °C (пятидневка 0,92)`),
+      F.info('Глубина промерзания', `${U.fmtLen(Climate.frost())}${U.isNum(App.doc.settings.frost) ? ' (задана вручную)' : ' (суглинки, глины)'}`),
+      F.note(`${cl.exact ? '' : `Города нет в списке — данные ближайшего: ${cl.city}. `}Используется в проверках: глубина водопровода, снеговая нагрузка на кровлю и стропила, теплопотери. Значения ориентировочные по картам СП 20.13330.2016 и СП 131.13330.2020 — для рабочего проекта уточните по адресу.`)));
     // быстрый участок и проверка отступов — сразу после ориентации
     const wIn = U.el('input', { type: 'number', value: 20, step: 0.5, min: 1 }), dIn = U.el('input', { type: 'number', value: 30, step: 0.5, min: 1 });
     if (!App.doc.areas.some(a => a.kind === 'plot')) body.append(F.section('Быстрый участок',
@@ -1633,7 +1683,8 @@ const UI = {
       narrow.length ? F.note(`<b style="color:var(--danger)">Свес крыши ${U.fmtLen(narrow[0].over)} — отмостка должна быть шире свеса минимум на 20 см (≥ ${U.fmtLen(narrow[0].over + 20)}).</b>`) : null,
       F.note('Норма: ширина не менее 0,8–1 м и на 20 см больше свеса кровли, уклон от стены 1–3% (СП 82.13330, СП 22.13330). Отмостка гаража, бани, сарая — в свойствах постройки. Попадает в смету.')));
     body.append(F.section('Грунт',
-      F.num('Глубина промерзания', s.frost ?? 130, (v) => { s.frost = U.clamp(v, 0, 400); Model.commit(); }, { min: 0, max: 400 }),
+      F.num('Глубина промерзания', Climate.frost(), (v) => { s.frost = U.clamp(v, 0, 400); Model.commit(); }, { min: 0, max: 400 }),
+      U.isNum(s.frost) ? F.btns([[`По городу (${U.fmtLen(Climate.get().frost)})`, () => { delete s.frost; Model.commit(); }]]) : F.note(`По климату: ${Climate.get().city}${Climate.get().exact ? '' : ' (ближайший город из списка)'}.`),
       F.note('Нормативная глубина промерзания (СП 22.13330, СП 131.13330): Москва и область — 1,1–1,5 м (глина — меньше, песок — больше), Санкт-Петербург — 1,2–1,5, Екатеринбург — 1,6–2, Новосибирск — 2,2–2,4 м. По ней проверяется глубина водопровода: низ трубы на 0,5 м ниже.')));
     body.append(F.section('Стены по типам', tbl,
       F.check('Применять к уже нарисованным стенам', s.wallDefaultsLive !== false, (v) => { s.wallDefaultsLive = v; App.saveSoon(); }),

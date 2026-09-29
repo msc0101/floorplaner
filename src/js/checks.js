@@ -304,7 +304,7 @@ const Checks = {
       }
       if ((l.kind === 'water' || l.kind === 'hotwater') && (l.depth || 0) > 0) {
         // водопровод под землёй: низ трубы на 0,5 м ниже промерзания, иначе — греющий кабель и утеплитель
-        const frost = App.doc.settings.frost ?? 130, dep = l.depth;
+        const frost = Climate.frost(), dep = l.depth;
         if (l.heated) out.push({ line: l, kind: l.kind, title, text: `глубина ${m(dep)}, с греющим кабелем и утеплителем (не мельче 0,5 м)`, ok: dep >= 49, at: mid, src: 'СП 31.13330' });
         else out.push({ line: l, kind: l.kind, title, text: dep >= frost + 49 ? `глубина ${m(dep)} — ниже промерзания (${m(frost)}) на ${m(dep - frost)}` : `глубина ${m(dep)} — нужно ≥ ${m(frost + 50)} (промерзание ${m(frost)} + 0,5 м) или греющий кабель с утеплителем`, ok: dep >= frost + 49, at: mid, src: 'СП 31.13330: низ трубы на 0,5 м ниже глубины промерзания' });
       }

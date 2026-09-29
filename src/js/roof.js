@@ -13,15 +13,16 @@ const ROOF_TYPES = {
   flat:  { name: 'Плоская' },
 };
 const ROOF_MATERIALS = {
-  metaltile: { name: 'Металлочерепица', color: '#8e3b30' },
-  profile:   { name: 'Профнастил', color: '#5d6d7c' },
-  seam:      { name: 'Фальцевая кровля', color: '#6f7780' },
-  soft:      { name: 'Гибкая черепица', color: '#6b4b3e' },
-  ceramic:   { name: 'Керамическая черепица', color: '#b0583c' },
-  ondulin:   { name: 'Ондулин', color: '#4f5e45' },
-  slate:     { name: 'Шифер', color: '#8f9397' },
-  membrane:  { name: 'Мембрана / наплавляемая (плоская)', color: '#4a4f57' },
-  polycarb:  { name: 'Сотовый поликарбонат', color: '#cfe3ec', glass: true },
+  // min — минимальный уклон, ° (СП 17.13330.2017 табл. 4.1 и инструкции производителей)
+  metaltile: { name: 'Металлочерепица', color: '#8e3b30', min: 14 },
+  profile:   { name: 'Профнастил', color: '#5d6d7c', min: 8 },
+  seam:      { name: 'Фальцевая кровля', color: '#6f7780', min: 7 },
+  soft:      { name: 'Гибкая черепица', color: '#6b4b3e', min: 12 },
+  ceramic:   { name: 'Керамическая черепица', color: '#b0583c', min: 22 },
+  ondulin:   { name: 'Ондулин', color: '#4f5e45', min: 6 },
+  slate:     { name: 'Шифер', color: '#8f9397', min: 14 },
+  membrane:  { name: 'Мембрана / наплавляемая (плоская)', color: '#4a4f57', min: 0 },
+  polycarb:  { name: 'Сотовый поликарбонат', color: '#cfe3ec', glass: true, min: 5 },
 };
 
 const Roof = {

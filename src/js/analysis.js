@@ -10,7 +10,8 @@ const Analysis = {
   run() {
     const d = App.doc, s = Rooms.summary(), ch = Checks.run(), issues = [];
     const m2 = (v) => U.fmtArea(v), m = (v) => (v / 100).toFixed(2).replace(/\.?0+$/, '') + ' м';
-    const add = (sev, group, text, src, at, id) => issues.push({ sev, group, text, src: src || '', at: at || null, id: id || null });
+    // fix — автоисправление (кнопка «Исправить» в анализе)
+    const add = (sev, group, text, src, at, id, fix) => issues.push({ sev, group, text, src: src || '', at: at || null, id: id || null, fix: fix || null });
     const fd = App.floorData || [];
 
     // ---------------- статистика ----------------
@@ -90,8 +91,15 @@ const Analysis = {
       if (hs.length && Math.max(...hs) < 250) add('bad', 'Помещения', `${f.name}: высота стен ${m(Math.max(...hs))} — жилым помещениям нужно не меньше 2,5 м`, 'СП 55.13330.2016 п. 6.2');
     }
 
+    // ---------------- конструкции: уклон кровли, простенки у углов, пролёты, снегозадержание ----------------
+    Analysis.structure(d, fd, add, m);
+
     // ---------------- вентиляция, дымоходы, печи ----------------
     Analysis.vent(d, fd, add, stats, m);
+
+    // ---------------- климат: откуда берутся нагрузки и глубины ----------------
+    { const cl = Climate.get(), at = stats.findIndex(x => /Смета/.test(x.title));
+      stats.splice(at < 0 ? stats.length : at, 0, { title: 'Климат (' + cl.city + ')', rows: [['Климатический подрайон', cl.zone], ['Снеговой район / Sg', `${Climate.roman(cl.snow)} / ${cl.snowKpa.toFixed(1)} кПа`], ['Ветровой район / w0', `${Climate.roman(cl.wind)} / ${cl.windKpa.toFixed(2)} кПа`], ['Расчётная зимняя t', cl.t5 + ' °C'], ['Глубина промерзания', m(Climate.frost())]] }); }
 
     // ---------------- электрика: группы щита, автомат против сечения, УЗО на розетках ----------------
     Analysis.electric(d, add, stats);
@@ -106,7 +114,11 @@ const Analysis = {
 
     // ---------------- нормы отступов и сети ----------------
     for (const r of ch.results.filter(x => !x.ok)) add('bad', 'Отступы', `${r.a.name} — ${r.bName}: ${m(r.d)} (норма ≥ ${m(r.rule.min)})`, r.rule.src, r.pa || r.pb, Model.get(r.a.id) ? r.a.id : null);
-    for (const n of (ch.nets || []).filter(x => x.ok === false)) add('bad', 'Сети', `${n.title}: ${n.text}`, n.src, n.at, n.line.id);
+    for (const n of (ch.nets || []).filter(x => x.ok === false)) {
+      // водопровод мельче промерзания — опустить на промерзание + 0,5 м (все части трассы)
+      const fix = (n.kind === 'water' || n.kind === 'hotwater') && /глубина/.test(n.text) && !n.line.heated ? () => { for (const p of n.line.parts || [n.line]) { const o = Model.get(p.id); if (o) o.depth = Math.ceil((Climate.frost() + 50) / 10) * 10; } } : null;
+      add('bad', 'Сети', `${n.title}: ${n.text}`, n.src, n.at, n.line.id, fix);
+    }
     if (!plots.length && (ext.length || d.items.length)) add('warn', 'Отступы', 'Нет границы участка — отступы от соседей и улицы не проверяются (инструмент «Зона → Граница участка»)');
 
     // ---------------- отмостка ----------------
@@ -154,6 +166,60 @@ const Analysis = {
     return { stats, rooms, issues };
   },
   /** Вентиляция по помещениям (СП 54.13330 табл. 9.1, СП 55.13330, СП 60.13330), трубы над крышей и печи (СП 7.13130) */
+  /** Автопроверка после каждого изменения: новое нарушение — всплывающее уведомление; число нарушений — на кнопке «Анализ».
+   *  Ключ замечания — без чисел, чтобы при перетаскивании одного и того же объекта не сыпались повторы */
+  _prev: null,
+  live: U.debounce(() => {
+    let iss;
+    try { iss = Analysis.run().issues; } catch (e) { return; }
+    const key = (x) => x.group + '|' + (x.id || '') + '|' + x.text.replace(/[\d.,]+/g, '#');
+    const prev = Analysis._prev, now = new Set(iss.map(key));
+    if (prev && App.doc.settings.liveChecks !== false) iss.filter(x => !prev.has(key(x)) && (x.sev === 'bad' || x.sev === 'warn')).slice(0, 2).forEach(x => UI.warnToast(x));
+    Analysis._prev = now;
+    UI.setAnalyzeBadge(iss.filter(x => x.sev === 'bad').length);
+  }, 700),
+  /** Проверки конструктора */
+  structure(d, fd, add, m) {
+    const f1 = d.floors[0].id;
+    // уклон кровли не меньше допустимого для материала — у дома и у построек (с учётом примыкания к дому)
+    // подходящая кровля для уклона: из привычных — первая, что допускает такой уклон
+    const fitMat = (pitch) => ['metaltile', 'soft', 'profile', 'seam', 'membrane'].find(k => (ROOF_MATERIALS[k].min || 0) <= pitch);
+    const chk = (name, mat, pitch, at, id, setMat) => {
+      const M = ROOF_MATERIALS[mat];
+      if (M && M.min && pitch < M.min - 0.5) add('bad', 'Кровля', `${name}: уклон ${pitch.toFixed(1)}° меньше допустимого для «${M.name.toLowerCase()}» (от ${M.min}°) — будет протекать. Смените кровлю (при малом уклоне — мембрана или наплавляемая по сплошному настилу, фальц — от 7°) или увеличьте уклон`, 'СП 17.13330.2017 табл. 4.1', at, id, () => setMat(fitMat(pitch)));
+    };
+    for (const r of d.roofs) if (r.type !== 'flat') chk('Крыша дома', r.mat, r.pitch || 0, r, r.id, (k) => { r.mat = k; });
+    for (const it of d.items) {
+      const sh = catItem(it.key).shape;
+      if (!BLD_ROOF_SHAPES.has(sh) || (it.floor || f1) !== f1) continue;
+      const R = bldRoof(it);
+      if (R.type === 'none' || R.type === 'flat' || R.type === 'arch') continue;
+      const hollow = BLD_HOLLOW.has(sh), g0 = View3D.roofGeom(it, it.h || 250, R.open ? 180 : 150, hollow ? bldWallH(it) : undefined);
+      const g = View3D.leanJoin(it, g0, { world: (q) => G.toWorld(q, it.x, it.y, it.rot || 0), eave: g0.eave }) || g0;
+      chk(it.label || catItem(it.key).name, g.R.mat, g.pitch, it, it.id, (k) => { it.roofMat = k; });
+    }
+    // простенок у угла: перемычке нужно опирание ≥ 25 см с каждой стороны
+    for (const o of d.openings) {
+      const w = d.walls.find(x => x.id === o.wall);
+      if (!w || w.kind !== 'ext') continue;
+      const L = Model.wallLen(w);
+      for (const [end, dist] of [[w.a, o.pos - o.w / 2], [w.b, L - o.pos - o.w / 2]]) {
+        const other = d.walls.find(x => x !== w && x.kind !== 'fence' && (x.floor || f1) === (w.floor || f1) && (G.dist(x.a, end) < 2 || G.dist(x.b, end) < 2));
+        if (!other) continue;
+        const clear = dist - other.th / 2;
+        if (clear < 30 && clear > -1) add('warn', 'Конструкции', `${OPENING_TYPES[o.type].name}: простенок до угла ${m(Math.max(0, clear))} — перемычке нужно опирание не меньше 25 см, а угол кладки ослаблен. Сдвиньте проём от угла`, 'СП 15.13330.2020 п. 9.33; СП 339.13330 (перемычки)', G.add(end, G.mul(G.unit(G.sub(end === w.a ? w.b : w.a, end)), Math.max(dist, 20))), o.id);
+      }
+    }
+    // пролёт перекрытия: по коротким сторонам помещений (деревянные балки — до 6 м без промежуточной опоры)
+    for (const f of fd) for (const r of f.rooms) {
+      const q = r.floor || r.axis;
+      if (!q || q.length > 6) continue;
+      const bb = G.bbox(q), span = Math.min(bb.x1 - bb.x0, bb.y1 - bb.y0);
+      if (span > 600) add('warn', 'Конструкции', `${r.name}: пролёт перекрытия ${m(span)} — деревянным балкам нужно сечение ≥ 75×250 мм с шагом 60 см или промежуточная опора (ригель, стена); плиты — по расчёту`, 'СП 64.13330.2017 (деревянные конструкции); СП 20.13330 (нагрузки)', G.polyCentroid(q));
+    }
+    // снегозадержатели: скатная кровля с наружным водостоком над входами и дорожками
+    for (const r of d.roofs) if (r.type !== 'flat' && (r.pitch || 0) >= 5 && !r.snowGuard) add('warn', 'Кровля', 'Крыша дома: нужны снегозадержатели над входами, крыльцом и дорожками (и на металлической кровле — по всему периметру карниза)', 'СП 17.13330.2017 п. 9.11', r, r.id, () => { r.snowGuard = true; });
+  },
   /** Группы электрощита — внутренние кабельные линии (глубина 0) с автоматом; проверки по ПУЭ */
   electric(d, add, stats) {
     const groups = d.lines.filter(l => l.kind === 'power' && !(l.depth > 0) && (l.breaker || l.rcd));
@@ -166,8 +232,9 @@ const Analysis = {
       const devs = d.items.filter(it => catItem(it.key).sym && l.pts.some(p => G.dist(it, p) < 5));   // точки, через которые проведена линия
       const socks = devs.filter(it => SOCK.has(catItem(it.key).shape));
       rows.push([l.label || 'Линия', `${l.breaker || '—'}${l.rcd ? ' + УЗО ' + l.rcd : ''} · ${l.section || ''}${devs.length ? ` · ${devs.length} точ.` : ''}`]);
-      if (LIM[sec] && amp > LIM[sec]) add('bad', 'Электрика', `${l.label || 'Линия'}: автомат ${l.breaker} больше допустимого для кабеля ${sec} мм² (до ${LIM[sec]} А) — кабель перегреется раньше, чем сработает автомат`, 'ПУЭ табл. 1.3.4, п. 3.1.4', l.pts[0], l.id);
-      if (socks.length && !l.rcd) add('warn', 'Электрика', `${l.label || 'Линия'}: розетки без УЗО — поставьте УЗО или дифавтомат 30 мА`, 'ПУЭ 7.1.79, 7.1.83; СП 256.1325800.2016 п. 15.3', l.pts[0], l.id);
+      const REC = { 1.5: 'C10', 2.5: 'C16', 4: 'C25', 6: 'C32', 10: 'C40', 16: 'C50', 25: 'C63' };
+      if (LIM[sec] && amp > LIM[sec]) add('bad', 'Электрика', `${l.label || 'Линия'}: автомат ${l.breaker} больше допустимого для кабеля ${sec} мм² (до ${LIM[sec]} А) — кабель перегреется раньше, чем сработает автомат`, 'ПУЭ табл. 1.3.4, п. 3.1.4', l.pts[0], l.id, () => { l.breaker = (/3P/.test(l.breaker) ? '3P ' : '') + REC[sec]; });
+      if (socks.length && !l.rcd) add('warn', 'Электрика', `${l.label || 'Линия'}: розетки без УЗО — поставьте УЗО или дифавтомат 30 мА`, 'ПУЭ 7.1.79, 7.1.83; СП 256.1325800.2016 п. 15.3', l.pts[0], l.id, () => { l.rcd = '30 мА'; });
     }
     const at = stats.findIndex(x => /Смета/.test(x.title));
     stats.splice(at < 0 ? stats.length : at, 0, { title: 'Электрощит: группы', rows });
@@ -261,7 +328,7 @@ const Analysis = {
       const st = Checks.stack(it);
       if (!st) continue;
       const top = st.e + Checks.stackH(it);
-      if (top < st.need - 1) add('bad', def.stack === 'smoke' ? 'Печь' : 'Вентиляция', `${name(it)}: верх трубы ${m(top - st.roofZ)} над кровлей, ${top >= st.ridgeZ ? 'выше' : 'ниже'} конька на ${m(Math.abs(top - st.ridgeZ))}, до конька ${m(st.dist)} — нужно поднять на ${m(st.need - top)}`, 'СП 7.13130.2013 п. 5.10: до 1,5 м от конька — 0,5 м над ним; 1,5–3 м — не ниже конька; дальше — не ниже линии 10°', it, it.id);
+      if (top < st.need - 1) add('bad', def.stack === 'smoke' ? 'Печь' : 'Вентиляция', `${name(it)}: верх трубы ${m(top - st.roofZ)} над кровлей, ${top >= st.ridgeZ ? 'выше' : 'ниже'} конька на ${m(Math.abs(top - st.ridgeZ))}, до конька ${m(st.dist)} — нужно поднять на ${m(st.need - top)}`, 'СП 7.13130.2013 п. 5.10: до 1,5 м от конька — 0,5 м над ним; 1,5–3 м — не ниже конька; дальше — не ниже линии 10°', it, it.id, () => { it.autoH = true; });
     }
     // печи и камины: дымоход и свободное место перед топкой
     const ws = d.walls.filter(w => w.kind !== 'fence');
@@ -309,6 +376,8 @@ const Analysis = {
     const sum = U.el('div', { class: 'check-sum ' + (bad ? 'bad' : 'ok') },
       bad ? `✗ Нарушений норм: ${bad}` : '✓ Нарушений норм не найдено',
       U.el('span', {}, ` · замечаний ${warn} · по чертежу ${info}`));
+    const fixes = R.issues.filter(i => i.fix);
+    if (fixes.length) sum.append(U.el('button', { type: 'button', class: 'primary an-fixall', title: 'Применить все автоисправления: автоматы по сечению, УЗО, кровля по уклону, снегозадержатели, высота труб', onclick: () => { for (const i of fixes) i.fix(); Model.commit(); Analysis.render(); UI.toast(`Исправлено автоматически: ${fixes.length}`); } }, `✓ Исправить автоматически (${fixes.length})`));
     const head = $('anSum');
     if (head) { head.textContent = ''; head.append(sum); } else box.append(sum);
     // две колонки: слева статистика и помещения, справа — замечания
@@ -333,7 +402,8 @@ const Analysis = {
       for (const i of R.issues) {
         const g = i.sev === 'info' ? sevName.info : `${sevName[i.sev]} · ${i.group}`;
         if (g !== group) { group = g; list.append(U.el('h4', {}, g)); }
-        const b = U.el('button', { type: 'button', class: 'check-item an-' + i.sev + (i.sev === 'bad' ? ' bad' : '') }, U.el('span', {}, i.text), i.src ? U.el('em', {}, i.src) : null);
+        const fx = i.fix ? U.el('span', { class: 'an-fix', role: 'button', title: 'Исправить автоматически по норме', onclick: (e) => { e.stopPropagation(); i.fix(); Model.commit(); Analysis.render(); } }, '✓ Исправить') : null;
+        const b = U.el('button', { type: 'button', class: 'check-item an-' + i.sev + (i.sev === 'bad' ? ' bad' : '') }, U.el('span', {}, i.text), i.src ? U.el('em', {}, i.src) : null, fx);
         b.onclick = () => Analysis.show(i);
         list.append(b);
       }

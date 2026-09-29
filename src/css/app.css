@@ -219,6 +219,16 @@ button.mini:disabled { opacity: .35; }
 .sys-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--muted); font-size: 11.5px; opacity: .6; }
 .sys-chip.on { opacity: 1; color: var(--text); background: var(--surface); }
 .sys-chip i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.steps { display: flex; flex-direction: column; gap: 2px; }
+.step { display: flex; gap: 8px; align-items: flex-start; text-align: left; background: none; border: 1px solid transparent; border-radius: 8px; padding: 5px 6px; color: var(--text); }
+.step:hover { background: var(--surface-2); border-color: var(--border); }
+.step small { display: block; color: var(--muted-2); font-size: 11px; }
+.step-ic { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex: none; font-size: 11px; border: 1.5px solid var(--border-2); color: var(--muted-2); }
+.step.ok .step-ic { background: var(--accent); border-color: var(--accent); color: #fff; }
+.step.ok > span:last-child { color: var(--muted); }
+.an-fix { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; cursor: pointer; }
+.an-fixall { margin-left: 10px; padding: 4px 10px; font-size: 12px; }
+.an-badge { display: inline-flex; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--danger, #d21f3c); color: #fff; font-size: 10px; font-weight: 700; align-items: center; justify-content: center; margin-left: 4px; }
 .statusbar {
   position: absolute; left: 0; right: 0; bottom: 0; height: 26px; display: flex; align-items: center; gap: 14px; padding: 0 10px 0 250px;
   font-size: 11.5px; color: var(--muted); background: color-mix(in srgb, var(--surface) 90%, transparent); border-top: 1px solid var(--border); z-index: 2;
@@ -247,6 +257,8 @@ button.danger:hover { background: var(--danger-soft); border-color: var(--danger
 .toast-wrap { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 10; pointer-events: none; align-items: center; }
 .toast { background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; box-shadow: var(--shadow); transition: opacity .4s, transform .4s; max-width: 70vw; text-align: center; }
 .toast.err { background: var(--danger); color: #fff; }
+.toast.warn { background: var(--surface); color: var(--text); border: 1px solid var(--border-2); border-left: 4px solid var(--danger, #d21f3c); text-align: left; pointer-events: auto; cursor: pointer; max-width: min(560px, 80vw); font-size: 12.5px; }
+.toast.warn small { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .toast.hide { opacity: 0; transform: translateY(6px); }
 
 /* ---------------------------------- панель ----------------------------------- */

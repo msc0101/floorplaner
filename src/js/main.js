@@ -76,6 +76,7 @@ const App = {
     Underlay.sync();
     Rooms.detectAll();
     try { Checks.run(); } catch (e) { console.error(e); }
+    if (!viewOnly) Analysis.live();
     if (App.heat && !viewOnly) App.heat.stale = true;
     for (const id of [...App.sel]) if (id !== 'underlay' && !Model.get(id) && !App.rooms.some(r => r.id === id)) App.sel.delete(id);
     UI.refresh();

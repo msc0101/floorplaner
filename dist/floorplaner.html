@@ -273,6 +273,16 @@ button.mini:disabled { opacity: .35; }
 .sys-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--muted); font-size: 11.5px; opacity: .6; }
 .sys-chip.on { opacity: 1; color: var(--text); background: var(--surface); }
 .sys-chip i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.steps { display: flex; flex-direction: column; gap: 2px; }
+.step { display: flex; gap: 8px; align-items: flex-start; text-align: left; background: none; border: 1px solid transparent; border-radius: 8px; padding: 5px 6px; color: var(--text); }
+.step:hover { background: var(--surface-2); border-color: var(--border); }
+.step small { display: block; color: var(--muted-2); font-size: 11px; }
+.step-ic { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex: none; font-size: 11px; border: 1.5px solid var(--border-2); color: var(--muted-2); }
+.step.ok .step-ic { background: var(--accent); border-color: var(--accent); color: #fff; }
+.step.ok > span:last-child { color: var(--muted); }
+.an-fix { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; cursor: pointer; }
+.an-fixall { margin-left: 10px; padding: 4px 10px; font-size: 12px; }
+.an-badge { display: inline-flex; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--danger, #d21f3c); color: #fff; font-size: 10px; font-weight: 700; align-items: center; justify-content: center; margin-left: 4px; }
 .statusbar {
   position: absolute; left: 0; right: 0; bottom: 0; height: 26px; display: flex; align-items: center; gap: 14px; padding: 0 10px 0 250px;
   font-size: 11.5px; color: var(--muted); background: color-mix(in srgb, var(--surface) 90%, transparent); border-top: 1px solid var(--border); z-index: 2;
@@ -301,6 +311,8 @@ button.danger:hover { background: var(--danger-soft); border-color: var(--danger
 .toast-wrap { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 10; pointer-events: none; align-items: center; }
 .toast { background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; box-shadow: var(--shadow); transition: opacity .4s, transform .4s; max-width: 70vw; text-align: center; }
 .toast.err { background: var(--danger); color: #fff; }
+.toast.warn { background: var(--surface); color: var(--text); border: 1px solid var(--border-2); border-left: 4px solid var(--danger, #d21f3c); text-align: left; pointer-events: auto; cursor: pointer; max-width: min(560px, 80vw); font-size: 12.5px; }
+.toast.warn small { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .toast.hide { opacity: 0; transform: translateY(6px); }
 
 /* ---------------------------------- панель ----------------------------------- */
@@ -2976,7 +2988,7 @@ const DOC_VERSION = 1;
 const COLLECTIONS = ['areas', 'roads', 'walls', 'openings', 'items', 'roofs', 'lines', 'dims', 'texts', 'roomTags', 'notes'];
 
 /** Настройки вида — не часть «правки», undo/redo их не трогает */
-const VIEW_SETTINGS = ['hoverTips', 'layers', 'sys', 'sun', 'showWallDims', 'showItemDims', 'showGuides', 'showSwing', 'wallHatch', 'showChecks', 'showChecksOk', 'roofFill', 'wallDefaultsLive'];
+const VIEW_SETTINGS = ['hoverTips', 'liveChecks', 'layers', 'sys', 'sun', 'showWallDims', 'showItemDims', 'showGuides', 'showSwing', 'wallHatch', 'showChecks', 'showChecksOk', 'roofFill', 'wallDefaultsLive'];
 
 const Model = {
   newDoc() {
@@ -3937,15 +3949,16 @@ const ROOF_TYPES = {
   flat:  { name: 'Плоская' },
 };
 const ROOF_MATERIALS = {
-  metaltile: { name: 'Металлочерепица', color: '#8e3b30' },
-  profile:   { name: 'Профнастил', color: '#5d6d7c' },
-  seam:      { name: 'Фальцевая кровля', color: '#6f7780' },
-  soft:      { name: 'Гибкая черепица', color: '#6b4b3e' },
-  ceramic:   { name: 'Керамическая черепица', color: '#b0583c' },
-  ondulin:   { name: 'Ондулин', color: '#4f5e45' },
-  slate:     { name: 'Шифер', color: '#8f9397' },
-  membrane:  { name: 'Мембрана / наплавляемая (плоская)', color: '#4a4f57' },
-  polycarb:  { name: 'Сотовый поликарбонат', color: '#cfe3ec', glass: true },
+  // min — минимальный уклон, ° (СП 17.13330.2017 табл. 4.1 и инструкции производителей)
+  metaltile: { name: 'Металлочерепица', color: '#8e3b30', min: 14 },
+  profile:   { name: 'Профнастил', color: '#5d6d7c', min: 8 },
+  seam:      { name: 'Фальцевая кровля', color: '#6f7780', min: 7 },
+  soft:      { name: 'Гибкая черепица', color: '#6b4b3e', min: 12 },
+  ceramic:   { name: 'Керамическая черепица', color: '#b0583c', min: 22 },
+  ondulin:   { name: 'Ондулин', color: '#4f5e45', min: 6 },
+  slate:     { name: 'Шифер', color: '#8f9397', min: 14 },
+  membrane:  { name: 'Мембрана / наплавляемая (плоская)', color: '#4a4f57', min: 0 },
+  polycarb:  { name: 'Сотовый поликарбонат', color: '#cfe3ec', glass: true, min: 5 },
 };
 
 const Roof = {
@@ -4112,17 +4125,217 @@ const Roof = {
    карта инсоляции участка (часы прямого солнца), инсоляция помещений через окна.
    ========================================================================== */
 
+/* Города: [название, широта, долгота, UTC+, снеговой район (СП 20.13330.2016 прил. Е, I…VIII), ветровой район (Ia=0, I…VII),
+   климатический подрайон (СП 131.13330.2020 рис. А.1), расчётная зимняя t (наиболее холодная пятидневка 0,92), °C,
+   нормативная глубина промерзания для суглинков и глин (СП 22.13330.2016 п. 5.5.3), см]. Значения ориентировочные — уточняйте по адресу. */
 const CITIES = [
-  ['Москва', 55.75, 37.62, 3], ['Санкт-Петербург', 59.94, 30.31, 3], ['Нижний Новгород', 56.33, 44.0, 3],
-  ['Казань', 55.79, 49.12, 3], ['Самара', 53.2, 50.15, 4], ['Ульяновск', 54.31, 48.4, 4], ['Димитровград', 54.22, 49.62, 4], ['Воронеж', 51.67, 39.18, 3], ['Ростов-на-Дону', 47.23, 39.72, 3],
-  ['Краснодар', 45.04, 38.98, 3], ['Сочи', 43.6, 39.73, 3], ['Волгоград', 48.71, 44.51, 3], ['Уфа', 54.73, 55.96, 5],
-  ['Пермь', 58.01, 56.25, 5], ['Екатеринбург', 56.84, 60.6, 5], ['Челябинск', 55.16, 61.4, 5], ['Тюмень', 57.15, 65.53, 5],
-  ['Омск', 54.99, 73.37, 6], ['Новосибирск', 55.03, 82.92, 7], ['Томск', 56.5, 84.97, 7], ['Красноярск', 56.01, 92.87, 7],
-  ['Иркутск', 52.29, 104.3, 8], ['Хабаровск', 48.48, 135.07, 10], ['Владивосток', 43.12, 131.89, 10],
-  ['Калининград', 54.71, 20.51, 2], ['Мурманск', 68.97, 33.08, 3], ['Архангельск', 64.54, 40.54, 3],
-  ['Минск', 53.9, 27.56, 3], ['Киев', 50.45, 30.52, 2], ['Алматы', 43.24, 76.89, 5], ['Астана', 51.17, 71.43, 5],
-  ['Ташкент', 41.3, 69.24, 5], ['Тбилиси', 41.72, 44.79, 4], ['Ереван', 40.18, 44.51, 4],
+  ['Москва', 55.75, 37.62, 3, 3, 1, 'IIВ', -25, 140],
+  ['Санкт-Петербург', 59.94, 30.31, 3, 3, 2, 'IIВ', -24, 120],
+  ['Абакан', 53.72, 91.44, 7, 2, 3, 'IВ', -37, 250],
+  ['Алексин', 54.51, 37.07, 3, 3, 1, 'IIВ', -26, 140],
+  ['Альметьевск', 54.90, 52.30, 4, 4, 2, 'IIВ', -32, 170],
+  ['Анадырь', 64.73, 177.51, 12, 5, 6, 'IГ', -39, 300],
+  ['Ангарск', 52.54, 103.89, 8, 2, 3, 'IВ', -34, 260],
+  ['Арзамас', 55.39, 43.84, 3, 4, 1, 'IIВ', -30, 150],
+  ['Армавир', 44.99, 41.12, 3, 2, 4, 'IIIБ', -19, 80],
+  ['Архангельск', 64.54, 40.54, 3, 4, 2, 'IIА', -31, 200],
+  ['Астрахань', 46.35, 48.04, 4, 1, 3, 'IIIА', -22, 80],
+  ['Ачинск', 56.27, 90.50, 7, 3, 3, 'IВ', -40, 250],
+  ['Балаково', 52.03, 47.78, 4, 3, 3, 'IIIВ', -27, 140],
+  ['Балашиха', 55.80, 37.94, 3, 3, 1, 'IIВ', -25, 140],
+  ['Барнаул', 53.35, 83.78, 7, 3, 3, 'IВ', -36, 220],
+  ['Батайск', 47.14, 39.75, 3, 2, 3, 'IIIВ', -19, 80],
+  ['Белгород', 50.60, 36.59, 3, 3, 3, 'IIIВ', -23, 100],
+  ['Бердск', 54.76, 83.10, 7, 4, 3, 'IВ', -37, 220],
+  ['Березники', 59.41, 56.82, 5, 5, 2, 'IВ', -36, 200],
+  ['Бийск', 52.54, 85.21, 7, 4, 3, 'IВ', -36, 220],
+  ['Биробиджан', 48.79, 132.92, 10, 2, 3, 'IВ', -32, 240],
+  ['Благовещенск', 50.29, 127.53, 9, 1, 3, 'IВ', -34, 270],
+  ['Братск', 56.15, 101.63, 8, 3, 2, 'IВ', -40, 280],
+  ['Брянск', 53.24, 34.36, 3, 3, 1, 'IIВ', -24, 110],
+  ['Великий Новгород', 58.52, 31.28, 3, 3, 1, 'IIВ', -27, 120],
+  ['Владивосток', 43.12, 131.89, 10, 2, 4, 'IIГ', -23, 150],
+  ['Владикавказ', 43.02, 44.68, 3, 2, 4, 'IIIБ', -18, 70],
+  ['Владимир', 56.13, 40.41, 3, 3, 1, 'IIВ', -28, 140],
+  ['Волгоград', 48.71, 44.51, 3, 2, 3, 'IIIВ', -22, 100],
+  ['Волгодонск', 47.52, 42.20, 3, 2, 3, 'IIIВ', -22, 90],
+  ['Волжский', 48.79, 44.77, 3, 2, 3, 'IIIВ', -22, 100],
+  ['Вологда', 59.22, 39.89, 3, 4, 1, 'IIВ', -31, 160],
+  ['Воронеж', 51.67, 39.18, 3, 3, 2, 'IIВ', -24, 120],
+  ['Выборг', 60.71, 28.75, 3, 3, 2, 'IIВ', -25, 120],
+  ['Гатчина', 59.57, 30.13, 3, 3, 2, 'IIВ', -25, 120],
+  ['Геленджик', 44.56, 38.08, 3, 2, 6, 'IIIБ', -10, 40],
+  ['Горно-Алтайск', 51.96, 85.96, 7, 3, 3, 'IВ', -34, 220],
+  ['Грозный', 43.32, 45.69, 3, 2, 4, 'IIIБ', -18, 70],
+  ['Дзержинск', 56.24, 43.46, 3, 4, 1, 'IIВ', -30, 150],
+  ['Димитровград', 54.22, 49.62, 4, 4, 2, 'IIВ', -31, 160],
+  ['Дмитров', 56.34, 37.52, 3, 3, 1, 'IIВ', -26, 140],
+  ['Евпатория', 45.19, 33.37, 3, 2, 4, 'IIIБ', -12, 50],
+  ['Екатеринбург', 56.84, 60.60, 5, 4, 2, 'IВ', -32, 180],
+  ['Елабуга', 55.76, 52.06, 3, 4, 2, 'IIВ', -32, 170],
+  ['Елец', 52.62, 38.50, 3, 3, 2, 'IIВ', -26, 130],
+  ['Ессентуки', 44.04, 42.86, 3, 2, 4, 'IIIБ', -17, 70],
+  ['Жуковский', 55.60, 38.12, 3, 3, 1, 'IIВ', -25, 140],
+  ['Зеленодольск', 55.85, 48.52, 3, 4, 2, 'IIВ', -31, 160],
+  ['Златоуст', 55.17, 59.67, 5, 4, 2, 'IВ', -33, 190],
+  ['Иваново', 57.00, 40.97, 3, 4, 1, 'IIВ', -29, 150],
+  ['Ижевск', 56.85, 53.20, 4, 5, 2, 'IВ', -34, 180],
+  ['Иркутск', 52.29, 104.30, 8, 2, 3, 'IВ', -33, 280],
+  ['Йошкар-Ола', 56.63, 47.89, 3, 4, 1, 'IIВ', -33, 170],
+  ['Казань', 55.79, 49.12, 3, 4, 2, 'IIВ', -31, 160],
+  ['Калининград', 54.71, 20.51, 2, 2, 2, 'IIБ', -18, 80],
+  ['Калуга', 54.51, 36.26, 3, 3, 1, 'IIВ', -26, 130],
+  ['Каменск-Уральский', 56.41, 61.93, 5, 4, 2, 'IВ', -33, 190],
+  ['Камышин', 50.10, 45.41, 3, 2, 3, 'IIIВ', -25, 110],
+  ['Кемерово', 55.35, 86.09, 7, 4, 3, 'IВ', -39, 230],
+  ['Керчь', 45.36, 36.47, 3, 2, 5, 'IIIБ', -12, 50],
+  ['Кинешма', 57.44, 42.16, 3, 4, 1, 'IIВ', -30, 150],
+  ['Киров', 58.60, 49.67, 3, 5, 1, 'IВ', -33, 180],
+  ['Кисловодск', 43.90, 42.72, 3, 2, 4, 'IIIБ', -16, 70],
+  ['Клин', 56.33, 36.73, 3, 3, 1, 'IIВ', -26, 140],
+  ['Ковров', 56.36, 41.32, 3, 3, 1, 'IIВ', -29, 140],
+  ['Коломна', 55.10, 38.77, 3, 3, 1, 'IIВ', -26, 140],
+  ['Комсомольск-на-Амуре', 50.55, 137.01, 10, 3, 3, 'IВ', -33, 260],
+  ['Кострома', 57.77, 40.93, 3, 4, 1, 'IIВ', -31, 150],
+  ['Котлас', 61.25, 46.65, 3, 4, 1, 'IIА', -33, 190],
+  ['Краснодар', 45.04, 38.98, 3, 2, 4, 'IIIБ', -19, 60],
+  ['Красноярск', 56.01, 92.87, 7, 3, 3, 'IВ', -37, 250],
+  ['Курган', 55.44, 65.34, 5, 3, 2, 'IВ', -36, 200],
+  ['Курск', 51.73, 36.19, 3, 3, 2, 'IIВ', -24, 110],
+  ['Кызыл', 51.72, 94.45, 7, 1, 2, 'IВ', -47, 320],
+  ['Липецк', 52.61, 39.59, 3, 3, 2, 'IIВ', -27, 130],
+  ['Люберцы', 55.68, 37.89, 3, 3, 1, 'IIВ', -25, 140],
+  ['Магадан', 59.56, 150.80, 11, 5, 4, 'IГ', -29, 250],
+  ['Магнитогорск', 53.41, 58.98, 5, 3, 3, 'IВ', -34, 200],
+  ['Майкоп', 44.61, 40.10, 3, 2, 4, 'IIIБ', -18, 60],
+  ['Махачкала', 42.98, 47.50, 3, 1, 5, 'IVГ', -12, 50],
+  ['Миасс', 55.05, 60.11, 5, 4, 2, 'IВ', -33, 190],
+  ['Мичуринск', 52.90, 40.49, 3, 3, 2, 'IIВ', -27, 130],
+  ['Мурманск', 68.97, 33.08, 3, 5, 4, 'IБ', -27, 240],
+  ['Муром', 55.58, 42.05, 3, 3, 1, 'IIВ', -29, 140],
+  ['Мытищи', 55.91, 37.73, 3, 3, 1, 'IIВ', -25, 140],
+  ['Набережные Челны', 55.74, 52.40, 4, 4, 2, 'IIВ', -32, 170],
+  ['Нальчик', 43.49, 43.61, 3, 2, 4, 'IIIБ', -18, 70],
+  ['Находка', 42.82, 132.89, 10, 2, 5, 'IIГ', -20, 130],
+  ['Невинномысск', 44.63, 41.94, 3, 2, 4, 'IIIБ', -19, 80],
+  ['Нефтекамск', 56.09, 54.25, 5, 5, 2, 'IВ', -34, 180],
+  ['Нефтеюганск', 61.10, 72.60, 5, 4, 2, 'IВ', -41, 240],
+  ['Нижневартовск', 60.94, 76.55, 5, 4, 2, 'IВ', -42, 240],
+  ['Нижнекамск', 55.63, 51.81, 3, 4, 2, 'IIВ', -32, 170],
+  ['Нижний Новгород', 56.33, 44.00, 3, 4, 1, 'IIВ', -30, 150],
+  ['Нижний Тагил', 57.91, 59.97, 5, 4, 2, 'IВ', -34, 190],
+  ['Новокузнецк', 53.76, 87.14, 7, 4, 3, 'IВ', -39, 220],
+  ['Новокуйбышевск', 53.10, 49.92, 4, 4, 3, 'IIВ', -30, 160],
+  ['Новомосковск', 54.01, 38.29, 3, 3, 1, 'IIВ', -26, 140],
+  ['Новороссийск', 44.72, 37.77, 3, 2, 7, 'IIIБ', -13, 40],
+  ['Новосибирск', 55.03, 82.92, 7, 4, 3, 'IВ', -37, 220],
+  ['Новочебоксарск', 56.11, 47.48, 3, 4, 1, 'IIВ', -32, 160],
+  ['Новочеркасск', 47.42, 40.10, 3, 2, 3, 'IIIВ', -20, 80],
+  ['Новый Уренгой', 66.08, 76.68, 5, 4, 3, 'IД', -43, 300],
+  ['Норильск', 69.35, 88.20, 7, 5, 4, 'IД', -47, 300],
+  ['Ноябрьск', 63.20, 75.45, 5, 4, 2, 'IВ', -43, 280],
+  ['Обнинск', 55.10, 36.61, 3, 3, 1, 'IIВ', -26, 140],
+  ['Одинцово', 55.68, 37.28, 3, 3, 1, 'IIВ', -25, 140],
+  ['Октябрьский', 54.48, 53.47, 5, 4, 2, 'IIВ', -33, 180],
+  ['Омск', 54.99, 73.37, 6, 3, 2, 'IВ', -37, 220],
+  ['Орёл', 52.97, 36.07, 3, 3, 2, 'IIВ', -25, 120],
+  ['Оренбург', 51.77, 55.10, 5, 3, 3, 'IIIВ', -31, 160],
+  ['Орехово-Зуево', 55.81, 38.98, 3, 3, 1, 'IIВ', -27, 140],
+  ['Орск', 51.20, 58.57, 5, 3, 3, 'IIIВ', -33, 170],
+  ['Пенза', 53.20, 45.00, 3, 3, 2, 'IIВ', -29, 150],
+  ['Первоуральск', 56.91, 59.94, 5, 4, 2, 'IВ', -34, 190],
+  ['Пермь', 58.01, 56.25, 5, 5, 2, 'IВ', -35, 190],
+  ['Петрозаводск', 61.79, 34.36, 3, 4, 2, 'IIА', -28, 160],
+  ['Петропавловск-Камчатский', 53.02, 158.65, 12, 8, 7, 'IБ', -20, 150],
+  ['Подольск', 55.43, 37.54, 3, 3, 1, 'IIВ', -25, 140],
+  ['Прокопьевск', 53.89, 86.74, 7, 4, 3, 'IВ', -39, 220],
+  ['Псков', 57.82, 28.33, 3, 3, 1, 'IIВ', -26, 110],
+  ['Пушкино', 56.01, 37.85, 3, 3, 1, 'IIВ', -26, 140],
+  ['Пятигорск', 44.05, 43.06, 3, 2, 4, 'IIIБ', -17, 70],
+  ['Раменское', 55.57, 38.23, 3, 3, 1, 'IIВ', -26, 140],
+  ['Ростов-на-Дону', 47.23, 39.72, 3, 2, 3, 'IIIВ', -19, 80],
+  ['Рубцовск', 51.52, 81.21, 7, 3, 3, 'IВ', -36, 210],
+  ['Рыбинск', 58.05, 38.83, 3, 4, 1, 'IIВ', -30, 150],
+  ['Рязань', 54.63, 39.74, 3, 3, 1, 'IIВ', -27, 140],
+  ['Салават', 53.36, 55.92, 5, 4, 2, 'IВ', -33, 180],
+  ['Салехард', 66.53, 66.61, 5, 4, 3, 'IД', -42, 300],
+  ['Самара', 53.20, 50.15, 4, 4, 3, 'IIВ', -30, 160],
+  ['Саранск', 54.18, 45.18, 3, 3, 2, 'IIВ', -30, 150],
+  ['Саратов', 51.53, 46.03, 4, 3, 3, 'IIIВ', -27, 130],
+  ['Севастополь', 44.62, 33.53, 3, 2, 4, 'IVБ', -10, 40],
+  ['Северодвинск', 64.56, 39.83, 3, 4, 2, 'IIА', -31, 200],
+  ['Северск', 56.60, 84.88, 7, 4, 3, 'IВ', -39, 240],
+  ['Сергиев Посад', 56.31, 38.14, 3, 3, 1, 'IIВ', -27, 140],
+  ['Серпухов', 54.92, 37.41, 3, 3, 1, 'IIВ', -26, 140],
+  ['Симферополь', 44.95, 34.10, 3, 2, 4, 'IIIБ', -16, 60],
+  ['Смоленск', 54.78, 32.05, 3, 3, 1, 'IIВ', -25, 120],
+  ['Сочи', 43.60, 39.73, 3, 2, 4, 'IVБ', -3, 20],
+  ['Ставрополь', 45.04, 41.97, 3, 2, 4, 'IIIБ', -19, 80],
+  ['Старый Оскол', 51.30, 37.84, 3, 3, 3, 'IIВ', -24, 110],
+  ['Стерлитамак', 53.63, 55.95, 5, 4, 2, 'IВ', -33, 180],
+  ['Сургут', 61.25, 73.43, 5, 4, 2, 'IВ', -41, 240],
+  ['Сызрань', 53.16, 48.47, 4, 4, 3, 'IIВ', -30, 160],
+  ['Сыктывкар', 61.67, 50.84, 3, 5, 1, 'IВ', -36, 200],
+  ['Таганрог', 47.21, 38.93, 3, 2, 3, 'IIIВ', -19, 80],
+  ['Тамбов', 52.72, 41.45, 3, 3, 2, 'IIВ', -28, 140],
+  ['Тверь', 56.86, 35.90, 3, 3, 1, 'IIВ', -29, 140],
+  ['Тобольск', 58.20, 68.25, 5, 3, 2, 'IВ', -38, 220],
+  ['Тольятти', 53.51, 49.42, 4, 4, 3, 'IIВ', -30, 160],
+  ['Томск', 56.50, 84.97, 7, 4, 3, 'IВ', -39, 240],
+  ['Туапсе', 44.10, 39.08, 3, 2, 6, 'IVБ', -7, 30],
+  ['Тула', 54.19, 37.62, 3, 3, 1, 'IIВ', -26, 140],
+  ['Тюмень', 57.15, 65.53, 5, 3, 2, 'IВ', -35, 200],
+  ['Улан-Удэ', 51.83, 107.58, 8, 1, 3, 'IВ', -35, 300],
+  ['Ульяновск', 54.31, 48.40, 4, 4, 2, 'IIВ', -31, 160],
+  ['Уссурийск', 43.80, 131.95, 10, 2, 3, 'IIГ', -27, 200],
+  ['Уфа', 54.73, 55.96, 5, 5, 2, 'IВ', -33, 180],
+  ['Ухта', 63.56, 53.70, 3, 5, 1, 'IВ', -39, 240],
+  ['Хабаровск', 48.48, 135.07, 10, 2, 3, 'IВ', -31, 240],
+  ['Ханты-Мансийск', 61.00, 69.02, 5, 5, 2, 'IВ', -41, 240],
+  ['Хасавюрт', 43.25, 46.59, 3, 1, 4, 'IIIБ', -15, 60],
+  ['Химки', 55.89, 37.44, 3, 3, 1, 'IIВ', -25, 140],
+  ['Чебоксары', 56.14, 47.25, 3, 4, 1, 'IIВ', -32, 160],
+  ['Челябинск', 55.16, 61.40, 5, 3, 2, 'IВ', -34, 190],
+  ['Череповец', 59.13, 37.90, 3, 4, 1, 'IIВ', -31, 160],
+  ['Черкесск', 44.23, 42.06, 3, 2, 4, 'IIIБ', -19, 80],
+  ['Чита', 52.03, 113.50, 9, 1, 2, 'IВ', -38, 300],
+  ['Шахты', 47.71, 40.21, 3, 2, 3, 'IIIВ', -21, 90],
+  ['Электросталь', 55.78, 38.45, 3, 3, 1, 'IIВ', -26, 140],
+  ['Элиста', 46.31, 44.26, 3, 1, 4, 'IIIА', -23, 90],
+  ['Энгельс', 51.49, 46.12, 4, 3, 3, 'IIIВ', -27, 130],
+  ['Южно-Сахалинск', 46.96, 142.74, 11, 6, 4, 'IIГ', -22, 180],
+  ['Якутск', 62.03, 129.73, 9, 2, 1, 'IА', -52, 350],
+  ['Ярославль', 57.63, 39.87, 3, 4, 1, 'IIВ', -31, 150],
+  ['Минск', 53.90, 27.56, 3, 2, 1, 'IIВ', -24, 110],
+  ['Гомель', 52.43, 30.98, 3, 2, 1, 'IIВ', -24, 100],
+  ['Брест', 52.10, 23.69, 3, 2, 1, 'IIБ', -20, 80],
+  ['Киев', 50.45, 30.52, 2, 2, 2, 'IIВ', -22, 90],
+  ['Алматы', 43.24, 76.89, 5, 2, 3, 'IIIВ', -20, 80],
+  ['Астана', 51.17, 71.43, 5, 3, 3, 'IВ', -35, 200],
+  ['Караганда', 49.81, 73.08, 5, 3, 3, 'IВ', -32, 180],
+  ['Ташкент', 41.30, 69.24, 5, 1, 2, 'IVГ', -12, 40],
+  ['Бишкек', 42.87, 74.59, 6, 1, 2, 'IVГ', -20, 60],
+  ['Тбилиси', 41.72, 44.79, 4, 1, 3, 'IVВ', -6, 20],
+  ['Ереван', 40.18, 44.51, 4, 2, 2, 'IVВ', -15, 60],
+  ['Баку', 40.41, 49.87, 4, 1, 5, 'IVА', -4, 10],
 ];
+
+/** Климат по городу проекта (или ближайшему из списка по координатам): снеговой и ветровой район, климатический подрайон,
+ *  расчётная зимняя температура, глубина промерзания. Всё, что зависит от климата, берёт значения отсюда. */
+const Climate = {
+  SNOW_KPA: [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0],            // Sg, кПа, по районам I…VIII
+  WIND_KPA: [0.17, 0.23, 0.30, 0.38, 0.48, 0.60, 0.73, 0.85],       // w0, кПа, районы Ia, I…VII
+  roman: (n) => ['Ia', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'][n] || String(n),
+  get() {
+    const g = App.doc.geo;
+    let c = CITIES.find(x => x[0] === g.city), exact = !!c;
+    if (!c) c = CITIES.reduce((b, x) => { const dd = (x[1] - g.lat) ** 2 + ((x[2] - g.lon) * Math.cos(U.rad(g.lat))) ** 2; return !b || dd < b.dd ? { x, dd } : b; }, null).x;
+    const [city, , , , snow, wind, zone, t5, frost] = c;
+    return { city, exact, snow, snowKpa: Climate.SNOW_KPA[snow], wind, windKpa: Climate.WIND_KPA[wind], zone, t5, frost };
+  },
+  /** Глубина промерзания, см: задана вручную на вкладке «Проект» или по климату города */
+  frost() { const f = App.doc.settings.frost; return U.isNum(f) ? f : Climate.get().frost; },
+};
 
 const Sun = {
   /* --------------------------- астрономия -------------------------------- */
@@ -4755,7 +4968,7 @@ const Checks = {
       }
       if ((l.kind === 'water' || l.kind === 'hotwater') && (l.depth || 0) > 0) {
         // водопровод под землёй: низ трубы на 0,5 м ниже промерзания, иначе — греющий кабель и утеплитель
-        const frost = App.doc.settings.frost ?? 130, dep = l.depth;
+        const frost = Climate.frost(), dep = l.depth;
         if (l.heated) out.push({ line: l, kind: l.kind, title, text: `глубина ${m(dep)}, с греющим кабелем и утеплителем (не мельче 0,5 м)`, ok: dep >= 49, at: mid, src: 'СП 31.13330' });
         else out.push({ line: l, kind: l.kind, title, text: dep >= frost + 49 ? `глубина ${m(dep)} — ниже промерзания (${m(frost)}) на ${m(dep - frost)}` : `глубина ${m(dep)} — нужно ≥ ${m(frost + 50)} (промерзание ${m(frost)} + 0,5 м) или греющий кабель с утеплителем`, ok: dep >= frost + 49, at: mid, src: 'СП 31.13330: низ трубы на 0,5 м ниже глубины промерзания' });
       }
@@ -6521,6 +6734,18 @@ const View3D = {
     if (r.type === 'flat') prism(G.rectPts(r.x, r.y, r.w, r.d, r.rot || 0), r.base, r.base + 20, col);
     else if (!(ROOF_MATERIALS[r.mat] || {}).glass) prism(G.rectPts(r.x, r.y, r.w, r.d, r.rot || 0), r.base - 15, r.base, View3D.hex('#efece6'), { noTop: true, bottom: true });
     View3D.gutters(r);
+    if (r.snowGuard && r.type !== 'flat') View3D.snowGuards(r);
+  },
+  /** Трубчатые снегозадержатели в ~60 см от карниза по скатам */
+  snowGuards(r) {
+    const { wire, box } = View3D._g, W = r.w / 2, D = r.d / 2, t = Math.tan(U.rad(r.pitch || 0)), b = r.base || 0, col = [0.35, 0.36, 0.38];
+    const T = (u, v) => G.toWorld({ x: u, y: v }, r.x, r.y, r.rot || 0);
+    const rows = r.type === 'shed' ? [D - 60] : r.type === 'gable' ? [D - 60, -(D - 60)] : [];
+    for (const v of rows) {
+      const z = b + t * 60 + 8, u0 = -W + 30, u1 = W - 30;
+      for (const dz of [0, 7]) { const A = T(u0, v), B = T(u1, v); wire([A.x, A.y, z + dz], [B.x, B.y, z + dz], 1.3, col); }
+      for (let u = u0; u <= u1 + 1; u += 110) { const p = T(u, v); box(p.x, p.y, 3, 3, r.rot || 0, z - 8, z + 9, col); }
+    }
   },
   /** Водосточные желоба по карнизам крыши — там, где рядом стоит водосточная труба */
   gutters(r) {
@@ -10797,6 +11022,21 @@ const UI = {
     } else el.hidden = true;
   },
   setInput(s) { const el = $('stInput'); el.hidden = !s; el.textContent = s ? 'Ввод: ' + s + ' ↵' : ''; },
+  /** Уведомление о нарушении нормы (автопроверка): текст, пункт норм; клик — открыть «Анализ» */
+  warnToast(x) {
+    const t = U.el('div', { class: 'toast warn', title: 'Открыть «Анализ»', onclick: () => Analysis.open() }, U.el('b', {}, (x.sev === 'bad' ? '⚠ ' : '• ') + x.group + ': '), x.text, x.src ? U.el('small', {}, '§ ' + x.src) : null);
+    $('toasts').append(t);
+    setTimeout(() => t.classList.add('hide'), 6500);
+    setTimeout(() => t.remove(), 7000);
+  },
+  setAnalyzeBadge(n) {
+    const b = $('btnAnalyze');
+    if (!b) return;
+    let s = b.querySelector('.an-badge');
+    if (!n) { if (s) s.remove(); return; }
+    if (!s) { s = U.el('span', { class: 'an-badge' }); b.append(s); }
+    s.textContent = String(n); b.title = `Анализ проекта: нарушений норм — ${n}`;
+  },
   toast(msg, type) {
     const t = U.el('div', { class: 'toast' + (type === 'err' ? ' err' : '') }, msg);
     $('toasts').append(t);
@@ -10874,6 +11114,7 @@ const UI = {
       return;
     }
     UI.head(body, 'Ничего не выделено');
+    body.append(UI.stepsCard());
     body.append(F.note('Кликните по объекту, чтобы изменить его размеры, поворот и свойства. Рамкой слева направо — выбрать целиком попавшие, справа налево — задетые.'));
     body.append(F.section('Весь план',
       F.note('Поворот всего плана — участка, построек, сетей — относительно сторон света.'),
@@ -10890,6 +11131,26 @@ const UI = {
       s.plotArea ? F.info('Участок', `${(s.plotArea / 1e6).toFixed(2)} сот.`) : null,
       F.btns([['Все площади →', () => UI.showTab('summary')]])));
     body.append(UI.notesList());
+  },
+  /** «Шаги проекта»: что уже сделано и что дальше — с кнопкой нужного инструмента */
+  stepsCard() {
+    const d = App.doc, has = (fn) => d.items.some(fn), sys = (id) => d.items.some(it => sysOf(it) === id) || d.lines.some(l => sysOfLine(l) === id);
+    let issues = null;
+    try { issues = Analysis.run().issues.filter(x => x.sev === 'bad').length; } catch (e) { issues = null; }
+    const steps = [
+      ['Участок: граница и стороны света', d.areas.some(a => a.kind === 'plot'), () => { Tools.opts.areaKind = 'plot'; Tools.set('area', { force: true }); }, 'Зона → Граница участка (B), затем поверните компас'],
+      ['Дом: стены', d.walls.some(w => w.kind === 'ext'), () => Tools.set('wall'), 'Стена (W) или Комната (Q)'],
+      ['Окна и двери', d.openings.length > 0, () => Tools.set('window'), 'Окно (O), Дверь (D) — клик по стене'],
+      ['Помещения названы', App.rooms.length > 0 && App.rooms.every(r => r.tag), () => UI.showTab('summary'), 'Двойной клик по комнате — имя'],
+      ['Крыша', d.roofs.length > 0, () => Tools.set('roof'), 'Крыша (R) — по контуру дома'],
+      ['Мебель и сантехника', has(it => ['furniture', 'plumbing'].includes(catItem(it.key).layer)), () => $('libSearch').focus(), 'Библиотека слева — перетащите на план'],
+      ['Сети: вода, канализация, электрика, отопление', sys('water') && sys('sewer') && sys('power'), () => Tools.set('line'), 'Инструмент «Сети» (L) и приборы из библиотеки'],
+      ['Проверка по нормам', issues === 0, () => Analysis.open(), issues ? `Замечаний: ${issues} — откройте «Анализ»` : 'Нарушений нет'],
+      ['Печать комплекта', false, () => { $('prDrawing').checked = true; $('dlgPrint').showModal(); }, 'Чертежи по этажам и листы по системам'],
+    ];
+    const done = steps.filter(s => s[1]).length;
+    return F.section(`Шаги проекта · ${done} из ${steps.length}`,
+      U.el('div', { class: 'steps' }, steps.map(([t, ok, fn, hint]) => U.el('button', { type: 'button', class: 'step' + (ok ? ' ok' : ''), title: hint, onclick: fn }, U.el('span', { class: 'step-ic' }, ok ? '✓' : '○'), U.el('span', {}, t, U.el('small', {}, hint))))));
   },
   rotateRow(fn) {
     const inp = U.el('input', { type: 'number', value: 15, step: 1, inputmode: 'decimal' });
@@ -11246,7 +11507,7 @@ const UI = {
       l.kind === 'overhead' || l.kind === 'gasAir' ? null : F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
       l.kind === 'water' || l.kind === 'hotwater' ? F.check('Греющий кабель и утеплитель (можно мельче промерзания)', !!l.heated, (v) => UI.set(l, 'heated', v || undefined)) : null,
       l.kind === 'water' ? F.check('В стальном футляре на пересечениях с канализацией', !!l.sleeve, (v) => UI.set(l, 'sleeve', v || undefined)) : null,
-      l.kind === 'water' ? F.note(`Водопровод кладут ниже промерзания на 0,5 м: сейчас нужно ≥ ${U.fmtLen((App.doc.settings.frost ?? 130) + 50)} (глубина промерзания — вкладка «Проект»). Канализация — на 0,4 м ниже водопровода в местах пересечения; параллельно — не ближе 1,5 м.`) : null,
+      l.kind === 'water' ? F.note(`Водопровод кладут ниже промерзания на 0,5 м: сейчас нужно ≥ ${U.fmtLen(Climate.frost() + 50)} (глубина промерзания — вкладка «Проект»). Канализация — на 0,4 м ниже водопровода в местах пересечения; параллельно — не ближе 1,5 м.`) : null,
       l.kind === 'gasAir' ? F.num('Высота прокладки', l.height ?? LINE_KINDS.gasAir.height, (v) => UI.set(l, 'height', U.clamp(v, 30, 800)), { min: 30, max: 800 }) : null,
       l.kind === 'gasAir' ? F.note('Надземный газопровод: не ниже 2,2 м там, где ходят люди, и не ниже 5 м над проездами; по фасаду — на кронштейнах, не ближе 0,5 м к окнам и дверям. Ввод в котельную — через футляр в стене.') : null,
       l.kind === 'overhead' ? F.num('Охранная зона (в каждую сторону)', (l.zone ?? 200) / 100, (v) => UI.set(l, 'zone', Math.round(v * 100)), { unit: 'м', min: 0, max: 50, step: 0.5 }) : null,
@@ -11318,6 +11579,10 @@ const UI = {
       F.num('Ширина', r.d, (v) => UI.set(r, 'd', Math.max(50, v)), { min: 50 }),
       F.num('Низ крыши (карниз) от земли', r.base, (v) => UI.set(r, 'base', Math.max(0, v)), { min: 0 }),
       F.btns([['Высота по стенам', () => UI.set(r, 'base', Roof.autoBase(r.floor))], ['Повернуть конёк на 90°', () => { [r.w, r.d] = [r.d, r.w]; r.rot = U.normDeg((r.rot || 0) + 90); Model.commit(); }]]),
+      F.check('Снегозадержатели по карнизам', !!r.snowGuard, (v) => UI.set(r, 'snowGuard', v || undefined)),
+      (() => { const cl = Climate.get(), mu = r.type === 'flat' ? 1 : U.clamp((60 - (r.pitch || 0)) / 30, 0, 1), S = 0.7 * cl.snowKpa * mu * 1.4;
+        return F.info('Снег на кровлю (расчётно)', `${(S * 102).toFixed(0)} кг/м² — район ${Climate.roman(cl.snow)}, μ ${mu.toFixed(2)} (СП 20.13330 п. 10)`); })(),
+      (ROOF_MATERIALS[r.mat] || {}).min ? F.note(`Минимальный уклон для «${ROOF_MATERIALS[r.mat].name.toLowerCase()}» — ${ROOF_MATERIALS[r.mat].min}° (СП 17.13330).${r.type !== 'flat' && r.pitch < ROOF_MATERIALS[r.mat].min ? ' <b style="color:var(--danger)">Сейчас меньше — смените кровлю или уклон.</b>' : ''}`) : null,
     ));
     body.append(F.section('Расчёт кровли',
       F.info('Площадь кровли', U.fmtArea(P.area)),
@@ -11522,7 +11787,8 @@ const UI = {
       F.check('Расстояния до стен у выделенного', s.showGuides !== false, (v) => { s.showGuides = v; App.redraw(); App.saveSoon(); }),
       F.check('Открывание окон (дуги)', s.showSwing !== false, (v) => { s.showSwing = v; App.redraw(); App.saveSoon(); }),
       F.check('Штриховка материалов стен (при приближении)', s.wallHatch !== false, (v) => { s.wallHatch = v; App.redraw(); App.saveSoon(); }),
-      F.check('Подсказки при наведении на объекты', s.hoverTips !== false, (v) => { s.hoverTips = v; if (!v) UI.hideTip(); App.saveSoon(); })));
+      F.check('Подсказки при наведении на объекты', s.hoverTips !== false, (v) => { s.hoverTips = v; if (!v) UI.hideTip(); App.saveSoon(); }),
+      F.check('Автопроверка норм при рисовании (уведомления о нарушениях)', s.liveChecks !== false, (v) => { s.liveChecks = v; App.saveSoon(); })));
     const used = [...new Set(App.doc.walls.filter(w => w.kind !== 'fence').map(w => w.mat))].filter(k => WALL_MATERIALS[k]);
     const usedF = [...new Set(App.doc.walls.filter(w => w.kind === 'fence').map(w => w.mat))].filter(k => FENCE_MATERIALS[k]);
     if (used.length || usedF.length) {
@@ -11587,14 +11853,23 @@ const UI = {
       F.btns([['С ↑', () => { d.north = 0; Model.commit(); }], ['С →', () => { d.north = 90; Model.commit(); }], ['С ↓', () => { d.north = 180; Model.commit(); }], ['С ←', () => { d.north = -90; Model.commit(); }]]),
       F.note('Угол — куда указывает север относительно верха экрана (по часовой). Компас на плане можно вращать мышью. Чтобы развернуть сам участок с постройками — выделите их и поверните ручкой ⟳ или на вкладке «Свойства».')));
     // место
-    const citySel = F.select('Город', g.city || '', [['', '— свои координаты —'], ...CITIES.map(c => [c[0], c[0]])], (v) => {
-      const c = CITIES.find(x => x[0] === v); if (!c) return;
-      g.city = c[0]; g.lat = c[1]; g.lon = c[2]; g.tz = c[3]; Model.commit();
-    });
-    body.append(F.section('Местоположение', citySel,
+    // город — поиском по списку (≈190 городов): вводите название, координаты и климат подставятся сами
+    const cityIn = U.el('input', { type: 'text', value: g.city || '', list: 'cityList', placeholder: 'Начните вводить город…', 'data-field': 'city' });
+    const cityList = U.el('datalist', { id: 'cityList' }, [...CITIES].sort((a, b) => a[0].localeCompare(b[0], 'ru')).map(c => U.el('option', { value: c[0] })));
+    cityIn.addEventListener('change', () => { const c = CITIES.find(x => x[0].toLowerCase() === cityIn.value.trim().toLowerCase()); if (!c) { UI.toast('Нет в списке — введите широту и долготу, климат возьмётся по ближайшему городу'); return; } g.city = c[0]; g.lat = c[1]; g.lon = c[2]; g.tz = c[3]; Model.commit(); });
+    const citySel = F.row('Город', cityIn, '');
+    const cl = Climate.get();
+    body.append(F.section('Местоположение', citySel, cityList,
       F.num('Широта', g.lat, (v) => { g.lat = U.clamp(v, -89, 89); g.city = ''; Model.commit(); }, { unit: '°', step: 0.01 }),
       F.num('Долгота', g.lon, (v) => { g.lon = U.clamp(v, -180, 180); g.city = ''; Model.commit(); }, { unit: '°', step: 0.01 }),
       F.num('Часовой пояс UTC+', g.tz, (v) => { g.tz = U.clamp(v, -12, 14); Model.commit(); }, { unit: 'ч', step: 1 })));
+    body.append(F.section('Климат и нагрузки (считается сам)',
+      F.info('Климатический подрайон', cl.zone + ' (СП 131.13330)'),
+      F.info('Снеговой район', `${Climate.roman(cl.snow)} — Sg ${cl.snowKpa.toFixed(1)} кПа (${Math.round(cl.snowKpa * 102)} кг/м²)`),
+      F.info('Ветровой район', `${Climate.roman(cl.wind)} — w0 ${cl.windKpa.toFixed(2)} кПа`),
+      F.info('Расчётная зимняя t', `${cl.t5} °C (пятидневка 0,92)`),
+      F.info('Глубина промерзания', `${U.fmtLen(Climate.frost())}${U.isNum(App.doc.settings.frost) ? ' (задана вручную)' : ' (суглинки, глины)'}`),
+      F.note(`${cl.exact ? '' : `Города нет в списке — данные ближайшего: ${cl.city}. `}Используется в проверках: глубина водопровода, снеговая нагрузка на кровлю и стропила, теплопотери. Значения ориентировочные по картам СП 20.13330.2016 и СП 131.13330.2020 — для рабочего проекта уточните по адресу.`)));
     // быстрый участок и проверка отступов — сразу после ориентации
     const wIn = U.el('input', { type: 'number', value: 20, step: 0.5, min: 1 }), dIn = U.el('input', { type: 'number', value: 30, step: 0.5, min: 1 });
     if (!App.doc.areas.some(a => a.kind === 'plot')) body.append(F.section('Быстрый участок',
@@ -11877,7 +12152,8 @@ const UI = {
       narrow.length ? F.note(`<b style="color:var(--danger)">Свес крыши ${U.fmtLen(narrow[0].over)} — отмостка должна быть шире свеса минимум на 20 см (≥ ${U.fmtLen(narrow[0].over + 20)}).</b>`) : null,
       F.note('Норма: ширина не менее 0,8–1 м и на 20 см больше свеса кровли, уклон от стены 1–3% (СП 82.13330, СП 22.13330). Отмостка гаража, бани, сарая — в свойствах постройки. Попадает в смету.')));
     body.append(F.section('Грунт',
-      F.num('Глубина промерзания', s.frost ?? 130, (v) => { s.frost = U.clamp(v, 0, 400); Model.commit(); }, { min: 0, max: 400 }),
+      F.num('Глубина промерзания', Climate.frost(), (v) => { s.frost = U.clamp(v, 0, 400); Model.commit(); }, { min: 0, max: 400 }),
+      U.isNum(s.frost) ? F.btns([[`По городу (${U.fmtLen(Climate.get().frost)})`, () => { delete s.frost; Model.commit(); }]]) : F.note(`По климату: ${Climate.get().city}${Climate.get().exact ? '' : ' (ближайший город из списка)'}.`),
       F.note('Нормативная глубина промерзания (СП 22.13330, СП 131.13330): Москва и область — 1,1–1,5 м (глина — меньше, песок — больше), Санкт-Петербург — 1,2–1,5, Екатеринбург — 1,6–2, Новосибирск — 2,2–2,4 м. По ней проверяется глубина водопровода: низ трубы на 0,5 м ниже.')));
     body.append(F.section('Стены по типам', tbl,
       F.check('Применять к уже нарисованным стенам', s.wallDefaultsLive !== false, (v) => { s.wallDefaultsLive = v; App.saveSoon(); }),
@@ -12913,7 +13189,8 @@ const Analysis = {
   run() {
     const d = App.doc, s = Rooms.summary(), ch = Checks.run(), issues = [];
     const m2 = (v) => U.fmtArea(v), m = (v) => (v / 100).toFixed(2).replace(/\.?0+$/, '') + ' м';
-    const add = (sev, group, text, src, at, id) => issues.push({ sev, group, text, src: src || '', at: at || null, id: id || null });
+    // fix — автоисправление (кнопка «Исправить» в анализе)
+    const add = (sev, group, text, src, at, id, fix) => issues.push({ sev, group, text, src: src || '', at: at || null, id: id || null, fix: fix || null });
     const fd = App.floorData || [];
 
     // ---------------- статистика ----------------
@@ -12993,8 +13270,15 @@ const Analysis = {
       if (hs.length && Math.max(...hs) < 250) add('bad', 'Помещения', `${f.name}: высота стен ${m(Math.max(...hs))} — жилым помещениям нужно не меньше 2,5 м`, 'СП 55.13330.2016 п. 6.2');
     }
 
+    // ---------------- конструкции: уклон кровли, простенки у углов, пролёты, снегозадержание ----------------
+    Analysis.structure(d, fd, add, m);
+
     // ---------------- вентиляция, дымоходы, печи ----------------
     Analysis.vent(d, fd, add, stats, m);
+
+    // ---------------- климат: откуда берутся нагрузки и глубины ----------------
+    { const cl = Climate.get(), at = stats.findIndex(x => /Смета/.test(x.title));
+      stats.splice(at < 0 ? stats.length : at, 0, { title: 'Климат (' + cl.city + ')', rows: [['Климатический подрайон', cl.zone], ['Снеговой район / Sg', `${Climate.roman(cl.snow)} / ${cl.snowKpa.toFixed(1)} кПа`], ['Ветровой район / w0', `${Climate.roman(cl.wind)} / ${cl.windKpa.toFixed(2)} кПа`], ['Расчётная зимняя t', cl.t5 + ' °C'], ['Глубина промерзания', m(Climate.frost())]] }); }
 
     // ---------------- электрика: группы щита, автомат против сечения, УЗО на розетках ----------------
     Analysis.electric(d, add, stats);
@@ -13009,7 +13293,11 @@ const Analysis = {
 
     // ---------------- нормы отступов и сети ----------------
     for (const r of ch.results.filter(x => !x.ok)) add('bad', 'Отступы', `${r.a.name} — ${r.bName}: ${m(r.d)} (норма ≥ ${m(r.rule.min)})`, r.rule.src, r.pa || r.pb, Model.get(r.a.id) ? r.a.id : null);
-    for (const n of (ch.nets || []).filter(x => x.ok === false)) add('bad', 'Сети', `${n.title}: ${n.text}`, n.src, n.at, n.line.id);
+    for (const n of (ch.nets || []).filter(x => x.ok === false)) {
+      // водопровод мельче промерзания — опустить на промерзание + 0,5 м (все части трассы)
+      const fix = (n.kind === 'water' || n.kind === 'hotwater') && /глубина/.test(n.text) && !n.line.heated ? () => { for (const p of n.line.parts || [n.line]) { const o = Model.get(p.id); if (o) o.depth = Math.ceil((Climate.frost() + 50) / 10) * 10; } } : null;
+      add('bad', 'Сети', `${n.title}: ${n.text}`, n.src, n.at, n.line.id, fix);
+    }
     if (!plots.length && (ext.length || d.items.length)) add('warn', 'Отступы', 'Нет границы участка — отступы от соседей и улицы не проверяются (инструмент «Зона → Граница участка»)');
 
     // ---------------- отмостка ----------------
@@ -13057,6 +13345,60 @@ const Analysis = {
     return { stats, rooms, issues };
   },
   /** Вентиляция по помещениям (СП 54.13330 табл. 9.1, СП 55.13330, СП 60.13330), трубы над крышей и печи (СП 7.13130) */
+  /** Автопроверка после каждого изменения: новое нарушение — всплывающее уведомление; число нарушений — на кнопке «Анализ».
+   *  Ключ замечания — без чисел, чтобы при перетаскивании одного и того же объекта не сыпались повторы */
+  _prev: null,
+  live: U.debounce(() => {
+    let iss;
+    try { iss = Analysis.run().issues; } catch (e) { return; }
+    const key = (x) => x.group + '|' + (x.id || '') + '|' + x.text.replace(/[\d.,]+/g, '#');
+    const prev = Analysis._prev, now = new Set(iss.map(key));
+    if (prev && App.doc.settings.liveChecks !== false) iss.filter(x => !prev.has(key(x)) && (x.sev === 'bad' || x.sev === 'warn')).slice(0, 2).forEach(x => UI.warnToast(x));
+    Analysis._prev = now;
+    UI.setAnalyzeBadge(iss.filter(x => x.sev === 'bad').length);
+  }, 700),
+  /** Проверки конструктора */
+  structure(d, fd, add, m) {
+    const f1 = d.floors[0].id;
+    // уклон кровли не меньше допустимого для материала — у дома и у построек (с учётом примыкания к дому)
+    // подходящая кровля для уклона: из привычных — первая, что допускает такой уклон
+    const fitMat = (pitch) => ['metaltile', 'soft', 'profile', 'seam', 'membrane'].find(k => (ROOF_MATERIALS[k].min || 0) <= pitch);
+    const chk = (name, mat, pitch, at, id, setMat) => {
+      const M = ROOF_MATERIALS[mat];
+      if (M && M.min && pitch < M.min - 0.5) add('bad', 'Кровля', `${name}: уклон ${pitch.toFixed(1)}° меньше допустимого для «${M.name.toLowerCase()}» (от ${M.min}°) — будет протекать. Смените кровлю (при малом уклоне — мембрана или наплавляемая по сплошному настилу, фальц — от 7°) или увеличьте уклон`, 'СП 17.13330.2017 табл. 4.1', at, id, () => setMat(fitMat(pitch)));
+    };
+    for (const r of d.roofs) if (r.type !== 'flat') chk('Крыша дома', r.mat, r.pitch || 0, r, r.id, (k) => { r.mat = k; });
+    for (const it of d.items) {
+      const sh = catItem(it.key).shape;
+      if (!BLD_ROOF_SHAPES.has(sh) || (it.floor || f1) !== f1) continue;
+      const R = bldRoof(it);
+      if (R.type === 'none' || R.type === 'flat' || R.type === 'arch') continue;
+      const hollow = BLD_HOLLOW.has(sh), g0 = View3D.roofGeom(it, it.h || 250, R.open ? 180 : 150, hollow ? bldWallH(it) : undefined);
+      const g = View3D.leanJoin(it, g0, { world: (q) => G.toWorld(q, it.x, it.y, it.rot || 0), eave: g0.eave }) || g0;
+      chk(it.label || catItem(it.key).name, g.R.mat, g.pitch, it, it.id, (k) => { it.roofMat = k; });
+    }
+    // простенок у угла: перемычке нужно опирание ≥ 25 см с каждой стороны
+    for (const o of d.openings) {
+      const w = d.walls.find(x => x.id === o.wall);
+      if (!w || w.kind !== 'ext') continue;
+      const L = Model.wallLen(w);
+      for (const [end, dist] of [[w.a, o.pos - o.w / 2], [w.b, L - o.pos - o.w / 2]]) {
+        const other = d.walls.find(x => x !== w && x.kind !== 'fence' && (x.floor || f1) === (w.floor || f1) && (G.dist(x.a, end) < 2 || G.dist(x.b, end) < 2));
+        if (!other) continue;
+        const clear = dist - other.th / 2;
+        if (clear < 30 && clear > -1) add('warn', 'Конструкции', `${OPENING_TYPES[o.type].name}: простенок до угла ${m(Math.max(0, clear))} — перемычке нужно опирание не меньше 25 см, а угол кладки ослаблен. Сдвиньте проём от угла`, 'СП 15.13330.2020 п. 9.33; СП 339.13330 (перемычки)', G.add(end, G.mul(G.unit(G.sub(end === w.a ? w.b : w.a, end)), Math.max(dist, 20))), o.id);
+      }
+    }
+    // пролёт перекрытия: по коротким сторонам помещений (деревянные балки — до 6 м без промежуточной опоры)
+    for (const f of fd) for (const r of f.rooms) {
+      const q = r.floor || r.axis;
+      if (!q || q.length > 6) continue;
+      const bb = G.bbox(q), span = Math.min(bb.x1 - bb.x0, bb.y1 - bb.y0);
+      if (span > 600) add('warn', 'Конструкции', `${r.name}: пролёт перекрытия ${m(span)} — деревянным балкам нужно сечение ≥ 75×250 мм с шагом 60 см или промежуточная опора (ригель, стена); плиты — по расчёту`, 'СП 64.13330.2017 (деревянные конструкции); СП 20.13330 (нагрузки)', G.polyCentroid(q));
+    }
+    // снегозадержатели: скатная кровля с наружным водостоком над входами и дорожками
+    for (const r of d.roofs) if (r.type !== 'flat' && (r.pitch || 0) >= 5 && !r.snowGuard) add('warn', 'Кровля', 'Крыша дома: нужны снегозадержатели над входами, крыльцом и дорожками (и на металлической кровле — по всему периметру карниза)', 'СП 17.13330.2017 п. 9.11', r, r.id, () => { r.snowGuard = true; });
+  },
   /** Группы электрощита — внутренние кабельные линии (глубина 0) с автоматом; проверки по ПУЭ */
   electric(d, add, stats) {
     const groups = d.lines.filter(l => l.kind === 'power' && !(l.depth > 0) && (l.breaker || l.rcd));
@@ -13069,8 +13411,9 @@ const Analysis = {
       const devs = d.items.filter(it => catItem(it.key).sym && l.pts.some(p => G.dist(it, p) < 5));   // точки, через которые проведена линия
       const socks = devs.filter(it => SOCK.has(catItem(it.key).shape));
       rows.push([l.label || 'Линия', `${l.breaker || '—'}${l.rcd ? ' + УЗО ' + l.rcd : ''} · ${l.section || ''}${devs.length ? ` · ${devs.length} точ.` : ''}`]);
-      if (LIM[sec] && amp > LIM[sec]) add('bad', 'Электрика', `${l.label || 'Линия'}: автомат ${l.breaker} больше допустимого для кабеля ${sec} мм² (до ${LIM[sec]} А) — кабель перегреется раньше, чем сработает автомат`, 'ПУЭ табл. 1.3.4, п. 3.1.4', l.pts[0], l.id);
-      if (socks.length && !l.rcd) add('warn', 'Электрика', `${l.label || 'Линия'}: розетки без УЗО — поставьте УЗО или дифавтомат 30 мА`, 'ПУЭ 7.1.79, 7.1.83; СП 256.1325800.2016 п. 15.3', l.pts[0], l.id);
+      const REC = { 1.5: 'C10', 2.5: 'C16', 4: 'C25', 6: 'C32', 10: 'C40', 16: 'C50', 25: 'C63' };
+      if (LIM[sec] && amp > LIM[sec]) add('bad', 'Электрика', `${l.label || 'Линия'}: автомат ${l.breaker} больше допустимого для кабеля ${sec} мм² (до ${LIM[sec]} А) — кабель перегреется раньше, чем сработает автомат`, 'ПУЭ табл. 1.3.4, п. 3.1.4', l.pts[0], l.id, () => { l.breaker = (/3P/.test(l.breaker) ? '3P ' : '') + REC[sec]; });
+      if (socks.length && !l.rcd) add('warn', 'Электрика', `${l.label || 'Линия'}: розетки без УЗО — поставьте УЗО или дифавтомат 30 мА`, 'ПУЭ 7.1.79, 7.1.83; СП 256.1325800.2016 п. 15.3', l.pts[0], l.id, () => { l.rcd = '30 мА'; });
     }
     const at = stats.findIndex(x => /Смета/.test(x.title));
     stats.splice(at < 0 ? stats.length : at, 0, { title: 'Электрощит: группы', rows });
@@ -13164,7 +13507,7 @@ const Analysis = {
       const st = Checks.stack(it);
       if (!st) continue;
       const top = st.e + Checks.stackH(it);
-      if (top < st.need - 1) add('bad', def.stack === 'smoke' ? 'Печь' : 'Вентиляция', `${name(it)}: верх трубы ${m(top - st.roofZ)} над кровлей, ${top >= st.ridgeZ ? 'выше' : 'ниже'} конька на ${m(Math.abs(top - st.ridgeZ))}, до конька ${m(st.dist)} — нужно поднять на ${m(st.need - top)}`, 'СП 7.13130.2013 п. 5.10: до 1,5 м от конька — 0,5 м над ним; 1,5–3 м — не ниже конька; дальше — не ниже линии 10°', it, it.id);
+      if (top < st.need - 1) add('bad', def.stack === 'smoke' ? 'Печь' : 'Вентиляция', `${name(it)}: верх трубы ${m(top - st.roofZ)} над кровлей, ${top >= st.ridgeZ ? 'выше' : 'ниже'} конька на ${m(Math.abs(top - st.ridgeZ))}, до конька ${m(st.dist)} — нужно поднять на ${m(st.need - top)}`, 'СП 7.13130.2013 п. 5.10: до 1,5 м от конька — 0,5 м над ним; 1,5–3 м — не ниже конька; дальше — не ниже линии 10°', it, it.id, () => { it.autoH = true; });
     }
     // печи и камины: дымоход и свободное место перед топкой
     const ws = d.walls.filter(w => w.kind !== 'fence');
@@ -13212,6 +13555,8 @@ const Analysis = {
     const sum = U.el('div', { class: 'check-sum ' + (bad ? 'bad' : 'ok') },
       bad ? `✗ Нарушений норм: ${bad}` : '✓ Нарушений норм не найдено',
       U.el('span', {}, ` · замечаний ${warn} · по чертежу ${info}`));
+    const fixes = R.issues.filter(i => i.fix);
+    if (fixes.length) sum.append(U.el('button', { type: 'button', class: 'primary an-fixall', title: 'Применить все автоисправления: автоматы по сечению, УЗО, кровля по уклону, снегозадержатели, высота труб', onclick: () => { for (const i of fixes) i.fix(); Model.commit(); Analysis.render(); UI.toast(`Исправлено автоматически: ${fixes.length}`); } }, `✓ Исправить автоматически (${fixes.length})`));
     const head = $('anSum');
     if (head) { head.textContent = ''; head.append(sum); } else box.append(sum);
     // две колонки: слева статистика и помещения, справа — замечания
@@ -13236,7 +13581,8 @@ const Analysis = {
       for (const i of R.issues) {
         const g = i.sev === 'info' ? sevName.info : `${sevName[i.sev]} · ${i.group}`;
         if (g !== group) { group = g; list.append(U.el('h4', {}, g)); }
-        const b = U.el('button', { type: 'button', class: 'check-item an-' + i.sev + (i.sev === 'bad' ? ' bad' : '') }, U.el('span', {}, i.text), i.src ? U.el('em', {}, i.src) : null);
+        const fx = i.fix ? U.el('span', { class: 'an-fix', role: 'button', title: 'Исправить автоматически по норме', onclick: (e) => { e.stopPropagation(); i.fix(); Model.commit(); Analysis.render(); } }, '✓ Исправить') : null;
+        const b = U.el('button', { type: 'button', class: 'check-item an-' + i.sev + (i.sev === 'bad' ? ' bad' : '') }, U.el('span', {}, i.text), i.src ? U.el('em', {}, i.src) : null, fx);
         b.onclick = () => Analysis.show(i);
         list.append(b);
       }
@@ -13341,6 +13687,7 @@ const IO = {
     r.readAsText(f);
   },
   load(doc, keepHistory) {
+    Analysis._prev = null;                          // новый проект — без уведомлений о «новых» замечаниях
     App.doc = doc;
     App.sel.clear();
     App.heat = null;
@@ -13846,6 +14193,7 @@ const App = {
     Underlay.sync();
     Rooms.detectAll();
     try { Checks.run(); } catch (e) { console.error(e); }
+    if (!viewOnly) Analysis.live();
     if (App.heat && !viewOnly) App.heat.stale = true;
     for (const id of [...App.sel]) if (id !== 'underlay' && !Model.get(id) && !App.rooms.some(r => r.id === id)) App.sel.delete(id);
     UI.refresh();
