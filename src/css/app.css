@@ -488,6 +488,9 @@ body.mode-3d.walking .walk-hud { display: block; position: absolute; left: 50%; 
   padding: 6px 12px; border-radius: 8px; background: rgba(20, 24, 30, .72); color: #fff; font-size: 12px; line-height: 1.4; text-align: center; pointer-events: none; }
 body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; z-index: 4; pointer-events: none;
   background: linear-gradient(#fff, #fff) center/2px 100% no-repeat, linear-gradient(#fff, #fff) center/100% 2px no-repeat; opacity: .8; filter: drop-shadow(0 0 1px #000); }
+.cam-hud { position: absolute; left: 50%; transform: translateX(-50%); top: 12px; max-width: calc(100% - 32px); z-index: 4; padding: 5px 10px; border-radius: 6px; background: rgba(10, 12, 16, .7); color: #fff;
+  font: 600 12px/1.4 ui-monospace, Menlo, Consolas, monospace; pointer-events: none; }
+.cam-hud[hidden], body:not(.mode-3d) .cam-hud { display: none; }
 .bld-op { border-top: 1px dashed var(--border); padding-top: 6px; margin-top: 6px; }
 .bld-op > select { width: 100%; margin-bottom: 4px; }
 .bld-op.on { background: var(--accent-soft, rgba(47,111,237,.1)); border-radius: 6px; padding: 6px; }

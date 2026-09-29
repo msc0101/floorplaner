@@ -93,6 +93,14 @@ const Analysis = {
     // ---------------- вентиляция, дымоходы, печи ----------------
     Analysis.vent(d, fd, add, stats, m);
 
+    // ---------------- видеонаблюдение: охват периметра участка ----------------
+    const cov = Analysis.cctv(d, fd);
+    if (cov) {
+      const at = stats.findIndex(x => /Смета/.test(x.title));
+      stats.splice(at < 0 ? stats.length : at, 0, { title: 'Видеонаблюдение', rows: [['Камер', String(cov.cams)], ['Периметр участка в обзоре', `${cov.pct.toFixed(0)}%`]].concat(cov.gaps.length ? [['Слепые участки забора', cov.gaps.map(g => m(g.len)).join(', ')]] : []) });
+      for (const g of cov.gaps.slice(0, 4)) add('warn', 'Видеонаблюдение', `участок забора ${m(g.len)} не попадает ни в одну камеру — поверните камеру, расширьте угол или добавьте камеру`, 'Сектор камеры на плане — угол обзора и дальность различения человека', g.at);
+    }
+
     // ---------------- нормы отступов и сети ----------------
     for (const r of ch.results.filter(x => !x.ok)) add('bad', 'Отступы', `${r.a.name} — ${r.bName}: ${m(r.d)} (норма ≥ ${m(r.rule.min)})`, r.rule.src, r.pa || r.pb, Model.get(r.a.id) ? r.a.id : null);
     for (const n of (ch.nets || []).filter(x => x.ok === false)) add('bad', 'Сети', `${n.title}: ${n.text}`, n.src, n.at, n.line.id);
@@ -143,6 +151,38 @@ const Analysis = {
     return { stats, rooms, issues };
   },
   /** Вентиляция по помещениям (СП 54.13330 табл. 9.1, СП 55.13330, СП 60.13330), трубы над крышей и печи (СП 7.13130) */
+  /** Какая часть забора (границы участка) видна камерам: дальность, угол обзора, постройки заслоняют.
+   *  Под самой камерой (до 1 м) — считаем видно: там её опора. null — нет камер или границы участка */
+  cctv(d, fd) {
+    const f1 = d.floors[0].id, cams = d.items.filter(it => catItem(it.key).shape === 'cctv');
+    const plot = d.areas.find(a => a.kind === 'plot');
+    if (!cams.length || !plot) return null;
+    const fl = fd.find(x => x.floor.id === f1), blds = (fl ? fl.outlines.map(o => o.outer) : [])
+      .concat(d.items.filter(it => (it.floor || f1) === f1 && BLD_ROOF_SHAPES.has(catItem(it.key).shape) && catItem(it.key).shape !== 'greenhouse' && !['canopy', 'canopyLean'].includes(catItem(it.key).shape)).map(it => Model.itemPts(it)));
+    const blocked = (a, b) => blds.some(poly => !G.pointInPoly(a, poly) && poly.some((p, i) => G.segInter(a, b, p, poly[(i + 1) % poly.length])));
+    const sees = (c, p) => {
+      const def = catItem(c.key), rot = U.rad(c.rot || 0), o = G.toWorld({ x: 0, y: c.d / 2 }, c.x, c.y, c.rot || 0);
+      const v = G.sub(p, o), dist = G.len(v);
+      if (dist < 100) return true;
+      if (dist > (c.range ?? def.range ?? 1500)) return false;
+      const dir = { x: -Math.sin(rot), y: Math.cos(rot) }, ang = Math.acos(U.clamp(G.dot(v, dir) / dist, -1, 1));
+      return U.deg(ang) <= (c.fov ?? def.fov ?? 90) / 2 && !blocked(o, p);
+    };
+    const pts = plot.pts, step = 50, gaps = [];
+    let total = 0, seen = 0, run = null;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length], L = G.dist(a, b), n = Math.max(1, Math.round(L / step));
+      for (let k = 0; k < n; k++) {
+        const p = G.add(a, G.mul(G.sub(b, a), (k + 0.5) / n)), ok = cams.some(c => sees(c, p));
+        total += L / n;
+        if (ok) { seen += L / n; if (run) { gaps.push(run); run = null; } }
+        else if (run) run.len += L / n;
+        else run = { len: L / n, at: p };
+      }
+    }
+    if (run) gaps.push(run);
+    return { cams: cams.length, pct: total ? seen / total * 100 : 0, gaps: gaps.filter(g => g.len >= 100).sort((x, y) => y.len - x.len) };
+  },
   vent(d, fd, add, stats, m) {
     const f1 = d.floors[0].id, EXH = new Set(['ventGrille', 'ventShaft', 'ventShaft2', 'ventPipe', 'fan', 'recuperator']);
     const SHAFT = (it) => catItem(it.key).stack === 'vent';

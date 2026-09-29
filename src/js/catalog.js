@@ -627,6 +627,12 @@ function bldWallT(it) {
   const tDef = def.key === 'house' ? 40 : def.shape === 'garage' ? 25 : Math.min(w, d) < 160 ? 5 : 15;
   return U.clamp(+(it.wallT ?? def.wallT ?? tDef) || tDef, 3, Math.max(3, Math.min(w, d) / 4));
 }
+/** Материал стен постройки (как у стен дома): задан вручную или типовой для вида постройки */
+function bldWallMat(it) {
+  if (WALL_MATERIALS[it.wallMat]) return it.wallMat;
+  const k = catItem(it.key).key;
+  return k === 'bathhouse' ? 'timber' : k === 'house' || catItem(it.key).shape === 'garage' ? 'aerated' : 'frame';
+}
 /** Сторона постройки: ось стены (u — вдоль, n — внутрь), допустимый диапазон проёмов lo..hi (без углов) */
 function bldSide(side, w, d, t) {
   const F = {
@@ -1318,7 +1324,8 @@ const Painters = (() => {
     const s = bldShell(P.it, w, d), c = P.ctx;
     c.save();
     c.fillStyle = P.it.color || P.C.itemFill; thin(P); box(P, -w / 2, -d / 2, w, d, 0);   // пол
-    c.fillStyle = P.C.wallExt; c.strokeStyle = P.C.wallStroke; lw(P, 0.8);
+    // стены — штриховкой материала (как у дома), если план рисуется на экране/в печати
+    c.fillStyle = (P.env && Render.matFill(P.env, bldWallMat(P.it))) || P.C.wallExt; c.strokeStyle = P.C.wallStroke; lw(P, 0.8);
     for (const r of s.walls) box(P, r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0, 0);
     c.strokeStyle = P.C.ink;
     for (const o of s.ops) {

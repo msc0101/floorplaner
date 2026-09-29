@@ -208,7 +208,7 @@ const View3D = {
     };
     View3D._g = { face, prism, box, cyl, cone, blob, ring, wire, tri, V3 };
     const d = App.doc, active = Model.floorIdx(App.floor);
-    View3D._spoutQ = []; View3D._eaves = [];
+    View3D._spoutQ = []; View3D._eaves = []; View3D.lights = [];
     View3D._spouts = View3D.opts.items ? d.items.filter(o => catItem(o.key).shape === 'downspout') : [];
     const floors = d.floors.filter((f, i) => i <= active || View3D.opts.upper);
     const bb = Model.contentBBox() || { x0: -1000, y0: -1000, x1: 1000, y1: 1000 };
@@ -247,7 +247,16 @@ const View3D = {
         for (let i = 0; i < r.pts.length - 1; i++) {
           const a = r.pts[i], b2 = r.pts[i + 1], u = G.unit(G.sub(b2, a)), n = G.perp(u);
           const hw = r.width / 2;
-          prism([G.add(a, G.mul(n, hw)), G.add(b2, G.mul(n, hw)), G.sub(b2, G.mul(n, hw)), G.sub(a, G.mul(n, hw))], 0, z, View3D.hex(k.fill), { holes });
+          const fillC = View3D.hex(k.fill).map(x => x * (r.kind === 'path' ? 0.86 : 1));
+          prism([G.add(a, G.mul(n, hw)), G.add(b2, G.mul(n, hw)), G.sub(b2, G.mul(n, hw)), G.sub(a, G.mul(n, hw))], 0, z, fillC, { holes });
+          // поворот дорожки — скруглённое «колено» без щели на внешнем углу
+          if (i > 0) prism(Array.from({ length: 20 }, (_, q) => { const t = q / 20 * Math.PI * 2; return { x: a.x + Math.cos(t) * hw, y: a.y + Math.sin(t) * hw }; }), 0, z - 0.05, fillC);
+          if (r.kind === 'path' || r.kind === 'sidewalk') {
+            // тротуарная плитка: поперечные швы и бортики по краям
+            const L = G.dist(a, b2), seam = fillC.map(x => x * 0.82), step = r.kind === 'path' ? 40 : 50;
+            for (let s2 = step; s2 < L - 5; s2 += step) { const p = G.add(a, G.mul(u, s2)); prism([G.add(p, G.mul(n, hw - 6)), G.add(G.add(p, G.mul(u, 1)), G.mul(n, hw - 6)), G.sub(G.add(p, G.mul(u, 1)), G.mul(n, hw - 6)), G.sub(p, G.mul(n, hw - 6))], z, z + 0.15, seam, { noSides: true }); }
+            for (const s2 of [1, -1]) prism([G.add(a, G.mul(n, s2 * hw)), G.add(b2, G.mul(n, s2 * hw)), G.add(b2, G.mul(n, s2 * (hw - 6))), G.add(a, G.mul(n, s2 * (hw - 6)))], 0, z + 1.5, View3D.hex(k.edge).map(x => x * 0.95));
+          }
           if (roadCurb(r)) {
             // бордюры
             for (const s2 of [1, -1]) prism([G.add(a, G.mul(n, s2 * hw)), G.add(b2, G.mul(n, s2 * hw)), G.add(b2, G.mul(n, s2 * (hw - 15))), G.add(a, G.mul(n, s2 * (hw - 15)))], z, z + 12, View3D.hex('#c9c9c9'));
@@ -497,6 +506,8 @@ const View3D = {
     }
   },
   SPOUT_COLOR: '#6d4c3d',
+  /** Цвет плафона светильника: > 1 — шейдер понимает его как светящийся (ночью горит) */
+  GLOW: [2, 1.86, 1.44],
   /** Водосточные трубы: вертикальная труба с хомутами, «колено» к ближайшему желобу с воронкой;
    *  внизу — в дождеприёмник (если рядом) или отвод с водоотливом от стены */
   downspouts() {
@@ -575,13 +586,14 @@ const View3D = {
         cyl(it.x, it.y, 6, e, e + H, dark, 8);
         const q = G.toWorld({ x: 35, y: 0 }, it.x, it.y, rot);
         box((it.x + q.x) / 2, (it.y + q.y) / 2, 70, 6, rot, e + H - 6, e + H, dark);
-        box(q.x, q.y, 40, 22, rot, e + H - 16, e + H - 4, C('#fff3c4'));
+        box(q.x, q.y, 40, 22, rot, e + H - 16, e + H - 4, View3D.GLOW);
+        View3D.lights.push([q.x / 100, (e + H - 20) / 100, q.y / 100, 11]);
         return;
       }
       if (sh === 'riser') { cyl(it.x, it.y, it.w / 2, e, e + Math.max(H, 250), C('#8a5a2b'), 8); return; }
       if (sh === 'lamp' || sh === 'spot') {
         const ceil = e + Math.max(220, (App.V.walls.find(w => w.kind !== 'fence') || { h: 270 }).h) - 4;
-        cyl(it.x, it.y, it.w / 2, ceil - (sh === 'lamp' ? 10 : 2), ceil, C('#fff6d8'), 12);
+        cyl(it.x, it.y, it.w / 2, ceil - (sh === 'lamp' ? 10 : 2), ceil, View3D.GLOW, 12);
         return;
       }
       // розетки, выключатели, щиток, счётчик, краны: коробочка на высоте монтажа
@@ -923,6 +935,7 @@ const View3D = {
     // --- уличная камера: кронштейн на стене, корпус-«цилиндр» с козырьком, объектив смотрит вдоль +y ---
     if (sh === 'cctv') {
       const z = e + (H || 280), body = [0.93, 0.93, 0.92];
+      if (it.post) { cy(0, -D - 5, 5, e, z + 10, [0.3, 0.31, 0.33], 10); cy(0, -D - 5, 7, e, e + 8, [0.6, 0.6, 0.58], 10); }   // свой столб (угол участка)
       bx(-5, -D, 5, -D + 1.5, z - 8, z + 8, body);                                                                      // площадка
       bx(-1.8, -D + 1.5, 1.8, -D + 7, z - 1.8, z + 1.8, body);                                                        // кронштейн
       bx(-4.5, -D + 7, 4.5, D - 1, z - 3.5, z + 5, body);                                                             // корпус
@@ -965,14 +978,16 @@ const View3D = {
       const top = e + (H || 80), dk = [0.18, 0.19, 0.2];
       cy(0, 0, W * 0.9, e, e + 3, dk, 12);
       cy(0, 0, W * 0.5, e + 3, top - 16, dk, 12);
-      cy(0, 0, W * 0.55, top - 16, top - 3, [1, 0.93, 0.72], 12);                                                     // плафон
+      cy(0, 0, W * 0.55, top - 16, top - 3, View3D.GLOW, 12);                                                       // плафон
+      View3D.lights.push([it.x / 100, (top - 10) / 100, it.y / 100, 4.5]);
       cy(0, 0, W * 0.75, top - 3, top, dk, 12);
       return true;
     }
     if (sh === 'facadeLight') {
       const z = e + (H || 210), dk = [0.18, 0.19, 0.2];
       bx(-W * 0.5, -D, W * 0.5, -D + 2, z - 12, z + 12, dk);
-      bx(-W * 0.4, -D + 2, W * 0.4, -D + D * 1.2, z - 8, z + 6, [1, 0.93, 0.72]);
+      bx(-W * 0.4, -D + 2, W * 0.4, -D + D * 1.2, z - 8, z + 6, View3D.GLOW);
+      { const q = L(0, -D + 25); View3D.lights.push([q.x / 100, (z - 5) / 100, q.y / 100, 7]); }
       bx(-W * 0.5, -D + 2, W * 0.5, -D + D * 1.4, z + 6, z + 9, dk);
       return true;
     }
@@ -1702,7 +1717,7 @@ const View3D = {
       const s = bldShell(it, it.w, it.d);
       const bx = (r, z0, z1, col, opt) => { const q = bldWorld(it, { x: (r.x0 + r.x1) / 2, y: (r.y0 + r.y1) / 2 }); box(q.x, q.y, r.x1 - r.x0, r.y1 - r.y0, rot, z0, z1, col, opt); };
       View3D.slab(it, s.inner, e, e + View3D.BLD_FLOOR, C(sh === 'garage' ? '#b9b8b2' : '#b08a64'));
-      const wallC = C(it.key === 'bathhouse' ? '#c79a64' : '#ddd3c3'), baseC = C('#8a857d');
+      const wm = WALL_MATERIALS[bldWallMat(it)], wallC = C(it.wallMat ? wm.color : it.key === 'bathhouse' ? '#c79a64' : '#ddd3c3'), baseC = C('#8a857d');
       const band = (r, z0, z1, col, opt) => { if (z1 - z0 > 0.5) { bx(r, z0, Math.min(z1, e + 40), baseC); bx(r, Math.max(z0, e + 40), z1, col, opt); } };
       const piece = (r, z0, z1, col, opt) => { if (z1 - z0 < 0.5) return; if (z0 < e + 40) band(r, z0, z1, col, opt); else bx(r, z0, z1, col, opt); };
       for (const r of s.walls) { bx(r, e, e + 40, baseC); bx(r, e + 40, eave, wallC, { topK: 0.8 }); }
@@ -2141,7 +2156,9 @@ const View3D = {
     const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
     const prog = (vs, fs) => { const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(pr); if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr)); return pr; };
     const hp = gl.getShaderPrecisionFormat && gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT).precision > 0 ? 'highp' : 'mediump';
-    // основная программа: полусферическое освещение, солнце с тенями (PCF), дымка
+    // ночные точечные источники (фонари): сколько влезает в uniform-регистры фрагментного шейдера
+    const NL = View3D.NL = U.clamp(((gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) || 16) - 24) | 0, 0, 32);
+    // основная программа: полусферическое освещение, солнце с тенями (PCF), дымка; ночью — фонари и светящиеся окна
     View3D.prog = prog(
       `attribute vec3 p; attribute vec3 n; attribute vec3 c; uniform mat4 uVP; uniform mat4 uLVP;
        varying vec3 vN; varying vec3 vC; varying vec3 vW; varying vec4 vL;
@@ -2150,6 +2167,7 @@ const View3D = {
        varying vec3 vN; varying vec3 vC; varying vec3 vW; varying vec4 vL;
        uniform vec3 uL; uniform vec3 uSky; uniform vec3 uGround; uniform vec3 uEye; uniform vec3 uSunCol;
        uniform float uFog; uniform float uSunK; uniform float uAmb; uniform float uUseShadow; uniform float uTexel; uniform float uAlpha; uniform sampler2D uShadow;
+       uniform float uNight; uniform float uGlow; uniform float uPLn;${NL ? ` uniform vec4 uPL[${NL}];` : ''}
        float unpack(vec4 v){ return dot(v, vec4(1.0, 1.0/255.0, 1.0/65025.0, 1.0/16581375.0)); }
        float shadowAt(vec3 n){
          vec3 s = vL.xyz / vL.w * 0.5 + 0.5;
@@ -2167,14 +2185,25 @@ const View3D = {
          float dif = max(dot(n, uL), 0.0) * uSunK;
          float sh = (uUseShadow > 0.5 && dif > 0.0) ? shadowAt(n) : 1.0;
          vec3 amb = mix(uGround, uSky, 0.5 + 0.5 * n.y) * uAmb;
-         vec3 col = vC * (amb + dif * sh * uSunCol);
+         vec3 base = min(vC, vec3(1.0));
+         float em = step(1.01, max(vC.r, max(vC.g, vC.b)));          // плафоны светильников: цвет > 1
+         vec3 col = base * (amb + dif * sh * uSunCol);
+         ${NL ? `vec3 pl = vec3(0.0);
+         for (int i = 0; i < ${NL}; i++) {
+           if (float(i) >= uPLn) break;
+           vec3 d = uPL[i].xyz - vW; float r = length(d);
+           float a = clamp(1.0 - r / uPL[i].w, 0.0, 1.0);
+           pl += a * a * (0.35 + 0.65 * abs(dot(n, d / max(r, 0.01))));
+         }
+         col += base * pl * vec3(1.0, 0.82, 0.58) * 1.25 * uNight;` : ''}
+         col += base * em * uNight * 0.9 + vec3(1.0, 0.78, 0.45) * 0.55 * uGlow;
          float dist = length(vW - uEye);
          col = mix(col, uSky * 1.02, clamp(1.0 - exp(-dist * uFog), 0.0, 0.8));
          gl_FragColor = vec4(pow(col, vec3(0.95)), uAlpha);
        }`);
     const pr = View3D.prog;
     View3D.loc = { p: gl.getAttribLocation(pr, 'p'), n: gl.getAttribLocation(pr, 'n'), c: gl.getAttribLocation(pr, 'c') };
-    for (const u of ['uAmb', 'uVP', 'uLVP', 'uL', 'uSky', 'uGround', 'uEye', 'uSunCol', 'uFog', 'uSunK', 'uUseShadow', 'uTexel', 'uAlpha', 'uShadow']) View3D.loc[u] = gl.getUniformLocation(pr, u);
+    for (const u of ['uAmb', 'uVP', 'uLVP', 'uL', 'uSky', 'uGround', 'uEye', 'uSunCol', 'uFog', 'uSunK', 'uUseShadow', 'uTexel', 'uAlpha', 'uShadow', 'uNight', 'uGlow', 'uPLn', 'uPL']) View3D.loc[u] = gl.getUniformLocation(pr, u);
     // карта теней: глубина, упакованная в RGBA
     View3D.depthProg = prog(
       `attribute vec3 p; uniform mat4 uLVP; void main(){ gl_Position = uLVP * vec4(p, 1.0); }`,
@@ -2217,12 +2246,13 @@ const View3D = {
   light() {
     let az = 200, alt = 42;
     const s = Sun.current();
-    const useSun = View3D.opts.sun;
+    const useSun = View3D.opts.sun, night = !!View3D.opts.night;
     if (useSun) { az = s.az; alt = s.alt; }
-    const day = !useSun || alt > 1;
+    const day = !night && (!useSun || alt > 1);
     const a = U.rad(Math.max(alt, 2)), dir = Sun.planDir(az);
     const L = [dir.x * Math.cos(a), Math.sin(a), dir.y * Math.cos(a)];
     const low = U.clamp((alt - 2) / 20, 0, 1);            // низкое солнце — теплее
+    if (night) return { L, day: false, night: true, sunK: 0, sunCol: [0, 0, 0], sky: [0.05, 0.07, 0.13], top: [0.01, 0.02, 0.06], hor: [0.07, 0.09, 0.16], ground: [0.04, 0.045, 0.05] };
     return {
       L, day,
       sunK: day ? 0.55 + 0.45 * low : 0,
@@ -2285,14 +2315,18 @@ const View3D = {
     gl.useProgram(View3D.prog);
     const c = View3D.cam;
     // прогулка — камера на уровне глаз; иначе — орбита вокруг цели
-    const wc = Walk.on ? Walk.camera() : null;
+    const wc = (View3D.camView && View3D.camEye(w / Math.max(1, h))) || (Walk.on ? Walk.camera() : null);
     const eye = wc ? wc.eye : [c.tx + c.dist * Math.cos(c.pitch) * Math.sin(c.yaw), c.ty + c.dist * Math.sin(c.pitch), c.tz + c.dist * Math.cos(c.pitch) * Math.cos(c.yaw)];
     const VP = M4.mul(M4.persp(wc ? wc.fov : 0.8, w / Math.max(1, h), wc ? 0.05 : 0.1, 4000), M4.lookAt(eye, wc ? wc.at : [c.tx, c.ty, c.tz], [0, 1, 0]));
     gl.uniformMatrix4fv(L.uVP, false, VP);
     gl.uniformMatrix4fv(L.uLVP, false, LVP);
     gl.uniform3fv(L.uL, lt.L); gl.uniform3fv(L.uSky, lt.sky); gl.uniform3fv(L.uGround, lt.ground); gl.uniform3fv(L.uEye, eye); gl.uniform3fv(L.uSunCol, lt.sunCol);
     gl.uniform1f(L.uFog, 0.35 / (R * 6)); gl.uniform1f(L.uSunK, lt.sunK);
-    gl.uniform1f(L.uAmb, Walk.on ? 0.82 : 0.62);   // на прогулке внутри дома светлее
+    gl.uniform1f(L.uAmb, lt.night ? (Walk.on ? 0.55 : 0.45) : Walk.on ? 0.82 : 0.62);   // на прогулке внутри дома светлее
+    gl.uniform1f(L.uNight, lt.night ? 1 : 0); gl.uniform1f(L.uGlow, 0);
+    const pls = lt.night ? (View3D.lights || []).slice(0, View3D.NL) : [];
+    gl.uniform1f(L.uPLn, pls.length);
+    if (pls.length && L.uPL) gl.uniform4fv(L.uPL, new Float32Array(pls.flat()));
     gl.uniform1f(L.uUseShadow, shadows ? 1 : 0); gl.uniform1f(L.uTexel, 1 / View3D.sm.size);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, View3D.sm.tex); gl.uniform1i(L.uShadow, 0);
     const drawMesh = (m, alpha) => {
@@ -2305,8 +2339,31 @@ const View3D = {
     drawMesh(View3D.mesh, 1);
     gl.uniform1f(L.uUseShadow, 0);
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
-    drawMesh(View3D.glass, 0.42);
+    if (lt.night) gl.uniform1f(L.uGlow, 1);                           // ночью окна светятся изнутри
+    drawMesh(View3D.glass, lt.night ? 0.7 : 0.42);
     gl.depthMask(true); gl.disable(gl.BLEND);
+  },
+  /** Вид с камеры видеонаблюдения: её точка, направление, наклон к земле и угол обзора */
+  camEye(aspect) {
+    const it = Model.get(View3D.camView);
+    if (!it) { View3D.camView = null; return null; }
+    const def = catItem(it.key), f = App.doc.floors.find(x => x.id === it.floor) || App.doc.floors[0], rot = U.rad(it.rot || 0);
+    const p = G.toWorld({ x: 0, y: it.d / 2 + 3 }, it.x, it.y, it.rot || 0), z = (f.elev || 0) + (it.h || def.h);
+    const range = it.range ?? def.range ?? 1500, hf = U.rad(U.clamp(it.fov ?? def.fov ?? 90, 10, 170));
+    const tilt = Math.atan2(z, range * 0.45), dir = { x: -Math.sin(rot), y: Math.cos(rot) };
+    const eye = [p.x / 100, z / 100, p.y / 100];
+    return { eye, at: [eye[0] + dir.x * Math.cos(tilt), eye[1] - Math.sin(tilt), eye[2] + dir.y * Math.cos(tilt)], fov: 2 * Math.atan(Math.tan(hf / 2) / aspect) };
+  },
+  setCamView(id) {
+    if (id && Walk.on) Walk.stop();
+    View3D.camView = id || null;
+    const h = $('camHud');
+    if (h) {
+      const it = id && Model.get(id);
+      h.hidden = !it;
+      if (it) h.textContent = `● REC  ${it.label || catItem(it.key).name} · обзор ${it.fov ?? catItem(it.key).fov}° · высота ${((it.h || 0) / 100).toFixed(1)} м  —  клик / Esc — выход`;
+    }
+    UI.render3dPanel(); View3D.redraw();
   },
   redraw() { if (View3D.active && !View3D._raf) View3D._raf = requestAnimationFrame(() => { View3D._raf = 0; View3D.draw(); }); },
   /** Готовые ракурсы: с юга/севера/востока/запада (по компасу) и сверху */
@@ -2329,7 +2386,7 @@ const View3D = {
       if (!pp.length) return;
       L.push('g ' + name);
       for (let i = 0; i < pp.length; i += 3) {
-        L.push(`v ${f(pp[i])} ${f(pp[i + 1])} ${f(pp[i + 2])} ${f(cc[i])} ${f(cc[i + 1])} ${f(cc[i + 2])}`);
+        L.push(`v ${f(pp[i])} ${f(pp[i + 1])} ${f(pp[i + 2])} ${f(Math.min(1, cc[i]))} ${f(Math.min(1, cc[i + 1]))} ${f(Math.min(1, cc[i + 2]))}`);
         L.push(`vn ${f(nn[i])} ${f(nn[i + 1])} ${f(nn[i + 2])}`);
       }
       for (let i = 0; i < pp.length / 3; i += 3) { const a = n + i + 1, b = a + 1, c = a + 2; L.push(`f ${a}//${a} ${b}//${b} ${c}//${c}`); }
@@ -2357,6 +2414,7 @@ const View3D = {
     let drag = null;
     const pts = new Map();
     cv.addEventListener('pointerdown', (e) => {
+      if (View3D.camView) View3D.setCamView(null);                   // вид с камеры: любое движение мышью — назад к обзору
       cv.setPointerCapture(e.pointerId);
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       drag = { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.button === 1 || e.shiftKey, pinch: null };

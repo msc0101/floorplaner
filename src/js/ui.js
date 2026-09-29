@@ -252,6 +252,15 @@ const UI = {
       chk('Этажи выше текущего', 'upper'), chk('Крыша', 'roof'), chk('Мебель и предметы', 'items'), chk('Участок', 'site'),
       F.check('Свет от солнца (дата/время — «Участок»)', o.sun, (v) => { o.sun = v; View3D.redraw(); }),
       F.check('Тени', o.shadows, (v) => { o.shadows = v; View3D.redraw(); }),
+      U.el('div', { class: 'fbtns' },
+        U.el('button', { type: 'button', class: o.night ? '' : 'primary', title: 'День: солнце по дате и времени', onclick: () => { o.night = false; UI.render3dPanel(); View3D.redraw(); } }, '☀ День'),
+        U.el('button', { type: 'button', class: o.night ? 'primary' : '', title: 'Ночь: без солнца, горят уличные фонари, столбики, фасадные светильники и окна — видно, как освещена территория', onclick: () => { o.night = true; UI.render3dPanel(); View3D.redraw(); } }, '☾ Ночь')),
+      (() => {
+        const cams = App.doc.items.filter(it => catItem(it.key).shape === 'cctv');
+        if (!cams.length) return null;
+        return U.el('div', { class: 'fbtns cams3d' }, U.el('span', { class: 'fnote' }, 'Вид с камеры:'),
+          ...cams.map((it, i) => U.el('button', { type: 'button', class: View3D.camView === it.id ? 'primary' : '', title: it.label || catItem(it.key).name, onclick: () => View3D.setCamView(View3D.camView === it.id ? null : it.id) }, '📷 ' + (i + 1))));
+      })(),
       U.el('div', { class: 'fbtns views3d' },
         U.el('button', { type: 'button', title: 'Вид с южной стороны', onclick: () => View3D.view('s') }, 'С юга'),
         U.el('button', { type: 'button', title: 'Вид с северной стороны', onclick: () => View3D.view('n') }, 'С севера'),
@@ -832,6 +841,7 @@ const UI = {
       body.append(F.section('Камера',
         F.num('Угол обзора', it.fov ?? def.fov, (v) => { it.fov = v; Model.commit(); }, { min: 10, max: 180, unit: '°' }),
         F.num('Дальность (распознавание)', it.range ?? def.range, (v) => { it.range = v; Model.commit(); }, { min: 100, max: 5000, step: 50 }),
+        F.check('На своём столбе (не на стене)', !!it.post, (v) => { it.post = v || undefined; Model.commit(); }),
         F.note('Сектор на плане — зона, где камера различает человека. Типично: 2,8 мм — 100° и 8–10 м, 4 мм — 85° и 12–15 м, 6 мм — 55° и 20 м. Камеры ставят на высоте 2,5–3 м под свесом крыши, смотрят вдоль стен и на въезд, чтобы зоны перекрывались.')));
     }
     if (def.shape === 'radiator') {
@@ -869,7 +879,14 @@ const UI = {
     if (BLD_HOLLOW.has(def.shape)) {
       const sh = bldShell(it, it.w, it.d);
       body.append(F.section('Стены',
+        F.select('Материал стен', bldWallMat(it), Object.entries(WALL_MATERIALS).filter(([k]) => !['gkl', 'pgp'].includes(k)).map(([k, v]) => [k, v.name]), (v) => {
+          it.wallMat = v; const ths = WALL_MATERIALS[v].ths;
+          if (!ths.includes(sh.t)) it.wallT = ths.reduce((b, x) => Math.abs(x - sh.t) < Math.abs(b - sh.t) ? x : b, ths[0]);
+          Model.commit();
+        }, { field: 'wallMat' }),
+        F.select('Толщина (типовая)', WALL_MATERIALS[bldWallMat(it)].ths.includes(sh.t) ? String(sh.t) : '', [['', `${sh.t} см — своя`], ...WALL_MATERIALS[bldWallMat(it)].ths.map(x => [String(x), `${x} см`])], (v) => { if (v) { it.wallT = +v; Model.commit(); } }),
         F.num('Толщина стен', sh.t, (v) => { it.wallT = U.clamp(v, 3, 60); Model.commit(); }, { min: 3, max: 60, field: 'wallT' }),
+        F.info('Теплосопротивление стены', `R ≈ ${(sh.t / 100 / WALL_MATERIALS[bldWallMat(it)].lam).toFixed(2)} м²·°C/Вт` + (it.key === 'garage1' || it.key === 'garage2' || it.key === 'bathhouse' ? ' (тёплому гаражу / бане — от 2,0)' : '')),
         F.check('Отмостка', it.blind > 0, (v) => { if (v) it.blind = Math.max(80, bldRoof(it).over + 20); else delete it.blind; Model.commit(); }),
         it.blind > 0 ? F.num('Ширина отмостки', it.blind, (v) => { it.blind = U.clamp(v, 30, 300); Model.commit(); }, { min: 30, max: 300 }) : null,
         it.blind > 0 && bldRoof(it).type !== 'none' && it.blind < bldRoof(it).over + 20 ? F.note(`<b style="color:var(--danger)">Отмостка должна быть шире свеса крыши (${U.fmtLen(bldRoof(it).over)}) минимум на 20 см.</b>`) : null,

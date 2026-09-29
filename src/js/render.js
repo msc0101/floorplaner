@@ -713,7 +713,7 @@ const Render = {
     if (it.flip) ctx.scale(-1, 1);
     ctx.fillStyle = it.color || C.itemFill; ctx.strokeStyle = C.ink; ctx.lineWidth = 1.2 * px;
     ctx.setLineDash([]);
-    const P = { ctx, px, C, it, def, upright: true, rotRad: U.rad(it.rot || 0), flip: !!it.flip, symMul: 1 };
+    const P = { ctx, px, C, it, def, env, upright: true, rotRad: U.rad(it.rot || 0), flip: !!it.flip, symMul: 1 };
     try { painter(P, w, d); } catch (e) { console.warn('painter', def.shape, e); }
     ctx.restore();
     if (part) return;
