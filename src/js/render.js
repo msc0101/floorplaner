@@ -744,10 +744,13 @@ const Render = {
       ctx.setLineDash([]); ctx.lineCap = 'butt';
       // стрелки направления (канализация/дренаж — уклон)
       const arrows = l.kind === 'sewer' || l.kind === 'drain' || l.flow;
+      // у змеек тёплого пола — одна подпись (на самом длинном участке), иначе ими зарастает весь план
+      let only = -1;
+      if (l.kind === 'warmfloor') { let best = 0; for (let i = 0; i < l.pts.length - 1; i++) { const s2 = G.dist(l.pts[i], l.pts[i + 1]); if (s2 > best) { best = s2; only = i; } } }
       for (let i = 0; i < l.pts.length - 1; i++) {
         const a = l.pts[i], b = l.pts[i + 1];
         const segL = G.dist(a, b) * env.scale;
-        if (segL < 70) continue;
+        if (segL < 70 || (only >= 0 && i !== only)) continue;
         const m = G.mid(a, b);
         if (arrows) {
           const u = G.unit(G.sub(b, a)), n = G.perp(u);

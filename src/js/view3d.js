@@ -208,6 +208,8 @@ const View3D = {
     };
     View3D._g = { face, prism, box, cyl, cone, blob, ring, wire, tri, V3 };
     const d = App.doc, active = Model.floorIdx(App.floor);
+    View3D._spoutQ = []; View3D._eaves = [];
+    View3D._spouts = View3D.opts.items ? d.items.filter(o => catItem(o.key).shape === 'downspout') : [];
     const floors = d.floors.filter((f, i) => i <= active || View3D.opts.upper);
     const bb = Model.contentBBox() || { x0: -1000, y0: -1000, x1: 1000, y1: 1000 };
     View3D.bounds = bb;
@@ -397,7 +399,9 @@ const View3D = {
           }
         }
         // спуск к точке подключения и ввод — вертикальные участки на концах
-        for (const p of [l.pts[0], l.pts[l.pts.length - 1]]) wire([p.x, p.y, e + 40], [p.x, p.y, z], 2.8, yel);
+        // (конец, лежащий на другом надземном газопроводе, — это отвод-тройник, без спуска)
+        const onOther = (p) => App.V.lines.some(o => o !== l && o.kind === 'gasAir' && o.pts.some((q, i) => i && G.distSeg(p, o.pts[i - 1], q) < 5));
+        for (const p of [l.pts[0], l.pts[l.pts.length - 1]]) if (!onOther(p)) wire([p.x, p.y, e + 40], [p.x, p.y, z], 2.8, yel);
       }
       // воздушные линии: опоры (свои — если нет столба из библиотеки), крюк ввода на стене, СИП с провисом
       for (const l of App.V.lines) {
@@ -428,6 +432,7 @@ const View3D = {
       if (!View3D.opts.upper && Model.floorIdx(r.floor) > active) continue;
       View3D.roof(r);
     }
+    View3D.downspouts();
     View3D.arrays = { P, N, C: Cc, GP, GN, GC };
     if (View3D.gl) {
       View3D.mesh = View3D.upload(P, N, Cc);
@@ -456,6 +461,79 @@ const View3D = {
     }
     if (r.type === 'flat') prism(G.rectPts(r.x, r.y, r.w, r.d, r.rot || 0), r.base, r.base + 20, col);
     else if (!(ROOF_MATERIALS[r.mat] || {}).glass) prism(G.rectPts(r.x, r.y, r.w, r.d, r.rot || 0), r.base - 15, r.base, View3D.hex('#efece6'), { noTop: true, bottom: true });
+    View3D.gutters(r);
+  },
+  /** Водосточные желоба по карнизам крыши — там, где рядом стоит водосточная труба */
+  gutters(r) {
+    const sp = View3D._spouts || [];
+    if (!sp.length || r.type === 'flat' || r.type === 'arch') return;
+    const { box } = View3D._g, W = r.w / 2, D = r.d / 2, T = (u, v) => G.toWorld({ x: u, y: v }, r.x, r.y, r.rot || 0);
+    const edges = r.type === 'gable' ? [[-W, D, W, D], [W, -D, -W, -D]] : r.type === 'shed' ? [[-W, D, W, D]] : [[-W, D, W, D], [W, -D, -W, -D], [-W, -D, -W, D], [W, D, W, -D]];
+    const col = View3D.hex(View3D.SPOUT_COLOR), z = r.base || 0;
+    // у крыши дома — без участков над пристройками (гараж, веранда): там вода уходит на их кровлю
+    const f1 = App.doc.floors[0].id, under = r.floor ? App.doc.items.filter(o => (o.floor || f1) === r.floor && (BLD_ROOF_SHAPES.has(catItem(o.key).shape) || catItem(o.key).shape === 'veranda')).map(o => Model.itemPts(o)) : [];
+    const pieces = [];
+    for (const [u0, v0, u1, v1] of edges) {
+      const A0 = T(u0, v0), B0 = T(u1, v1), u = G.unit(G.sub(B0, A0)), m0 = G.mid(A0, B0), n0 = G.perp(u), n = G.dot(n0, G.sub(m0, r)) < 0 ? G.mul(n0, -1) : n0;
+      const N = Math.max(1, Math.ceil(G.dist(A0, B0) / 20)), free = (k) => !under.some(poly => G.pointInPoly(G.add(G.add(A0, G.mul(G.sub(B0, A0), k / N)), G.mul(n, 7)), poly));
+      let k0 = null;
+      for (let k = 0; k <= N; k++) {
+        if (free(k) && k0 === null) k0 = k;
+        if ((!free(k) || k === N) && k0 !== null) { const k1 = free(k) ? k : k - 1; if (k1 > k0) pieces.push({ A: G.add(A0, G.mul(G.sub(B0, A0), k0 / N)), B: G.add(A0, G.mul(G.sub(B0, A0), k1 / N)), n, u }); k0 = null; }
+      }
+    }
+    for (const { A, B, n, u } of pieces) {
+      if (!sp.some(s => G.distSeg(s, A, B) < 120)) continue;
+      const m = G.mid(A, B);
+      const len = G.dist(A, B) + 4, ang = U.deg(Math.atan2(u.y, u.x)), at = (k) => G.add(m, G.mul(n, k));
+      let q = at(7); box(q.x, q.y, len, 11, ang, z - 17, z - 15, col);                           // дно
+      q = at(12.5); box(q.x, q.y, len, 1.5, ang, z - 16, z - 4, col);                           // наружный борт
+      q = at(13.2); box(q.x, q.y, len, 2.2, ang, z - 5, z - 3, col);                            // завальцовка
+      q = at(1.2); box(q.x, q.y, len, 1.2, ang, z - 16, z - 6, col);
+      for (const e2 of [A, B]) { const c2 = G.add(G.add(e2, G.mul(G.sub(m, e2), 1 / Math.max(1, G.dist(m, e2)) * 1)), G.mul(n, 7)); box(c2.x, c2.y, 1.5, 12, ang, z - 17, z - 4, col); }   // заглушки
+      const cnt = Math.max(1, Math.round(len / 70));                                            // крюки
+      for (let k = 0; k <= cnt; k++) { const p = G.add(G.add(A, G.mul(G.sub(B, A), k / cnt)), G.mul(n, 7)); box(p.x, p.y, 1.5, 14, ang, z - 18, z - 17, col.map(x => x * 0.8)); }
+      View3D._eaves.push({ A: G.add(A, G.mul(n, 7)), B: G.add(B, G.mul(n, 7)), z: z - 16 });
+    }
+  },
+  SPOUT_COLOR: '#6d4c3d',
+  /** Водосточные трубы: вертикальная труба с хомутами, «колено» к ближайшему желобу с воронкой;
+   *  внизу — в дождеприёмник (если рядом) или отвод с водоотливом от стены */
+  downspouts() {
+    const { box, cyl, wire } = View3D._g, col = View3D.hex(View3D.SPOUT_COLOR), R = 5;
+    for (const { it, e } of View3D._spoutQ || []) {
+      const rot = it.rot || 0, P = (x, y) => G.toWorld({ x, y }, it.x, it.y, rot);
+      let best = null;
+      for (const g of View3D._eaves) {
+        const ab = G.sub(g.B, g.A), t = U.clamp(G.dot(G.sub(it, g.A), ab) / (G.dot(ab, ab) || 1), 0, 1), q = G.add(g.A, G.mul(ab, t)), dd = G.dist(q, it);
+        if (dd < 150 && g.z > e + 100 && (!best || dd < best.d)) best = { q, z: g.z, d: dd };
+      }
+      const top = best ? best.z - 22 - Math.max(20, best.d) : e + (it.h || 300);
+      const f1 = App.doc.floors[0].id, inlet = App.doc.items.find(o => (o.floor || f1) === (it.floor || f1) && catItem(o.key).shape === 'stormInlet' && G.dist(o, it) < 45);
+      const z0 = e + 22;
+      cyl(it.x, it.y, R, z0, top, col, 12);
+      for (let z = z0 + 40; z < top - 20; z += 150) {                                           // хомуты к стене
+        cyl(it.x, it.y, R + 0.8, z, z + 3, col.map(x => x * 0.75), 12);
+        const b = P(0, -R - 3); box(b.x, b.y, 2, 6, rot, z, z + 3, col.map(x => x * 0.75));
+      }
+      if (best) {
+        const p2 = [best.q.x, best.q.y, best.z - 22];
+        cyl(it.x, it.y, R + 0.6, top - 4, top + 2, col, 12);
+        wire([it.x, it.y, top], p2, R, col);
+        cyl(best.q.x, best.q.y, R + 0.6, best.z - 25, best.z - 19, col, 12);
+        cyl(best.q.x, best.q.y, R, best.z - 20, best.z - 14, col, 12);
+        View3D._g.cone(best.q.x, best.q.y, R + 1, R + 4, best.z - 16, best.z - 12, col, 12);   // воронка
+      } else {
+        const p2 = P(0, 18); wire([it.x, it.y, top], [p2.x, p2.y, top + 8], R, col);
+      }
+      if (inlet) wire([it.x, it.y, z0 + 2], [inlet.x, inlet.y, e + 3], R, col);
+      else {                                                                                     // отвод и водоотлив
+        const p1 = P(0, 22), p3 = P(0, 45);
+        wire([it.x, it.y, z0 + 4], [p1.x, p1.y, e + 10], R, col);
+        cyl(p1.x, p1.y, R + 0.6, e + 8, e + 13, col, 12);
+        box(p3.x, p3.y, 28, 55, rot, e, e + 2.5, [0.66, 0.65, 0.62]);
+      }
+    }
   },
   fence(w, e, top) {
     const { prism, box } = View3D._g;
@@ -645,6 +723,7 @@ const View3D = {
     const V = (x, y, z) => { const q = L(x, y); return [q.x / 100, z / 100, q.y / 100]; };
     const bx = (x0, y0, x1, y1, za, zb, col, opt) => { const q = L((x0 + x1) / 2, (y0 + y1) / 2); box(q.x, q.y, Math.abs(x1 - x0), Math.abs(y1 - y0), rot, za, zb, col, opt); };
     const cy = (x, y, r, za, zb, col, n = 16) => { const q = L(x, y); cyl(q.x, q.y, r, za, zb, col, n); };
+    const wireL = (x0, y0, za, x1, y1, zb, r, col) => { const a = L(x0, y0), b = L(x1, y1); View3D._g.wire([a.x, a.y, za], [b.x, b.y, zb], r, col); };
     // «овал» — призма по эллипсу (чаша унитаза, раковины)
     const oval = (cx, cy2, rx, ry, za, zb, col, n = 18) => View3D._g.prism(Array.from({ length: n }, (_, k) => { const a = k / n * Math.PI * 2; return L(cx + Math.cos(a) * rx, cy2 + Math.sin(a) * ry); }), za, zb, col);
     const white = [0.96, 0.96, 0.95], chrome = [0.8, 0.82, 0.84], water = [0.74, 0.84, 0.9], black = [0.08, 0.08, 0.09];
@@ -791,6 +870,76 @@ const View3D = {
       View3D._g.prism(Array.from({ length: 24 }, (_, k) => { const a = k / 24 * Math.PI * 2; return L(Math.cos(a) * R, Math.sin(a) * R); }), zm - 3, zm, [0.25, 0.45, 0.75]);   // защитный мат
       View3D._g.prism(Array.from({ length: 24 }, (_, k) => { const a = k / 24 * Math.PI * 2; return L(Math.cos(a) * (R - 25), Math.sin(a) * (R - 25)); }), zm, zm + 0.5, [0.08, 0.08, 0.09]);   // полотно
       for (let k = 0; k < 24; k++) { const a0 = k / 24 * Math.PI * 2, a1 = (k + 1) / 24 * Math.PI * 2; face([V(Math.cos(a0) * R, Math.sin(a0) * R, zm), V(Math.cos(a1) * R, Math.sin(a1) * R, zm), V(Math.cos(a1) * R, Math.sin(a1) * R, e + (H || 250)), V(Math.cos(a0) * R, Math.sin(a0) * R, e + (H || 250))], [0.2, 0.2, 0.22], V(0, 0, zm + 50), true); }   // сетка
+      return true;
+    }
+    // --- радиаторы: секционный (коллекторы сверху и снизу, секции, кронштейны, термоголовка, подводка к полу);
+    //     полотенцесушитель — «лесенка» из хромированных труб ---
+    if (sh === 'radiator') {
+      const towel = it.key === 'towel', zb = e + (U.isNum(it.z0) ? it.z0 : towel ? 50 : 12), zt = zb + (H || 50);
+      if (towel) {
+        for (const s2 of [-1, 1]) { cy(s2 * (W - 2), 0, 1.6, zb, zt, chrome, 10); bx(s2 * (W - 2) - 1, -D, s2 * (W - 2) + 1, -D + 2, zb + 5, zb + 7, chrome); bx(s2 * (W - 2) - 1, -D, s2 * (W - 2) + 1, -D + 2, zt - 7, zt - 5, chrome); }
+        for (let z = zb + 6; z < zt - 2; z += 8) bx(-W + 2, -1, W - 2, 1, z, z + 1.8, chrome);
+        for (const s2 of [-1, 1]) wireL(s2 * (W - 2), 0, zb, s2 * (W - 2), -D + 1, zb - 6, 1, chrome);
+        return true;
+      }
+      const rad = [0.95, 0.95, 0.94], seam = [0.8, 0.8, 0.79], n = Math.max(2, Math.round((w - 4) / 8)), sw = (w - 4) / n;
+      bx(-W + 2, -D + 3, W - 2, D - 1, zb + 3, zb + 7, rad); bx(-W + 2, -D + 3, W - 2, D - 1, zt - 7, zt - 3, rad);   // коллекторы
+      for (let i = 0; i < n; i++) {
+        const x0 = -W + 2 + i * sw;
+        bx(x0 + 0.4, -D + 2, x0 + sw - 0.4, D, zb, zt, rad);                                                             // секция
+        bx(x0 + sw / 2 - 0.6, D, x0 + sw / 2 + 0.6, D + 0.4, zb + 8, zt - 8, seam);                                       // ребро
+      }
+      for (const s2 of [-0.6, 0.6]) bx(s2 * W - 2, -D, s2 * W + 2, -D + 2, zt - 12, zt - 8, [0.6, 0.6, 0.62]);        // кронштейны
+      cy(W + 2, 0, 1.3, zt - 6, zt - 4, chrome, 8); bx(W, -1, W + 3, 1, zt - 6, zt - 4, chrome);                        // клапан
+      cy(W + 3, 0, 2.8, zt - 4, zt + 5, white, 12);                                                                      // термоголовка
+      bx(W - 1, -1, W + 4, 1, zb + 4, zb + 6, chrome); cy(W + 3, 0, 1.2, e, zb + 6, white, 8);                          // подводка
+      bx(-W - 3, -1, -W + 2, 1, zb + 4, zb + 6, chrome); cy(-W - 2, 0, 1.2, e, zb + 6, white, 8);
+      return true;
+    }
+    // --- водосток: рисуется после крыш (нужен желоб, к которому он подключён), см. View3D.downspouts ---
+    if (sh === 'downspout') { (View3D._spoutQ || []).push({ it, e }); return true; }
+    if (sh === 'stormInlet') {
+      const cast = [0.22, 0.23, 0.25];
+      bx(-W, -D, W, D, e - 2, e + 1.5, [0.62, 0.61, 0.58]);                                                                   // корпус в земле
+      bx(-W + 3, -D + 3, W - 3, D - 3, e + 1.5, e + 1.6, [0.05, 0.05, 0.05]);
+      for (let x = -W + 5; x < W - 4; x += 4) bx(x, -D + 3, x + 1.6, D - 3, e + 1.5, e + 2.2, cast);                      // решётка
+      return true;
+    }
+    if (sh === 'drainChannel') {
+      const cast = [0.22, 0.23, 0.25];
+      bx(-W, -D, W, D, e - 2, e + 1.2, [0.66, 0.65, 0.62]);
+      bx(-W + 1, -D + 3, W - 1, D - 3, e + 1.2, e + 1.3, [0.05, 0.05, 0.05]);
+      for (let x = -W + 2; x < W - 2; x += 5) bx(x, -D + 3, x + 2, D - 3, e + 1.2, e + 2, cast);
+      return true;
+    }
+    // --- уличная розетка IP44: корпус на стене, откидная крышка ---
+    if (sh === 'socketOut') {
+      const z = e + (H || 80), grey = [0.34, 0.36, 0.38];
+      bx(-6, -D, 6, -D + 4, z - 7, z + 7, grey);
+      bx(-5.5, -D + 4, 5.5, -D + 5.5, z - 5, z + 7, [0.5, 0.52, 0.55]);                                                   // крышка
+      bx(-2, -D + 5.5, 2, -D + 6.5, z - 5, z - 3, grey);
+      return true;
+    }
+    // --- уличная камера: кронштейн на стене, корпус-«цилиндр» с козырьком, объектив смотрит вдоль +y ---
+    if (sh === 'cctv') {
+      const z = e + (H || 280), body = [0.93, 0.93, 0.92];
+      bx(-5, -D, 5, -D + 1.5, z - 8, z + 8, body);                                                                      // площадка
+      bx(-1.8, -D + 1.5, 1.8, -D + 7, z - 1.8, z + 1.8, body);                                                        // кронштейн
+      bx(-4.5, -D + 7, 4.5, D - 1, z - 3.5, z + 5, body);                                                             // корпус
+      bx(-5.2, -D + 6, 5.2, D + 2, z + 5, z + 6.2, body.map(x => x * 0.9));                                            // козырёк
+      bx(-3.2, D - 1, 3.2, D - 0.4, z - 2.5, z + 3.8, black);                                                         // стекло объектива
+      cy(0, D - 0.5, 1.6, z, z + 0.4, [0.2, 0.25, 0.4], 10);
+      return true;
+    }
+    // --- настенный шкаф видеорегистратора: корпус, стеклянная дверь, NVR с индикаторами, ИБП снизу ---
+    if (sh === 'nvr') {
+      const zb = e + (U.isNum(it.z0) ? it.z0 : 140), top = zb + (H || 45), dk = [0.2, 0.21, 0.23];
+      bx(-W, -D, W, D - 1.5, zb, top, dk);
+      bx(-W + 3, D - 3, W - 3, D - 1.5, zb + 4, zb + 18, [0.12, 0.12, 0.13]);                                             // ИБП
+      bx(-W + 3, D - 3, W - 3, D - 1.5, zb + 24, zb + 29, [0.1, 0.1, 0.11]);                                               // регистратор
+      for (let k = 0; k < 4; k++) bx(-W + 6 + k * 3, D - 1.5, -W + 7.5 + k * 3, D - 1.2, zb + 26, zb + 27.5, k === 3 ? [0.9, 0.5, 0.1] : [0.2, 0.9, 0.3]);
+      bx(-W + 1, D - 1.5, W - 1, D - 0.8, zb + 2, top - 2, [0.6, 0.7, 0.75], { glass: true });                            // дверца
+      cy(-W + 5, -D + 5, 1.2, top, View3D.ceilZ(it, e), [0.35, 0.36, 0.38], 8);                                           // кабели — вверх, на чердак
       return true;
     }
     // --- уличный кран на фасаде: пластина, корпус, маховик и излив вниз ---
@@ -1064,15 +1213,17 @@ const View3D = {
     // --- дымоход и вентканал: внутри дома оштукатурен, над крышей — кирпичный оголовок с колпаком; вентстояк — с дефлектором ---
     if (def.stack) {
       const top = e + Checks.stackH(it), st = Checks.stack(it), roofZ = st ? Math.min(st.roofZ, top) : top;
+      const zb = e + (U.isNum(it.z0) ? it.z0 : 0);                                          // низ трубы (в погребе — ниже пола)
       if (sh === 'ventPipe') {
-        cy(0, 0, W, e, top, [0.88, 0.89, 0.9], 14);
-        cy(0, 0, W + 3, Math.max(e, roofZ - 5), top - 4, [0.55, 0.57, 0.6], 14);          // утеплённая часть над кровлей
+        cy(0, 0, W, zb, top, [0.88, 0.89, 0.9], 14);
+        if (zb < e - 20) { bx(-W - 3, -W - 3, W + 3, W + 3, zb - 1, zb + 1, [0.6, 0.62, 0.64]); bx(-W - 1, W - 2, W + 1, W + 0.5, zb + 3, zb + 18, [0.3, 0.31, 0.33]); }   // решётка внизу
+        cy(0, 0, W + 3, Math.max(zb, roofZ - 5), top - 4, [0.55, 0.57, 0.6], 14);          // утеплённая часть над кровлей
         for (const a of [0, 1, 2, 3]) { const q = { x: Math.cos(a * Math.PI / 2) * W, y: Math.sin(a * Math.PI / 2) * W }; cy(q.x, q.y, 0.8, top, top + 12, chrome, 4); }
         cy(0, 0, W * 1.7, top + 12, top + 15, [0.72, 0.74, 0.77], 16);                     // дефлектор
         return true;
       }
       const brick = C(sh === 'chimney' ? '#8f5a45' : '#a86a52'), plaster = C('#e8e4dc');
-      bx(-W, -D, W, D, e, roofZ, plaster);
+      bx(-W, -D, W, D, zb, roofZ, plaster);
       if (sh === 'ventShaft') {
         // в помещении: плинтус, решётки каналов под потолком (лицевая сторона — +d/2); у вентблока на 2 канала
         // второй канал — под короб от кухонной вытяжки, если она рядом
@@ -1414,6 +1565,14 @@ const View3D = {
         for (let x = -W + 8; x <= W - 8; x += Math.max(8, (w - 16) / 5)) cy(x, -D + 6, 1, z - 18, z - 2, grey, 6);
       }
       bx(-W - 3, -D, -W - 1, -D + 6, zb, zb + 40, grey); bx(W + 1, -D, W + 3, -D + 6, zb, zb + 40, grey);           // кронштейны
+      return true;
+    }
+    if (it.key === 'manifoldWF') {                                                                                    // шкаф коллектора тёплого пола
+      const zb = e + 25, zt = zb + (H || 60), wt = [0.94, 0.94, 0.93];
+      bx(-W, -D, W, D - 1, zb, zt, wt);
+      bx(-W + 1, D - 1, W - 1, D, zb + 1, zt - 1, [0.97, 0.97, 0.96]);
+      for (let x = -W + 8; x < W - 8; x += 3) bx(x, D, x + 1.5, D + 0.3, zt - 12, zt - 5, [0.7, 0.7, 0.7]);                // жалюзи
+      bx(W - 8, D, W - 5, D + 1.5, zb + 25, zb + 35, [0.3, 0.3, 0.32]);                                                   // замок
       return true;
     }
     if (it.key === 'gasMeter') {
@@ -1877,12 +2036,16 @@ const View3D = {
       const hbar = (a0, a1, z) => { const m = (a0 + a1) / 2, hl = Math.min(18, (a1 - a0) * 0.45); R2(m - hl / 2, m + hl / 2, 1.8, 4, z - 0.7, z + 0.7, chrome); };
       for (let i = 0; i < n; i++) {
         const a0 = s0 + i * ml + 0.2, a1 = s0 + (i + 1) * ml - 0.2;
-        if (i === iHob) {                                                                            // ящик + встроенный духовой шкаф
+        if (i === iHob && it.oven !== false) {                                                       // ящик + встроенный духовой шкаф
           R2(a0, a1, 0, 1.8, zf1 - 14, zf1, fac); hbar(a0, a1, zf1 - 4);
           R2(a0 + 0.5, a1 - 0.5, 0, 1.8, zf0, zf1 - 15, black);
           R2(a0 + 4, a1 - 4, 1.8, 2.1, zf0 + 6, zf1 - 26, glass);
           R2(a0 + 3, a1 - 3, 1.8, 2.1, zf1 - 24, zf1 - 17, [0.22, 0.23, 0.25]);
           hbar(a0 + 4, a1 - 4, zf1 - 27);
+        } else if (i === iHob) {                                                                     // без духовки: фальш-панель под варочной и тумба
+          R2(a0, a1, 0, 1.8, zf1 - 12, zf1, fac);
+          if (ml >= 75) { const am = (a0 + a1) / 2; R2(a0, am - 0.2, 0, 1.8, zf0, zf1 - 12.4, fac); R2(am + 0.2, a1, 0, 1.8, zf0, zf1 - 12.4, fac); R2(am - 3, am - 1.5, 1.8, 4, zf1 - 32, zf1 - 16, chrome); R2(am + 1.5, am + 3, 1.8, 4, zf1 - 32, zf1 - 16, chrome); }
+          else { R2(a0, a1, 0, 1.8, zf0, zf1 - 12.4, fac); const hp = a1 - 4; R2(hp - 0.8, hp + 0.8, 1.8, 4, zf1 - 32, zf1 - 16, chrome); }
         } else if (i === iDish) {                                                                    // посудомоечная машина — под фасадом
           R2(a0, a1, 0, 1.8, zf0, zf1, fac); hbar(a0, a1, zf1 - 5);
         } else if (i === iSink || ml >= 75) {                                                        // двустворчатый
@@ -1937,7 +2100,30 @@ const View3D = {
       const qs = L(sp.x, sp.y); cyl(qs.x, qs.y, 1.2, TOP + 24, TOP + 31, chrome, 8);
       bx(fp.x - 1, fp.y - 1, fp.x + 1, fp.y + 1, TOP + 18, TOP + 20, chrome);
     }
-    if (K.hob) {
+    if (K.hob && it.hob === 'gas') {
+      // газовая панель: нержавейка, 4 горелки (рассекатель + крышка), чугунные решётки, ручки у переднего края
+      const hb = K.hob, hr = K.runs.find(r => hb.x >= r.x0 && hb.x <= r.x1 && hb.y >= r.y0 && hb.y <= r.y1) || K.runs[0];
+      const fs = hr.front === 'down' || hr.front === 'right' ? 1 : -1;
+      const HB = (a0, a1, c0, c1, z0, z1, col) => { const y0 = Math.min(c0 * fs, c1 * fs), y1 = Math.max(c0 * fs, c1 * fs); if (hb.v) bx(hb.x + y0, hb.y + a0, hb.x + y1, hb.y + a1, z0, z1, col); else bx(hb.x + a0, hb.y + y0, hb.x + a1, hb.y + y1, z0, z1, col); };
+      const HP = (a, c) => L(hb.v ? hb.x + c * fs : hb.x + a, hb.v ? hb.y + a : hb.y + c * fs);
+      const steel = [0.74, 0.75, 0.77], iron = [0.1, 0.1, 0.11];
+      HB(-29, 29, -25, 25, TOP, TOP + 0.8, steel);
+      for (const [a, c, r2] of [[-14, -12, 4.5], [14, -12, 3.5], [-14, 6, 3.5], [14, 6, 5.5]]) {
+        const q = HP(a, c);
+        cyl(q.x, q.y, r2 + 1.8, TOP + 0.8, TOP + 1.4, [0.55, 0.56, 0.58], 14);
+        cyl(q.x, q.y, r2, TOP + 1.4, TOP + 2.6, [0.62, 0.62, 0.64], 14);
+        cyl(q.x, q.y, r2 * 0.75, TOP + 2.6, TOP + 3.1, iron, 14);
+      }
+      for (const [g0, g1] of [[-28, -1], [1, 28]]) {                                                 // решётки
+        const zg0 = TOP + 3.4, zg1 = TOP + 4.6;
+        HB(g0, g1, -24, -22.8, zg0, zg1, iron); HB(g0, g1, 13.8, 15, zg0, zg1, iron);
+        HB(g0, g0 + 1.2, -24, 15, zg0, zg1, iron); HB(g1 - 1.2, g1, -24, 15, zg0, zg1, iron);
+        const am = (g0 + g1) / 2; HB(am - 0.6, am + 0.6, -24, 15, zg0, zg1, iron);
+        for (const c of [-12, 6]) HB(g0, g1, c - 0.6, c + 0.6, zg0, zg1, iron);
+        for (const [cx, cz] of [[g0 + 0.6, -24], [g1 - 0.6, -24], [g0 + 0.6, 15], [g1 - 0.6, 15]]) HB(cx - 0.6, cx + 0.6, cz - 0.6, cz + 0.6, TOP + 0.8, zg0, iron);   // ножки
+      }
+      for (const a of [-21, -7, 7, 21]) { const q = HP(a, 20.5); cyl(q.x, q.y, 2.2, TOP + 0.8, TOP + 3.4, [0.2, 0.2, 0.22], 12); HB(a - 0.3, a + 0.3, 18.5, 22.5, TOP + 3.4, TOP + 3.6, steel); }
+    } else if (K.hob) {
       const hb = K.hob, hw = hb.v ? 25 : 28, hd = hb.v ? 28 : 25;
       bx(hb.x - hw, hb.y - hd, hb.x + hw, hb.y + hd, TOP, TOP + 0.6, C('#1f2226'));
       for (const [sx, sy, r2] of [[-1, -1, 8], [1, -1, 6], [-1, 1, 6], [1, 1, 9]]) { const q = L(hb.x + sx * hw * 0.5, hb.y + sy * hd * 0.5); cyl(q.x, q.y, r2, TOP + 0.6, TOP + 0.9, C('#5a2a22'), 14); cyl(q.x, q.y, r2 - 1.5, TOP + 0.9, TOP + 1, C('#2a2c30'), 14); }

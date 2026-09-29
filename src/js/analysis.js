@@ -163,7 +163,7 @@ const Analysis = {
         const stove = inR.find(it => ['stoveHeat', 'fireplace', 'fireplaceCorner', 'stoveMetal'].includes(catItem(it.key).shape));
         const kitchen = /кухн/.test(nm), wc = /сануз|с\/у|туалет|уборн/.test(nm), bath = /ванн|душ/.test(nm) || inR.some(it => ['bath', 'bathCorner', 'shower'].includes(catItem(it.key).shape));
         const living = !!(r.tag && r.tag.living) || /спальн|гостин|детск|кабинет|комнат/.test(nm);
-        const hood = inR.some(it => it.key === 'hood'), gasStove = inR.some(it => /gas/i.test(it.key) && catItem(it.key).shape === 'stove');
+        const hood = inR.some(it => it.key === 'hood'), gasStove = inR.find(it => (/gas/i.test(it.key) && catItem(it.key).shape === 'stove') || (KITCHEN_SHAPES.has(catItem(it.key).shape) && it.hob === 'gas'));
         let q = 0, why = '';
         if (kitchen) { q = gasStove ? 90 : 60; why = gasStove ? 'кухня с газовой плитой — 90 м³/ч' : 'кухня — 60 м³/ч (с газовой плитой — 90)'; }
         else if (gasBoiler || /котельн|топочн/.test(nm)) { q = Math.ceil(3 * A * H); why = `котельная — 3 объёма в час (${q} м³/ч)`; }
@@ -174,6 +174,11 @@ const Analysis = {
           need += q; rowsOf.push([r.name, `${q} м³/ч${exh.length ? '' : ' — нет вытяжки'}`]);
           const sev = why ? 'bad' : 'warn';
           if (!exh.length) add(sev, 'Вентиляция', `${r.name}: нет вытяжки${hood ? ' (зонту над плитой нужен свой вентканал)' : ''} — ${why || 'нужна вытяжка'}; поставьте вентканал или решётку в канал`, 'СП 54.13330 табл. 9.1; СП 55.13330; СП 60.13330', at);
+        }
+        if (gasStove) {
+          if (!wins) add('bad', 'Газ', `${r.name}: газовая плита — только в помещении с окном (с форточкой или створкой)`, 'СП 402.1325800 п. 5.5', at);
+          if (A * H < 15) add('warn', 'Газ', `${r.name}: объём ${(A * H).toFixed(1)} м³ — для плиты на 4 конфорки нужно не меньше 15 м³`, 'СП 402.1325800 п. 5.5', at);
+          if (!d.items.some(it => it.key === 'gasValve' && G.dist(it, gasStove) < 400)) add('warn', 'Газ', `${name(gasStove)}: поставьте кран на опуске газопровода перед плитой`, 'СП 62.13330 п. 5.1.7; СП 402.1325800', gasStove, gasStove.id);
         }
         if (gasBoiler) {
           if (!sup.length && !wins && !inR.some(it => it.key === 'ventTransfer')) add('bad', 'Вентиляция', `${r.name}: газовый котёл без притока — нужен приточный клапан или решётка (приток = вытяжка + воздух на горение)`, 'СП 62.13330; СП 402.1325800', at);

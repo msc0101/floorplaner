@@ -535,6 +535,74 @@ const Model = {
   },
 
   /** Ближайшая стена к точке */
+  /** Тёплый пол: «змейки» в контуре пола помещения (отступ от стен inset, шаг pitch, контур не длиннее maxLen).
+   *  Трубы идут вдоль длинной стороны; помещение делится на полосы — отдельные контуры; начало и конец каждого
+   *  контура — у стороны, ближайшей к коллектору (from), обратка — вдоль стены. Результат — массив полилиний. */
+  warmFloor(poly, opt = {}) {
+    const pitch = opt.pitch || 20, inset = opt.inset ?? 15, maxLen = opt.maxLen || 8000;
+    const b = G.bbox(poly), alongX = (b.x1 - b.x0) >= (b.y1 - b.y0);
+    // локальные оси: u — вдоль труб, v — поперёк; знаки — чтобы коллектор был у малых u и v
+    const c = { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 }, from = opt.from || c;
+    const su = (alongX ? from.x - c.x : from.y - c.y) > 0 ? -1 : 1, sv = (alongX ? from.y - c.y : from.x - c.x) > 0 ? -1 : 1;
+    const toL = (p) => alongX ? { u: (p.x - c.x) * su, v: (p.y - c.y) * sv } : { u: (p.y - c.y) * su, v: (p.x - c.x) * sv };
+    const toW = (u, v) => alongX ? { x: c.x + u * su, y: c.y + v * sv } : { x: c.x + v * sv, y: c.y + u * su };
+    const P = poly.map(toL);
+    const v0 = Math.min(...P.map(p => p.v)) + inset, v1 = Math.max(...P.map(p => p.v)) - inset;
+    // пересечения сканлинии v с контуром → интервалы по u (с отступом от стен)
+    const spans = (v) => {
+      const xs = [];
+      for (let i = 0; i < P.length; i++) {
+        const a = P[i], q = P[(i + 1) % P.length];
+        if ((a.v > v) !== (q.v > v)) xs.push(a.u + (v - a.v) * (q.u - a.u) / (q.v - a.v));
+      }
+      xs.sort((m, n) => m - n);
+      const out = [];
+      for (let i = 0; i + 1 < xs.length; i += 2) if (xs[i + 1] - xs[i] > 2 * inset + 20) out.push([xs[i] + inset, xs[i + 1] - inset]);
+      return out;
+    };
+    const lines = [];
+    let prev = null;
+    for (let v = v0; v <= v1 + 0.01; v += pitch) {
+      const s = spans(v);
+      if (!s.length) { prev = null; continue; }
+      // при нескольких интервалах — тот, что продолжает предыдущий, иначе самый длинный
+      const pick = s.reduce((m, q) => { const ov = (x) => prev ? Math.min(x[1], prev[1]) - Math.max(x[0], prev[0]) : x[1] - x[0]; return ov(q) > ov(m) ? q : m; });
+      lines.push({ v, a: pick[0], b: pick[1] });
+      prev = pick;
+    }
+    if (lines.length < 2) return [];
+    // сколько контуров: длина змейки ≈ сумма линий + повороты + обратка
+    // пары линий (туда-обратно) — «кирпичики» контура; делим их на контуры примерно поровну по длине
+    const pairs = [];
+    for (let i = 0; i + 1 < lines.length; i += 2) pairs.push({ ls: [lines[i], lines[i + 1]], len: (lines[i].b - lines[i].a) + (lines[i + 1].b - lines[i + 1].a) + 4 * pitch });
+    const total = pairs.reduce((s, p) => s + p.len, 0);
+    const n = Math.max(1, Math.ceil(total / (maxLen * 0.9))), target = total / n;
+    const groups = [];
+    let cur = [], acc = 0;
+    for (const p of pairs) {
+      if (cur.length && acc + p.len / 2 > target && groups.length < n - 1) { groups.push(cur); cur = []; acc = 0; }
+      cur.push(...p.ls); acc += p.len;
+    }
+    if (cur.length) groups.push(cur);
+    const out = [];
+    for (const grp of groups) {
+      const pts = [];
+      grp.forEach((l, i) => { if (i % 2) pts.push(toW(l.b, l.v), toW(l.a, l.v)); else pts.push(toW(l.a, l.v), toW(l.b, l.v)); });
+      // обратка: вдоль начальной стороны, в 8 см от поворотов, назад к началу
+      for (let i = grp.length - 1; i >= 0; i--) {
+        const l = grp[i], nx = grp[i - 1];
+        pts.push(toW(l.a - 8, l.v));
+        if (nx && Math.abs(nx.a - l.a) > 1) pts.push(toW(l.a - 8, l.v - pitch / 2), toW(nx.a - 8, l.v - pitch / 2));   // ступенька контура
+      }
+      pts.push(toW(grp[0].a - 8, grp[0].v - pitch / 2));
+      const clean = pts.filter((p, i) => {                                // без точек посреди прямых участков
+        const a = pts[i - 1], q = pts[i + 1];
+        return !a || !q || Math.abs(G.cross(G.sub(p, a), G.sub(q, p))) > 1e-3 || G.dot(G.sub(p, a), G.sub(q, p)) < 0;
+      });
+      out.push(clean.map(p => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 })));
+    }
+    return out;
+  },
   nearestWall(p, maxDist, filter) {
     let best = null, bd = maxDist;
     for (const w of App.V.walls) {

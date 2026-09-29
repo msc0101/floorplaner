@@ -825,7 +825,25 @@ const UI = {
           + (top >= st.need - 1 ? '<b>По норме.</b>' : `<b style="color:var(--danger)">Ниже нормы на ${mm(st.need - top)}</b> — нужен верх на ${mm(st.need - st.e)} от пола.`)
           + ' Норма: до 1,5 м от конька — на 0,5 м выше конька, 1,5–3 м — не ниже конька, дальше — не ниже линии 10° от конька.')
           : F.note('Над трубой нет крыши дома — высоту задайте сами (не меньше 0,5 м над кровлей).'),
-        !auto && st && top < st.need - 1 ? F.btns([['Поднять до нормы', () => { it.h = Math.ceil((st.need - st.e) / 5) * 5; Model.commit(); }]]) : null));
+        !auto && st && top < st.need - 1 ? F.btns([['Поднять до нормы', () => { it.h = Math.ceil((st.need - st.e) / 5) * 5; Model.commit(); }]]) : null,
+        F.num('Низ трубы от пола (в погребе — минус)', it.z0 || 0, (v) => { it.z0 = U.clamp(v, -400, 300) || undefined; Model.commit(); }, { step: 5 })));
+    }
+    if (def.shape === 'cctv') {
+      body.append(F.section('Камера',
+        F.num('Угол обзора', it.fov ?? def.fov, (v) => { it.fov = v; Model.commit(); }, { min: 10, max: 180, unit: '°' }),
+        F.num('Дальность (распознавание)', it.range ?? def.range, (v) => { it.range = v; Model.commit(); }, { min: 100, max: 5000, step: 50 }),
+        F.note('Сектор на плане — зона, где камера различает человека. Типично: 2,8 мм — 100° и 8–10 м, 4 мм — 85° и 12–15 м, 6 мм — 55° и 20 м. Камеры ставят на высоте 2,5–3 м под свесом крыши, смотрят вдоль стен и на въезд, чтобы зоны перекрывались.')));
+    }
+    if (def.shape === 'radiator') {
+      body.append(F.section('Монтаж',
+        F.num('Низ от пола', U.isNum(it.z0) ? it.z0 : it.key === 'towel' ? 50 : 12, (v) => { it.z0 = U.clamp(v, 0, 200); Model.commit(); }),
+        F.note('Радиатор — под окном, длиной 50–75 % ширины окна, 10–12 см от пола и от подоконника, 3–5 см от стены: тёплый воздух отсекает холод от стекла.')));
+    }
+    if (KITCHEN_SHAPES.has(def.shape) && kitchenLayout(def.shape, it.w, it.d).hob) {
+      body.append(F.section('Варочная панель',
+        F.select('Тип', it.hob === 'gas' ? 'gas' : 'el', [['el', 'электрическая / индукция'], ['gas', 'газовая']], (v) => { it.hob = v === 'gas' ? 'gas' : undefined; Model.commit(); }),
+        F.check('Духовой шкаф под панелью', it.oven !== false, (v) => { it.oven = v ? undefined : false; Model.commit(); }),
+        it.hob === 'gas' ? F.note('Газовая плита — только в кухне с окном (форточкой) и высотой потолка от 2,2 м; вытяжка 90 м³/ч (СП 402.1325800, СП 54.13330). Перед плитой — кран на опуске газопровода, подключение гибкой подводкой до 1,5 м.') : null));
     }
     if (def.shape === 'gateSlide') {
       const z = gateZone(it, it.w);
@@ -1119,6 +1137,20 @@ const UI = {
       r.tag && r.tag.fixed ? F.btns([['Подпись — в центр помещения', () => { const t = r.tag; delete t.fixed; const c = G.labelPoint(r.floor); t.x = c.x; t.y = c.y; Model.commit(); }]]) : null,
       F.note(r.tag && r.tag.fixed ? 'Подпись закреплена там, куда её перетащили.' : 'Подпись стоит по центру помещения; перетащите её, чтобы закрепить в другом месте.'),
     ));
+    // тёплый пол: змейки по помещению — отдельные контуры до 80 м, начало у ближайшего коллектора
+    const wf = App.V.lines.filter(l => l.kind === 'warmfloor' && l.pts.every(p => G.pointInPoly(p, r.axis)));
+    const wfLen = (l) => l.pts.reduce((s, p, i) => i ? s + G.dist(p, l.pts[i - 1]) : 0, 0);
+    const layWF = (pitch) => {
+      Model.remove(wf.map(l => l.id));
+      const man = App.V.items.filter(i => i.key === 'manifold' || i.key === 'manifoldWF').sort((a, b) => G.dist(a, r.label) - G.dist(b, r.label))[0];
+      const loops = Model.warmFloor(r.floor, { pitch, from: man || null });
+      loops.forEach((pts, i) => Model.add('lines', { kind: 'warmfloor', pts, dia: 16, depth: 0, section: 'PE-Xa 16×2', label: `ТП ${r.name}${loops.length > 1 ? ' ' + (i + 1) : ''}`, note: `Шаг ${pitch} см; контур до 80 м; подача и обратка — к коллектору тёплого пола` }));
+      Model.commit(); App.selChanged();
+      UI.toast(loops.length ? `Уложено контуров: ${loops.length}` : 'Помещение слишком мало для тёплого пола');
+    };
+    body.append(F.section('Тёплый пол',
+      wf.length ? F.info('Контуры', wf.map(l => `${(wfLen(l) / 100).toFixed(0)} м`).join(', ')) : F.note('Водяной тёплый пол: змейка труб PE-Xa 16 мм в стяжке, отступ от стен 15 см; длинные помещения делятся на контуры не длиннее 80 м.'),
+      F.btns([['Уложить, шаг 15 см', () => layWF(15)], ['Шаг 20 см', () => layWF(20)]].concat(wf.length ? [['Убрать', () => { Model.remove(wf.map(l => l.id)); Model.commit(); App.selChanged(); }, 'ghost']] : []))));
     const name = r.name.toLowerCase();
     const presets = ['Гостиная', 'Кухня', 'Кухня-гостиная', 'Спальня', 'Детская', 'Кабинет', 'Санузел', 'Ванная', 'Туалет', 'Прихожая', 'Коридор', 'Гардероб', 'Котельная', 'Кладовая', 'Терраса', 'Гараж'];
     body.append(F.section('Быстрое название', U.el('div', { class: 'chips' }, presets.map(p => U.el('button', {

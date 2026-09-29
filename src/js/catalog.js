@@ -276,6 +276,7 @@ const CATALOG = [
     { key: 'radiator', name: 'Радиатор', shape: 'radiator', w: 80, d: 10, h: 50 },
     { key: 'radiatorLong', name: 'Радиатор длинный', shape: 'radiator', w: 140, d: 10, h: 50 },
     { key: 'manifold', name: 'Коллектор', shape: 'labelbox', w: 50, d: 12, h: 40, label: 'Кол' },
+    { key: 'manifoldWF', name: 'Коллектор тёплого пола (в шкафу, с расходомерами)', kw: 'тёплый теплый пол коллектор гребёнка шкаф', shape: 'labelbox', w: 70, d: 12, h: 60, label: 'ТП' },
     { key: 'pump', name: 'Циркуляционный насос', shape: 'pump', w: 18, d: 18, h: 15 },
     { key: 'expansionTank', name: 'Расширительный бак (мембранный)', kw: 'бак отопление котельная', shape: 'boiler', w: 36, d: 36, h: 50 },
   ]},
@@ -318,6 +319,9 @@ const CATALOG = [
     { key: 'lightPole', name: 'Фонарь уличный', kw: 'освещение фонарь столб улица', shape: 'lightpole', w: 20, d: 20, h: 350, sym: 36, shadow: true },
     { key: 'bollardLight', name: 'Светильник-столбик садовый', kw: 'освещение дорожка сад столбик', shape: 'bollard', w: 14, d: 14, h: 80, sym: 24 },
     { key: 'facadeLight', name: 'Светильник фасадный (уличный)', kw: 'освещение фасад крыльцо улица бра', shape: 'facadeLight', w: 16, d: 14, h: 210, sym: 22 },
+    { key: 'socketOut', name: 'Розетка уличная IP44 с крышкой', kw: 'розетка улица фасад садовая техника ip44 влагозащищённая', shape: 'socketOut', w: 10, d: 8, h: 80, sym: 24 },
+    { key: 'cctvCam', name: 'Камера видеонаблюдения уличная', kw: 'видеонаблюдение камера cctv охрана ip poe', shape: 'cctv', w: 10, d: 22, h: 280, sym: 26, fov: 90, range: 1500 },
+    { key: 'nvr', name: 'Видеорегистратор (NVR) + ИБП в настенном шкафу', kw: 'видеонаблюдение регистратор nvr ибп шкаф сеть', shape: 'nvr', w: 40, d: 25, h: 45 },
     { key: 'groundRod', name: 'Контур заземления', shape: 'ground', w: 100, d: 100, h: 0 },
     { key: 'generator', name: 'Генератор', shape: 'labelbox', w: 70, d: 55, h: 55, label: 'ГЕН' },
   ]},
@@ -331,6 +335,9 @@ const CATALOG = [
     { key: 'boreholeArt', name: 'Скважина артезианская (кессон)', kw: 'скважина артезианская вода кессон известняк', shape: 'borehole', w: 150, d: 150, h: 20 },
     { key: 'manhole', name: 'Колодец смотровой', shape: 'ring', w: 70, d: 70, h: 10, label: 'КК' },
     { key: 'drainWell', name: 'Дренажный колодец', shape: 'ring', w: 100, d: 100, h: 10, label: 'ДК' },
+    { key: 'downspout', name: 'Водосточная труба (водосток с крыши)', kw: 'водосток водосточная труба желоб ливнёвка ливневка крыша дождь', shape: 'downspout', w: 12, d: 12, h: 300, sym: 22 },
+    { key: 'stormInlet', name: 'Дождеприёмник (пескоуловитель)', kw: 'ливнёвка ливневка дождеприёмник водосток воронка', shape: 'stormInlet', w: 30, d: 30, h: 5 },
+    { key: 'drainChannel', name: 'Лоток водоотводный с решёткой', kw: 'ливнёвка ливневка лоток водоотвод решётка', shape: 'drainChannel', w: 100, d: 14, h: 5 },
     { key: 'filterField', name: 'Поле фильтрации', shape: 'filterfield', w: 300, d: 400, h: 0 },
     { key: 'riser', name: 'Стояк канализации Ø110', shape: 'riser', w: 12, d: 12, h: 300, sym: 16 },
     { key: 'faucetOut', name: 'Кран уличный незамерзающий (на фасаде)', kw: 'кран полив вода улица незамерзающий', shape: 'faucetOut', w: 8, d: 15, h: 50, sym: 22 },
@@ -913,6 +920,8 @@ const Painters = (() => {
     const rx = w / 4, ry = d / 4;
     circle(P, x - rx, y - ry, Math.min(w, d) * 0.15, false); circle(P, x + rx, y - ry, Math.min(w, d) * 0.12, false);
     circle(P, x - rx, y + ry, Math.min(w, d) * 0.12, false); circle(P, x + rx, y + ry, Math.min(w, d) * 0.15, false);
+    // газовая панель: чугунные решётки над конфорками
+    if (P.it.hob === 'gas') { box(P, x - w / 2, y - d / 2, w, d, 1, false); line(P, [x, y - d / 2, x, y + d / 2]); line(P, [x - w / 2, y, x + w / 2, y]); }
   };
   S.ksink = (P, w, d) => { S.counter(P, w, d); sinkBowl(P, 0, -2, w - 16, d - 20); };
   S.kitchenI = (P, w, d) => {
@@ -1104,6 +1113,46 @@ const Painters = (() => {
     const c = P.ctx, r = Math.min(w / 2, d * 0.7);
     c.beginPath(); c.arc(0, -d / 2 + d * 0.3, r, 0, Math.PI); c.stroke();
     line(P, [-r * 0.6, -d / 2 + d * 0.3, r * 0.6, -d / 2 + d * 0.3 + r * 0.8]); line(P, [r * 0.6, -d / 2 + d * 0.3, -r * 0.6, -d / 2 + d * 0.3 + r * 0.8]);
+  };
+  // водосточная труба: круг у стены и стрелка выпуска (куда уходит вода)
+  S.downspout = (P, w, d) => {
+    const r = Math.min(w, d) / 2;
+    circle(P, 0, 0, r); thin(P); circle(P, 0, 0, r * 0.45, false);
+    lw(P, 1.2); line(P, [0, r, 0, r * 2.4]); line(P, [-r * 0.5, r * 1.9, 0, r * 2.4, r * 0.5, r * 1.9]);
+  };
+  S.stormInlet = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d, 1); thin(P);
+    box(P, -w / 2 + 3, -d / 2 + 3, w - 6, d - 6, 0, false);
+    for (let x = -w / 2 + 6; x < w / 2 - 4; x += 4) line(P, [x, -d / 2 + 3, x, d / 2 - 3]);
+  };
+  S.drainChannel = (P, w, d) => {
+    P.ctx.fillStyle = P.C.itemFill; box(P, -w / 2, -d / 2, w, d, 0); thin(P);
+    for (let x = -w / 2 + 4; x < w / 2 - 2; x += 5) line(P, [x, -d / 2 + 3, x, d / 2 - 3]);
+    lw(P, 1.2); line(P, [w / 2 - 14, 0, w / 2 - 4, 0]); line(P, [w / 2 - 8, -3, w / 2 - 4, 0, w / 2 - 8, 3]);   // уклон к выпуску
+  };
+  // уличная розетка IP44: знак розетки в корпусе с крышкой
+  S.socketOut = (P, w, d) => {
+    const s = Math.max(w, 14) * 0.5;
+    box(P, -s * 1.3, -d / 2, s * 2.6, d, 1);
+    S.socket(P, w, d, true);
+    thin(P); line(P, [-s * 1.3, d / 2 + 2, s * 1.3, d / 2 + 2]);
+    text(P, 'IP44', 0, d / 2 + s * 0.9, s * 0.8, { bold: true });
+  };
+  // камера: корпус с объективом и сектор обзора (угол fov, дальность range — для распознавания силуэта)
+  S.cctv = (P, w, d) => {
+    const c = P.ctx, fov = U.rad(U.clamp(P.it.fov ?? P.def.fov ?? 90, 10, 180)), R = U.clamp(P.it.range ?? P.def.range ?? 1500, 100, 5000);
+    c.save();
+    c.beginPath(); c.moveTo(0, d / 2); c.arc(0, d / 2, R, Math.PI / 2 - fov / 2, Math.PI / 2 + fov / 2); c.closePath();
+    c.fillStyle = 'rgba(124, 58, 237, 0.07)'; c.fill();
+    c.strokeStyle = 'rgba(124, 58, 237, 0.55)'; c.setLineDash([8 * P.px, 5 * P.px]); lw(P, 1); c.stroke();
+    c.restore();
+    box(P, -w / 2, -d / 2, w, d * 0.75, 1);
+    box(P, -w * 0.35, -d / 2 + d * 0.75, w * 0.7, d * 0.25, 0);
+  };
+  S.nvr = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d, 1); thin(P);
+    line(P, [-w / 2, d / 2 - 4, w / 2, d / 2 - 4]);
+    text(P, 'NVR', 0, -2, Math.min(d * 0.4, w * 0.3), { bold: true });
   };
   S.chimney = (P, w, d) => { P.ctx.fillStyle = P.C.inkSoft; box(P, -w / 2, -d / 2, w, d, 0); thin(P); P.ctx.fillStyle = P.C.itemFill; box(P, -w / 2 + 5, -d / 2 + 5, w - 10, d - 10, 0); };
   S.column = (P, w, d) => { P.ctx.fillStyle = P.C.wallExt; box(P, -w / 2, -d / 2, w, d, 0); };
