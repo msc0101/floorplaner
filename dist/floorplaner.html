@@ -606,6 +606,10 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
 .check-item.an-info { border-left-color: var(--border-2); }
 .an-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 0 18px; }
 .an-card { min-width: 0; }
+.an-notes ul { margin: 4px 0 0; padding-left: 16px; font-size: 12.5px; line-height: 1.45; }
+.an-notes li { margin: 0 0 6px; cursor: pointer; }
+.an-notes li:hover { color: var(--accent); }
+.an-notes em { color: var(--muted); font-style: normal; font-size: 11px; }
 .an-card .tbl { width: 100%; table-layout: fixed; }
 .an-card .tbl td { overflow-wrap: anywhere; vertical-align: top; }
 .an-card .tbl td, .an-card .tbl th { padding: 3px 6px; font-size: 12.5px; line-height: 1.35; }
@@ -1275,6 +1279,7 @@ const LINE_KINDS = {
   overhead: { name: 'Воздушная ЛЭП', code: 'ВЛ', color: '#555e6b', dash: [18, 5, 3, 5, 3, 5], layer: 'electric', dia: 0, depth: 0, section: 'СИП 4×16' },
   freon:    { name: 'Фреонопровод и дренаж кондиционера', code: 'ФР', color: '#0891b2', dash: [3, 3], layer: 'heating', dia: 10, depth: 0 },
   lowvolt:  { name: 'Слаботочка (сеть, ТВ)', code: 'СС', color: '#7c3aed', dash: [6, 4], layer: 'electric', dia: 0, depth: 0, section: 'UTP cat.5e' },
+  airIn:    { name: 'Приток наружного воздуха к топке печи', code: 'ПВ', color: '#0e9f6e', dash: [8, 3, 2, 3], layer: 'heating', dia: 110, depth: 0 },
   ground:   { name: 'Заземление', code: 'З', color: '#16a34a', dash: [2, 4], layer: 'electric', dia: 0, depth: 50, section: 'Полоса 40×4' },
 };
 
@@ -1289,7 +1294,7 @@ const SYSTEMS = {
     norms: 'СП 60.13330.2020 «Отопление, вентиляция и кондиционирование воздуха» (радиаторы — под окнами, п. 6.4.4); СП 50.13330.2012 (теплозащита)' },
   warmfloor: { name: 'Тёплый пол', short: 'Тёплый пол', color: '#e07b2f', lines: ['warmfloor'], keys: ['manifoldWF'],
     norms: 'СП 60.13330.2020 п. 6.4.10: температура поверхности пола ≤ 26 °C в жилых, ≤ 31 °C в ванных; контур ≤ 80–100 м (PE-Xa 16 мм)' },
-  vent:      { name: 'Вентиляция', short: 'Вентиляция', color: '#0e9f6e', lines: [], keys: ['ventSupply', 'ventGrille', 'ventTransfer', 'recuperator', 'fan'],
+  vent:      { name: 'Вентиляция', short: 'Вентиляция', color: '#0e9f6e', lines: ['airIn'], keys: ['ventSupply', 'ventGrille', 'ventTransfer', 'recuperator', 'fan'],
     norms: 'СП 54.13330.2022 / СП 55.13330.2016 (воздухообмен); СП 60.13330.2020 табл. 9.1; СП 402.1325800.2018 (помещения с газовыми приборами)' },
   ac:        { name: 'Кондиционирование', short: 'Кондиционеры', color: '#0891b2', lines: ['freon'], keys: ['ac', 'acout'],
     norms: 'СП 60.13330.2020 разд. 7; длина трассы и перепад высот — по паспорту кондиционера' },
@@ -1321,8 +1326,56 @@ function sysOf(it) {
   if (def.layer === 'electric' && def.sym) return 'power';
   return null;
 }
+/** Уклон самотечной трассы: канализация Ø ≤ 110 — 2 %, больше — 1 %, ливнёвка — 0,5 % (СП 30, СП 32) */
+function lineSlope(l) { return l.kind === 'sewer' ? ((l.dia || 110) <= 110 ? 0.02 : 0.01) : l.kind === 'drain' ? 0.005 : 0; }
+/** Глубина трассы в каждой вершине, см: у самотечных — растёт по уклону по ходу трассы */
+function lineDepths(l) {
+  const d0 = l.depth || 0, sl = d0 > 0 ? lineSlope(l) : 0;
+  let run = 0;
+  return l.pts.map((p, i) => { if (i) run += G.dist(l.pts[i - 1], p); return d0 + run * sl; });
+}
+/** Глубина колодца / септика / кессона, см: задана или по самой глубокой подключённой трубе + 50 см (не меньше типовой) */
+function wellDepth(it) {
+  if (U.isNum(it.wellDepth)) return it.wellDepth;
+  const k = catItem(it.key).key, R = Math.max(it.w, it.d) / 2 + 12;
+  let max = 0;
+  for (const l of App.doc.lines) { if ((l.floor || App.doc.floors[0].id) !== (it.floor || App.doc.floors[0].id)) continue; const ds = lineDepths(l); l.pts.forEach((p, i) => { if (G.dist(p, it) <= R) max = Math.max(max, ds[i]); }); }
+  const def = { septicRing: 300, cesspool: 250, drainWell: 200, manhole: 200, borehole: 200, boreholeArt: 200, well: 800 }[k] || 150;
+  return Math.max(def, Math.ceil((max + 50) / 10) * 10);
+}
 /** Инженерная система трассы */
 function sysOfLine(l) { for (const [id, s] of Object.entries(SYSTEMS)) if (s.lines.includes(l.kind)) return id; return null; }
+/** Что нужно подключить к прибору: [название, виды трасс] (виды — LINE_KINDS; 'socket' — розетка рядом, 'inlet' — дождеприёмник под трубой) */
+const LNK = { W: ['ХВС', ['water']], H: ['ГВС', ['hotwater']], K: ['канализация', ['sewer']], D: ['ливнёвка', ['drain', 'sewer']], T: ['отопление', ['heating']], G: ['газ', ['gas', 'gasAir']],
+  E: ['электропитание', ['power']], S: ['слаботочный кабель', ['lowvolt']], F: ['фреонопровод', ['freon']], WF: ['контуры тёплого пола', ['warmfloor']], TE: ['отопление или электропитание', ['heating', 'power']],
+  R: ['розетка рядом (≤ 1,5 м)', ['socket']], A: ['приток наружного воздуха к топке', ['airIn']], IN: ['дождеприёмник или ливнёвка', ['inlet', 'drain']] };
+function itemLinks(it) {
+  const def = catItem(it.key), k = def.key, sh = def.shape, L = LNK;
+  if (['sink', 'vanity', 'bath', 'bathCorner', 'shower', 'bidet', 'ksink'].includes(sh)) return [L.W, L.H, L.K];
+  if (KITCHEN_SHAPES.has(sh) && sh !== 'kitchenTall') return it.hob === 'gas' ? [L.W, L.H, L.K, L.G] : [L.W, L.H, L.K];
+  if (['toilet', 'urinal'].includes(sh)) return [L.W, L.K];
+  if (['washer', 'washerNarrow', 'dishwasher', 'dishwasher45'].includes(k)) return [L.W, L.K, L.R];
+  if (['fridge', 'fridgeSbs', 'hood', 'oven', 'microwave', 'dryer', 'nvr', 'router'].includes(k)) return [L.R];
+  if (['faucetOut', 'gardenHydrant', 'tap', 'waterIn', 'filter', 'hydroTank'].includes(k)) return [L.W];
+  if (['boiler50', 'boiler80', 'boilerFlat'].includes(k)) return [L.W, L.H, L.E];
+  if (k === 'indirect') return [L.W, L.H, L.T];
+  if (['stoveHeat', 'stoveMetal', 'fireplace', 'fireplaceCorner'].includes(sh) && k !== 'saunaStove') return [L.A];
+  if (k === 'towel') return [L.TE];
+  if (sh === 'radiator' || k === 'expansionTank') return [L.T];
+  if (['gasBoilerWall', 'boilerFloor'].includes(k)) return [L.T, L.G, L.R];
+  if (k === 'elBoiler') return [L.T, L.E];
+  if (k === 'manifoldWF') return [L.WF, L.T];
+  if (['gasMeter', 'gasValve', 'gasInlet'].includes(k)) return [L.G];
+  if (['septicRing', 'cesspool', 'septic2', 'septic3', 'filterField', 'riser'].includes(k)) return [L.K];
+  if (['drainWell', 'stormInlet', 'drainChannel'].includes(k)) return [L.D];
+  if (k === 'downspout') return [L.IN];
+  if (['borehole', 'boreholeArt'].includes(k)) return [L.W];
+  if (['socket', 'socket2', 'socketPower', 'socketOut', 'switch', 'switch2', 'lamp', 'spot', 'wallLamp', 'ledLinear', 'lamp36', 'transformer36', 'jbox', 'panel', 'meter', 'lightPole', 'bollardLight', 'facadeLight', 'recuperator'].includes(k)) return [L.E];
+  if (k === 'acout') return [L.F, L.E];
+  if (k === 'ac') return [L.F];
+  if (['cctvCam', 'wifiAp', 'lanSocket'].includes(k)) return [L.S];
+  return [];
+}
 /** Нормы для подсказки: по предмету или трассе */
 const ITEM_NORMS = {
   socket: 'ПУЭ 7.1.47–7.1.50; СП 256 п. 14: розеток — по одной на 4 м периметра комнаты, на кухне — от 4; в ванной — только зона 3 (≥ 0,6 м от ванны), IP44, УЗО ≤ 30 мА',
@@ -4365,7 +4418,13 @@ const Climate = {
     return { city, exact, snow, snowKpa: Climate.SNOW_KPA[snow], wind, windKpa: Climate.WIND_KPA[wind], zone, t5, frost };
   },
   /** Глубина промерзания, см: задана вручную на вкладке «Проект» или по климату города */
-  frost() { const f = App.doc.settings.frost; return U.isNum(f) ? f : Climate.get().frost; },
+  /** Нормативная глубина промерзания, см: из таблицы (суглинки, d0 = 0,23) с поправкой на грунт верхнего слоя (пески и супеси — d0 0,28–0,30), СП 22.13330 п. 5.5.3 */
+  frost() {
+    const f = App.doc.settings.frost;
+    if (U.isNum(f)) return f;
+    const s = (App.doc.settings.found || {}).soil, S = typeof SOILS !== 'undefined' && s ? SOILS[s] : null;
+    return Math.round(Climate.get().frost * (S ? S.d0 / 0.23 : 1));
+  },
 };
 
 const Sun = {
@@ -4959,6 +5018,16 @@ const Checks = {
         const depth = l.depth || 0;
         out.push({ line: l, kind: l.kind, title, text: `уклон ≥ ${(slope * 100).toFixed(1)}% → перепад ${m(L * slope)}${depth ? `, в конце глубина ≈ ${m(depth + L * slope)}` : ''}`, ok: null, at: l.pts[l.pts.length - 1], src: 'СП 30.13330 / СП 32.13330' });
       }
+      if (l.kind === 'sewer') for (const P of l.parts || [l]) {
+        if (!((P.depth || 0) > 0)) continue;
+        // наружная канализация: не мельче промерзания − 0,3 м (Ø до 500) и не менее 0,7 м до верха трубы; мельче — только с утеплением
+        const inH = (p) => outlines.some(o => G.pointInPoly(p, o)), inWell = (p) => wells.some(w => G.dist(w, p) <= Math.max(w.w, w.d) / 2 + 10);
+        const outP = inWell(P.pts[0]) && inWell(P.pts[P.pts.length - 1]) && G.polyPerimeter(P.pts, false) < 400 ? null : P.pts.find(p => !inH(p));   // перелив между колодцами септика — не трасса
+        if (!outP) continue;
+        const need = Math.max(Climate.frost() - 30, 70 + (P.dia || 110) / 10), dep = P.depth, t2 = (P.label || LINE_KINDS.sewer.code) + ' — ' + LINE_KINDS.sewer.name.toLowerCase();
+        if (P.heated) out.push({ line: { ...P, parts: [P] }, kind: P.kind, title: t2, text: `глубина ${m(dep)}, утеплена (скорлупа ППУ / XPS над трубой)${dep < need ? ` — без утепления нужно ≥ ${m(need)}` : ''}`, ok: dep >= 49, at: outP, src: 'СП 32.13330.2018 п. 6.2.4 (уменьшение глубины при утеплении)' });
+        else out.push({ line: { ...P, parts: [P] }, kind: P.kind, title: t2, text: dep >= need - 1 ? `глубина ${m(dep)} — не мельче промерзания − 0,3 м (${m(need)})` : `глубина ${m(dep)} — нужно ≥ ${m(need)} (промерзание ${m(Climate.frost())} − 0,3 м, не менее 0,7 м до верха) или утеплить трубу`, ok: dep >= need - 1, at: outP, src: 'СП 32.13330.2018 п. 6.2.4' });
+      }
       if (l.kind === 'sewer') {
         // выпуск до колодца: Ø до 110 — не длиннее 12 м, Ø150 — 15 м; на поворотах трассы — колодец
         const maxRun = (l.dia || 110) <= 110 ? 1200 : 1500;
@@ -5111,12 +5180,12 @@ const Checks = {
 
 /* Грунты основания: R0 — расчётное сопротивление, кПа (СП 22.13330 прил. Б, ориентировочно); heave — пучинистый */
 const SOILS = {
-  sand:      { name: 'Песок средней крупности, крупный', R0: 400, heave: false },
-  sandFine:  { name: 'Песок мелкий, пылеватый', R0: 300, heave: true },
-  sandyLoam: { name: 'Супесь', R0: 250, heave: true },
-  loam:      { name: 'Суглинок', R0: 220, heave: true },
-  clay:      { name: 'Глина', R0: 250, heave: true },
-  peat:      { name: 'Торф, насыпной, ил (слабый)', R0: 50, heave: true, weak: true },
+  sand:      { name: 'Песок средней крупности, крупный', R0: 400, heave: false, d0: 0.30 },
+  sandFine:  { name: 'Песок мелкий, пылеватый', R0: 300, heave: true, d0: 0.28 },
+  sandyLoam: { name: 'Супесь', R0: 250, heave: true, d0: 0.28 },
+  loam:      { name: 'Суглинок', R0: 220, heave: true, d0: 0.23 },
+  clay:      { name: 'Глина', R0: 250, heave: true, d0: 0.23 },
+  peat:      { name: 'Торф, насыпной, ил (слабый)', R0: 50, heave: true, weak: true, d0: 0.23 },
 };
 const FOUND_TYPES = { auto: 'Подобрать автоматически', strip: 'Ленточный монолитный', mzlf: 'Мелкозаглублённый утеплённый (МЗЛФ)', slab: 'Утеплённая плита (УШП)', pile: 'Свайно-винтовой / буронабивной с ростверком' };
 /* Плотность кладки, кН/м³ (с раствором и влажностью) */
@@ -5140,10 +5209,18 @@ const WALL_REINF = {
 const REBAR_KG = { 6: 0.222, 8: 0.395, 10: 0.617, 12: 0.888, 14: 1.21 };
 
 const Struct = {
+  /** Настройки основания: soil — грунт под растительным слоем (толщиной top), layer — его мощность, soil2 — что ниже; survey — есть изыскания */
   opt() {
     const s = App.doc.settings;
-    return Object.assign({ soil: 'loam', gwl: 300, type: 'auto', plinth: 40 }, s.found || {});
+    return Object.assign({ soil: 'loam', gwl: 300, type: 'auto', plinth: 40, top: 20, layer: 0, soil2: 'clay', survey: false }, s.found || {});
   },
+  /** Грунт словами: «растительный 5 см, песок мелкий 1,0 м, ниже глина» */
+  soilText() {
+    const o = Struct.opt(), S1 = SOILS[o.soil] || SOILS.loam, S2 = o.soil2 && o.layer ? SOILS[o.soil2] : null;
+    return (o.top ? `растительный слой ${o.top} см, ` : '') + S1.name.toLowerCase() + (S2 ? ` ${(o.layer / 100).toFixed(1).replace('.', ',')} м, ниже ${S2.name.toLowerCase()}` : '') + (o.survey ? '' : ' (без изысканий — запас 0,8 к R)');
+  },
+  /** Грунт на глубине z (м от поверхности) */
+  soilAt(z) { const o = Struct.opt(); return o.soil2 && o.layer && z * 100 >= o.layer ? SOILS[o.soil2] || SOILS.loam : SOILS[o.soil] || SOILS.loam; },
   set(k, v) { App.doc.settings.found = { ...(App.doc.settings.found || {}), [k]: v }; },
   /** Несущие стены этажа: наружные и внутренние несущие (перегородки — на стяжке) */
   bearing(fid) { return App.doc.walls.filter(w => (w.floor === fid) && (w.kind === 'ext' || w.kind === 'int')); },
@@ -5221,25 +5298,32 @@ const Struct = {
   },
   /** Общий расчёт: нагрузка на 1 м → тип, глубина (промерзание × kh), ширина подошвы, давление, армирование, объёмы */
   _calc(sp) {
-    const o = Struct.opt(), S = SOILS[o.soil] || SOILS.loam;
+    const o = Struct.opt(), S1 = SOILS[o.soil] || SOILS.loam, S2 = o.soil2 && o.layer ? SOILS[o.soil2] : null;
     const L = sp.Lext + sp.Lint, Lroof = sp.Lroof || L;
     const qn = (sp.Gw + sp.Gceil) / Math.max(L, 1) + sp.Groof / Math.max(Lroof, 1);   // кН/м по наиболее нагруженной стене (без веса фундамента)
     const q = qn * 1.2;                                                     // с коэффициентом надёжности по нагрузке
     // глубина: пучинистые грунты — не меньше расчётного промерзания df = kh · dfn
-    const dfn = Climate.frost() / 100, df = +(sp.kh * dfn).toFixed(2);
+    const dfn = Climate.frost() / 100, df = +(sp.kh * dfn).toFixed(2);   // промерзание — по грунту верхнего слоя (Climate.frost)
     const high = o.gwl / 100 < df + 2;                                      // вода близко — пучение сильнее
-    const type = FOUND_TYPES[sp.type] && sp.type !== 'auto' ? sp.type : S.weak ? 'pile' : S.heave && o.gwl < 150 ? 'slab' : S.heave && high ? 'mzlf' : 'strip';   // вода ближе промерзания + 2 м — МЗЛФ с утеплением, чтобы не ловить пучение
-    let depth = type === 'strip' ? (S.heave ? Math.max(df, 0.5) : 0.5) : type === 'mzlf' ? 0.5 : type === 'slab' ? 0.35 : 0;
+    // пучение: грунт основания пучинистый или пучинистый слой ниже, но в зоне промерзания
+    const heave = S1.heave || !!(S2 && S2.heave && df * 100 > o.layer);
+    const S = { ...S1, heave, weak: S1.weak || !!(S2 && S2.weak && o.layer < 150) };
+    // песок поверх пучинистой глины: МЗЛФ на природной песчаной подушке, промерзание глины отсекает утеплённая отмостка
+    const sandTop = /^sand/.test(o.soil) && S2 && S2.heave;
+    const type = FOUND_TYPES[sp.type] && sp.type !== 'auto' ? sp.type : S.weak ? 'pile' : heave && o.gwl < 150 ? 'slab' : heave && (high || sandTop) ? 'mzlf' : 'strip';
+    let depth = type === 'strip' ? (heave ? Math.max(df, 0.5) : 0.5) : type === 'mzlf' ? 0.5 : type === 'slab' ? 0.35 : 0;
     if (U.isNum(sp.depth)) depth = sp.depth / 100;
     // ширина подошвы: q / (R − γ·d); не меньше стены + 10 см и не меньше 30 см
     const H = depth + o.plinth / 100;                                        // высота ленты с цоколем
-    const R = S.R0 * (type === 'mzlf' ? 0.9 : 1);
+    // расчётное сопротивление: грунт под подошвой, а если слабее грунт ниже в пределах ~1 м — по нему; без изысканий — запас 0,8
+    const Sb = Struct.soilAt(depth), Sd = Struct.soilAt(depth + 1), R0 = Math.min(Sb.R0, Sd.R0);
+    const R = R0 * (type === 'mzlf' ? 0.9 : 1) * (o.survey ? 1 : 0.8);
     let b = q / Math.max(30, R - 24 * H);                                  // та же формула, что и в проверке давления
     b = Math.max(b, sp.thMax + 0.1, 0.3);
     b = Math.ceil(b * 20) / 20;
     if (U.isNum(sp.width)) b = sp.width / 100;
     const p = (q + 24 * b * H) / b;                                          // давление под подошвой, кПа
-    const out = { ...sp, soil: S, soilKey: o.soil, gwl: o.gwl, type, depth, width: b, H, qn, q, p, R, df, dfn, L, high, plinth: o.plinth };
+    const out = { ...sp, soil: S, soil2: S2, layer: o.layer, survey: o.survey, soilKey: o.soil, gwl: o.gwl, type, depth, width: b, H, qn, q, p, R, df, dfn, L, high, plinth: o.plinth };
     const { Lext, Lint, area } = sp;
     if (type === 'strip' || type === 'mzlf') {
       out.concrete = L * b * H;
@@ -5308,7 +5392,8 @@ const Struct = {
       if (F.soil.heave && (F.type === 'strip') && F.depth < F.df - 0.005) add('bad', nm, `глубина заложения ${m(F.depth * 100)} меньше расчётного промерзания ${m(F.df * 100)} на пучинистом грунте — фундамент будет выпирать`, 'СП 22.13330.2016 п. 5.5.3, табл. 5.3', pos, id, F.house ? fix('depth', undefined) : null);
       if (F.soil.heave && F.type === 'strip' && F.high) add('warn', nm, `грунтовые воды на ${m(o.gwl)} — ближе промерзания + 2 м: для ленты нужны дренаж и утепление отмостки, либо МЗЛФ / УШП`, 'СП 22.13330.2016 п. 5.5.4; СП 104.13330', pos, id, fix('type', 'mzlf'));
       if (F.soil.weak && F.type !== 'pile') add('bad', nm, 'слабый грунт (торф, насыпной, ил) — нужен свайный фундамент до плотного слоя или замена грунта', 'СП 22.13330.2016 п. 6.4; СП 24.13330', pos, id, fix('type', 'pile'));
-      if (!F.house && F.soil.heave && F.type === 'mzlf') add('info', nm, `МЗЛФ ${m(F.depth * 100)} при промерзании ${m(F.df * 100)} (${F.khWhy}): обязательно утеплить подошву и отмостку XPS по периметру (юбка ≥ 1,2 м) и сделать подушку из непучинистого песка`, 'СП 22.13330.2016 п. 5.5.4; СП 50-101-2004 п. 12');
+      if (F.house && o.top) add('note', nm, `срезать растительный слой ${o.top} см по пятну застройки + 1 м; котлован — по разметке осей, дно уплотнить; обратная засыпка пазух — песком послойно с трамбованием`, 'СП 45.13330.2017 п. 6.1, 7.4');
+      if (F.soil.heave && F.type === 'mzlf') add('note', nm, `МЗЛФ ${m(F.depth * 100)} при промерзании ${m(F.df * 100)} (${F.khWhy}): обязательно утеплить подошву и отмостку XPS по периметру (юбка ≥ 1,2 м) и сделать подушку из непучинистого песка`, 'СП 22.13330.2016 п. 5.5.4; СП 50-101-2004 п. 12');
       // ямы и погреба у ленты: дно ниже подошвы ближе, чем на разность отметок, — лента «подрезается» (СП 22.13330 п. 5.5.9: Δh ≤ a·(tgφ + c/p) ≈ a)
       if (F.type !== 'slab') for (const pit of App.doc.items.filter(x => catItem(x.key).shape === 'pit' && (x.floor || App.doc.floors[0].id) === App.doc.floors[0].id)) {
         const pd = pitGeom(pit, pit.w, pit.d).depth / 100, dh = pd - F.bottom;
@@ -5316,7 +5401,7 @@ const Struct = {
         const pp = Model.itemPts(pit), gap = Math.min(...F.segs.map(sg => Struct._polySegDist(pp, sg))) / 100 - F.width / 2;
         if (gap >= dh) continue;
         const name = pit.label || catItem(pit.key).name, src = 'СП 22.13330.2016 п. 5.5.9, 5.5.10; СП 63.13330.2018; СП 50-101-2004';
-        if (pit.monolith) add('info', nm, `${name} глубиной ${m(pd * 100)} в ${m(Math.max(0, gap) * 100)} от подошвы: стенки — монолит ж/б 200 мм, две сетки Ø10–12 шаг 200, рассчитать как подпорные на давление грунта с пригрузом от ленты; бетонировать до устройства ленты, наружная гидроизоляция и дренаж`, src, { x: pit.x, y: pit.y }, pit.id);
+        if (pit.monolith) add('note', nm, `${name} глубиной ${m(pd * 100)} в ${m(Math.max(0, gap) * 100)} от подошвы: стенки — монолит ж/б 200 мм, две сетки Ø10–12 шаг 200, рассчитать как подпорные на давление грунта с пригрузом от ленты; бетонировать до устройства ленты, наружная гидроизоляция и дренаж`, src, { x: pit.x, y: pit.y }, pit.id);
         else add(gap < 0.05 ? 'bad' : 'warn', nm, `${name} глубиной ${m(pd * 100)} — на ${m(dh * 100)} ниже подошвы (${m(F.bottom * 100)}) и в ${m(Math.max(0, gap) * 100)} от неё: грунт из-под ленты «поплывёт». Отодвиньте яму на ≥ ${m(dh * 100)} от края подошвы или сделайте стенки монолитными ж/б (подпорными)`, src, { x: pit.x, y: pit.y }, pit.id, () => { pit.monolith = true; });
       }
     }
@@ -5326,13 +5411,13 @@ const Struct = {
       const near = Math.min(...F.segs.flatMap(sg => Hs.segs.map(hs => Struct._segSegDist(sg, hs))));
       if (near > (F.wallT + 60)) continue;
       const dd = Math.round((F.bottom - Hs.bottom) * 100);
-      add('info', 'Фундамент: ' + F.name.toLowerCase(), `примыкает к дому: между фундаментами и стенами — деформационный шов 20–30 мм (ленты арматурой не связывать — нагрузки и осадки разные); кровлю — с компенсатором` + (Math.abs(dd) >= 5 ? `. Подошвы отличаются на ${m(Math.abs(dd))} — у примыкания на длине ≥ 1 м ${dd > 0 ? 'заглубите ленту дома' : 'заглубите ленту постройки'} до общей отметки ${m(Math.max(F.bottom, Hs.bottom) * 100)}, иначе более глубокий котлован подрежет основание соседней ленты` : ''), 'СП 22.13330.2016 п. 5.5.9, 6.13; СП 70.13330', { x: F.item.x, y: F.item.y }, F.id);
+      add('note', 'Фундамент: ' + F.name.toLowerCase(), `примыкает к дому: между фундаментами и стенами — деформационный шов 20–30 мм (ленты арматурой не связывать — нагрузки и осадки разные); кровлю — с компенсатором` + (Math.abs(dd) >= 5 ? `. Подошвы отличаются на ${m(Math.abs(dd))} — у примыкания на длине ≥ 1 м ${dd > 0 ? 'заглубите ленту дома' : 'заглубите ленту постройки'} до общей отметки ${m(Math.max(F.bottom, Hs.bottom) * 100)}, иначе более глубокий котлован подрежет основание соседней ленты` : ''), 'СП 22.13330.2016 п. 5.5.9, 6.13; СП 70.13330', { x: F.item.x, y: F.item.y }, F.id);
     }
     // ячеистые блоки: опирание перемычек и армопояс под крышу
     for (const w of App.doc.walls) {
       const R = WALL_REINF[w.mat];
       if (!R || !R.ring || w.kind !== 'ext') continue;
-      for (const op of App.doc.openings.filter(x => x.wall === w.id && x.w > 150)) add('info', 'Конструкции', `${OPENING_TYPES[op.type].name} ${m(op.w)} в стене «${(WALL_MATERIALS[w.mat] || {}).name}»: перемычка — из U-блоков с армированием 2–4 Ø12 или готовая, опирание ≥ 25 см; ряд под окном — армировать с заходом 0,9 м в стороны`, R.src, G.mid(w.a, w.b), op.id);
+      for (const op of App.doc.openings.filter(x => x.wall === w.id && x.w > 150)) add('note', 'Конструкции', `${OPENING_TYPES[op.type].name} ${m(op.w)} в стене «${(WALL_MATERIALS[w.mat] || {}).name}»: перемычка — из U-блоков с армированием 2–4 Ø12 или готовая, опирание ≥ 25 см; ряд под окном — армировать с заходом 0,9 м в стороны`, R.src, G.mid(w.a, w.b), op.id);
     }
   },
   /** Слой «Кладка»: по стенам — материал и армирование, над проёмами несущих стен — перемычки с опиранием 25 см */
@@ -7095,18 +7180,50 @@ const View3D = {
   nets3d(f, e) {
     if (!View3D.opts.nets) return;
     const { wire, cyl } = View3D._g, f1 = App.doc.floors[0].id, items = App.doc.items.filter(it => (it.floor || f1) === f.id && catItem(it.key).sym);
-    for (const l of App.doc.lines) {
-      if ((l.floor || f1) !== f.id || l.kind === 'overhead' || l.kind === 'gasAir' || !Render.sysOn({}, sysOfLine(l)) || l.pts.length < 2) continue;
-      const k = LINE_KINDS[l.kind], col = View3D.hex(l.color || k.color), dep = l.depth || 0;
-      if (dep > 0 && !View3D.opts.xray) continue;                               // под землёй — только с прозрачной землёй
-      const top = e + (f.h || 300) - 30;
-      const z = dep > 0 ? e - dep : l.kind === 'warmfloor' ? e + 3.5 : ['power', 'lowvolt', 'ground'].includes(l.kind) ? top : l.kind === 'freon' ? top - 10 : e + 8;
+    const top = e + (f.h || 300) - 30;
+    // высота трассы в каждой вершине: под землёй — по глубине с уклоном (самотечные), в доме — у пола / под потолком
+    const zOf = (l) => {
+      const dep = l.depth || 0;
+      if (dep > 0) return lineDepths(l).map(dd => e - dd);
+      const z = l.kind === 'warmfloor' ? e + 3.5 : ['power', 'lowvolt', 'ground'].includes(l.kind) ? top : l.kind === 'freon' ? top - 10 : e + 8;
+      return l.pts.map(() => z);
+    };
+    const shown = App.doc.lines.filter(l => (l.floor || f1) === f.id && l.kind !== 'overhead' && l.kind !== 'gasAir' && Render.sysOn({}, sysOfLine(l)) && l.pts.length >= 2 && (!(l.depth > 0) || View3D.opts.xray));
+    const Z = new Map(shown.map(l => [l, zOf(l)]));
+    const rOf = (l) => {
       const r = l.kind === 'warmfloor' ? 0.9 : l.dia >= 50 ? l.dia / 20 : ['power', 'lowvolt'].includes(l.kind) ? 0.8 : Math.max(1, (l.dia || 16) / 20);
-      for (let i = 1; i < l.pts.length; i++) wire([l.pts[i - 1].x, l.pts[i - 1].y, z], [l.pts[i].x, l.pts[i].y, z], r, col);
-      for (const p of l.pts.slice(1, -1)) cyl(p.x, p.y, r * 1.2, z - r, z + r, col, 6);
+      return l.depth > 0 ? Math.max(r, ['power', 'lowvolt', 'ground'].includes(l.kind) ? 1.6 : 2.5) : r;   // под землёй — толще, чтобы читалось
+    };
+    // высота трассы B в точке p (у вершины или на отрезке)
+    const zAt = (B, p) => {
+      const zs = Z.get(B);
+      for (let i = 0; i < B.pts.length; i++) if (G.dist(B.pts[i], p) <= 15) return zs[i];
+      for (let i = 1; i < B.pts.length; i++) { const pr = G.proj(p, B.pts[i - 1], B.pts[i]); if (pr.d <= 8) return zs[i - 1] + (zs[i] - zs[i - 1]) * pr.tc; }
+      return null;
+    };
+    const WELLS = new Set(['ring', 'septic', 'borehole', 'well', 'pit']);
+    for (const l of shown) {
+      const k = LINE_KINDS[l.kind], col = View3D.hex(l.color || k.color), zs = Z.get(l), r = rOf(l), dep = l.depth || 0;
+      for (let i = 1; i < l.pts.length; i++) wire([l.pts[i - 1].x, l.pts[i - 1].y, zs[i - 1]], [l.pts[i].x, l.pts[i].y, zs[i]], r, col);
+      for (let i = 1; i < l.pts.length - 1; i++) cyl(l.pts[i].x, l.pts[i].y, r * 1.2, zs[i] - r, zs[i] + r, col, 6);
       if (dep === 0 && ['power', 'lowvolt'].includes(l.kind)) for (const p of l.pts) {       // спуски к розеткам, выключателям, щиту
         const it = items.find(o => G.dist(o, p) < 5);
-        if (it && !/lamp|spot|wifi/.test(catItem(it.key).shape)) wire([p.x, p.y, z], [p.x, p.y, e + (it.h || 30)], r, col);
+        if (it && !/lamp|spot|wifi/.test(catItem(it.key).shape)) wire([p.x, p.y, zs[0]], [p.x, p.y, e + (it.h || 30)], r, col);
+      }
+      // концы: стояк к другой трассе той же системы, к прибору на поверхности или к полу дома; в колодец — без стояка
+      for (const ei of [0, l.pts.length - 1]) {
+        const p = l.pts[ei], z = zs[ei];
+        let z2 = null;
+        for (const B of shown) {
+          if (B === l || sysOfLine(B) !== sysOfLine(l)) continue;
+          const zb = zAt(B, p);
+          if (zb != null && Math.abs(zb - z) > 2 && (z2 == null || Math.abs(zb - z) > Math.abs(z2 - z))) z2 = zb;
+        }
+        if (z2 == null && dep > 0) {
+          const well = App.doc.items.some(it => (it.floor || f1) === f.id && WELLS.has(catItem(it.key).shape) && G.dist(it, p) <= Math.max(it.w, it.d) / 2 + 12);
+          if (!well) z2 = e + (l.kind === 'water' || l.kind === 'hotwater' ? 8 : 0);
+        }
+        if (z2 != null) { wire([p.x, p.y, z], [p.x, p.y, z2], r, col); cyl(p.x, p.y, r * 1.25, Math.min(z, z2) - r, Math.min(z, z2) + r, col, 6); }
       }
     }
   },
@@ -7589,7 +7706,7 @@ const View3D = {
     if (sh === 'downspout') { (View3D._spoutQ || []).push({ it, e }); return true; }
     if (sh === 'stormInlet') {
       const cast = [0.22, 0.23, 0.25];
-      bx(-W, -D, W, D, e - 2, e + 1.5, [0.62, 0.61, 0.58]);                                                                   // корпус в земле
+      bx(-W, -D, W, D, e - 40, e + 1.5, [0.62, 0.61, 0.58]);                                                                  // корпус в земле с пескоуловителем
       bx(-W + 3, -D + 3, W - 3, D - 3, e + 1.5, e + 1.6, [0.05, 0.05, 0.05]);
       for (let x = -W + 5; x < W - 4; x += 4) bx(x, -D + 3, x + 1.6, D - 3, e + 1.5, e + 2.2, cast);                      // решётка
       return true;
@@ -8178,7 +8295,13 @@ const View3D = {
     const conc = [0.68, 0.67, 0.64];
     if (sh === 'ring') {
       const R = Math.min(W, D), top = e + Math.max(12, H || 10), septicK = it.key === 'septicRing' || it.key === 'cesspool';
-      ringWall(R, 9, e - 10, top - 6, conc);
+      // под землёй (видно с прозрачной землёй): кольца по 90 см до глубины, днище; поглощающий — щебёночный фильтр
+      const bot = e - wellDepth(it), soak = it.key === 'drainWell' && /ДК|погл/i.test(it.label || '');
+      ringWall(R, 9, bot, top - 6, conc);
+      for (let z = e - 90; z > bot + 5; z -= 90) ringWall(R + 0.6, 10, z - 1.5, z + 1.5, conc.map(x => x * 0.7));   // стыки колец (на растворе)
+      if (soak) cy(0, 0, R - 9, bot, bot + 30, [0.55, 0.53, 0.5], 18);                                  // щебень 30 см
+      else cy(0, 0, R, bot - 10, bot, conc.map(x => x * 0.9), 20);                                       // днище
+      if (septicK) cy(0, 0, R - 9, bot, bot + (e - bot) * 0.55, [0.33, 0.3, 0.22], 18);                  // стоки до перелива
       cy(0, 0, R, top - 6, top, conc.map(x => x * 0.95), 20);                                           // плита перекрытия
       const hatch = septicK ? [0.24, 0.42, 0.28] : [0.2, 0.2, 0.22];
       cy(0, 0, 34, top, top + 2.5, hatch, 18);                                                            // люк
@@ -8189,6 +8312,7 @@ const View3D = {
     }
     if (sh === 'septic') {
       const ch = def.chambers || 2, body = [0.36, 0.44, 0.34], lid = [0.28, 0.46, 0.3];
+      bx(-W, -D, W, D, e - wellDepth(it), e, body.map(x => x * 0.8));                                    // корпус в земле
       bx(-W, -D, W, D, e, e + 4, body);
       for (let k = 0; k < ch; k++) {
         const x = -W + (k + 0.5) * w / ch, r = Math.min(D * 0.38, 32);
@@ -8201,6 +8325,14 @@ const View3D = {
     }
     if (sh === 'borehole') {
       const R = Math.min(W, D);
+      // под землёй: кессон Ø1 м ниже промерзания (вход трубы — на её глубине), оголовок, обсадная труба Ø133 и насосная труба
+      const kb = e - wellDepth(it) - 20, kR = Math.min(R * 0.66, 50), steel = [0.42, 0.45, 0.48];
+      cy(0, 0, kR, kb, e - 2, [0.3, 0.42, 0.55], 20);                                                   // кессон
+      cy(0, 0, kR - 3, kb + 6, e - 4, [0.12, 0.14, 0.16], 20);                                           // полость
+      cy(0, 0, 6.6, kb - 1200, kb + 25, steel, 12);                                                      // обсадная труба (показано 12 м)
+      cy(0, 0, 9, kb + 20, kb + 28, [0.2, 0.22, 0.25], 12);                                              // оголовок
+      cy(0, 0, 2, kb - 1150, kb + 20, [0.1, 0.2, 0.55], 8);                                              // насосная труба
+      cy(0, 0, 4.8, kb - 1180, kb - 1100, [0.75, 0.76, 0.78], 10);                                       // насос
       bx(-R, -R, R, R, e, e + 2, [0.72, 0.71, 0.68]);                                                    // отмостка у люка
       const neck = it.key === 'boreholeArt' ? [0.55, 0.58, 0.62] : [0.22, 0.4, 0.62];
       cy(0, 0, R * 0.42, e + 2, e + 38, neck, 20);                                                        // горловина кессона
@@ -11568,7 +11700,11 @@ const UI = {
     const o = Struct.opt(), Fd = Struct.foundation(), mm = (v) => U.fmtLen(v * 100);
     const set = (k, v) => { Struct.set(k, v); Model.commit(); };
     const body = [
-      F.select('Грунт основания', o.soil, Object.entries(SOILS).map(([k, v]) => [k, v.name]), (v) => set('soil', v)),
+      F.num('Растительный слой (снять)', o.top, (v) => set('top', U.clamp(v, 0, 100)), { min: 0, max: 100 }),
+      F.select('Грунт под ним', o.soil, Object.entries(SOILS).map(([k, v]) => [k, v.name]), (v) => set('soil', v)),
+      F.num('Толщина этого слоя (0 — до глубины)', o.layer, (v) => set('layer', U.clamp(v, 0, 1000)), { min: 0, step: 10 }),
+      o.layer ? F.select('Ниже', o.soil2 || 'clay', Object.entries(SOILS).map(([k, v]) => [k, v.name]), (v) => set('soil2', v)) : null,
+      F.check('Есть инженерно-геологические изыскания', !!o.survey, (v) => set('survey', v)),
       F.num('Грунтовые воды (от поверхности)', o.gwl, (v) => set('gwl', U.clamp(v, 0, 2000)), { min: 0, step: 10 }),
       F.select('Тип фундамента', o.type, Object.entries(FOUND_TYPES).map(([k, v]) => [k, v]), (v) => set('type', v)),
       F.num('Цоколь над землёй', o.plinth, (v) => set('plinth', U.clamp(v, 10, 150)), { min: 10, max: 150 }),
@@ -11985,6 +12121,7 @@ const UI = {
       k.section !== undefined ? F.text('Сечение / марка', l.section || '', (v) => UI.set(l, 'section', v), { placeholder: k.section }) : null,
       l.kind === 'overhead' || l.kind === 'gasAir' ? null : F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
       l.kind === 'water' || l.kind === 'hotwater' ? F.check('Греющий кабель и утеплитель (можно мельче промерзания)', !!l.heated, (v) => UI.set(l, 'heated', v || undefined)) : null,
+      l.kind === 'sewer' && l.depth > 0 ? F.check('Утеплена: скорлупа ППУ / XPS над трубой (можно мельче промерзания)', !!l.heated, (v) => UI.set(l, 'heated', v || undefined)) : null,
       l.kind === 'water' ? F.check('В стальном футляре на пересечениях с канализацией', !!l.sleeve, (v) => UI.set(l, 'sleeve', v || undefined)) : null,
       l.kind === 'water' ? F.note(`Водопровод кладут ниже промерзания на 0,5 м: сейчас нужно ≥ ${U.fmtLen(Climate.frost() + 50)} (глубина промерзания — вкладка «Проект»). Канализация — на 0,4 м ниже водопровода в местах пересечения; параллельно — не ближе 1,5 м.`) : null,
       l.kind === 'gasAir' ? F.num('Высота прокладки', l.height ?? LINE_KINDS.gasAir.height, (v) => UI.set(l, 'height', U.clamp(v, 30, 800)), { min: 30, max: 800 }) : null,
@@ -13776,7 +13913,7 @@ const Analysis = {
     Analysis.structure(d, fd, add, m);
     Struct.issues(add, m);
     for (const F of Struct.all()) { const at = stats.findIndex(x => /Смета/.test(x.title));
-      stats.splice(at < 0 ? stats.length : at, 0, { title: F.house ? 'Фундамент дома (авторасчёт)' : `Фундамент: ${F.name.toLowerCase()} (авторасчёт)`, rows: [['Тип', FOUND_TYPES[F.type]], ['Грунт / вода', `${F.soil.name.toLowerCase()} / ${m(F.gwl)}`], ['Промерзание', `${m(F.dfn * 100)} × ${String(F.kh).replace('.', ',')} = ${m(F.df * 100)} (${F.khWhy})`], ['Глубина / ширина', F.type === 'pile' ? `сваи ${F.piles} шт.` : `${m(F.depth * 100)} / ${m(F.width * 100)}`], ['Нагрузка / давление', `${F.qn.toFixed(0)} кН/м / ${F.p.toFixed(0)} из ${F.R.toFixed(0)} кПа`], ['Бетон B20 / арматура', `${F.concrete.toFixed(1)} м³ / ${F.rebar.toFixed(0)} кг`]] }); }
+      stats.splice(at < 0 ? stats.length : at, 0, { title: F.house ? 'Фундамент дома (авторасчёт)' : `Фундамент: ${F.name.toLowerCase()} (авторасчёт)`, rows: [['Тип', FOUND_TYPES[F.type]], ['Грунт / вода', `${Struct.soilText()} / УГВ ${m(F.gwl)}`], ['Промерзание', `${m(F.dfn * 100)} × ${String(F.kh).replace('.', ',')} = ${m(F.df * 100)} (${F.khWhy})`], ['Глубина / ширина', F.type === 'pile' ? `сваи ${F.piles} шт.` : `${m(F.depth * 100)} / ${m(F.width * 100)}`], ['Нагрузка / давление', `${F.qn.toFixed(0)} кН/м / ${F.p.toFixed(0)} из ${F.R.toFixed(0)} кПа`], ['Бетон B20 / арматура', `${F.concrete.toFixed(1)} м³ / ${F.rebar.toFixed(0)} кг`]] }); }
 
     // ---------------- вентиляция, дымоходы, печи ----------------
     Analysis.vent(d, fd, add, stats, m);
@@ -13784,6 +13921,9 @@ const Analysis = {
     // ---------------- климат: откуда берутся нагрузки и глубины ----------------
     { const cl = Climate.get(), at = stats.findIndex(x => /Смета/.test(x.title));
       stats.splice(at < 0 ? stats.length : at, 0, { title: 'Климат (' + cl.city + ')', rows: [['Климатический подрайон', cl.zone], ['Снеговой район / Sg', `${Climate.roman(cl.snow)} / ${cl.snowKpa.toFixed(1)} кПа`], ['Ветровой район / w0', `${Climate.roman(cl.wind, true)} / ${cl.windKpa.toFixed(2)} кПа`], ['Расчётная зимняя t', cl.t5 + ' °C'], ['Глубина промерзания', m(Climate.frost())]] }); }
+
+    // ---------------- подключения: приборам — их трассы, концы трасс — не в воздухе ----------------
+    Analysis.links(d, add);
 
     // ---------------- скважина / колодец у границы с соседом: его септик может оказаться рядом ----------------
     Analysis.wellsBound(d, add, m);
@@ -13798,15 +13938,17 @@ const Analysis = {
     const cov = Analysis.cctv(d, fd);
     if (cov) {
       const at = stats.findIndex(x => /Смета/.test(x.title));
-      stats.splice(at < 0 ? stats.length : at, 0, { title: 'Видеонаблюдение', rows: [['Камер', String(cov.cams)], ['Периметр участка в обзоре', `${cov.pct.toFixed(0)}%`]].concat(cov.gaps.length ? [['Слепые участки забора', cov.gaps.map(g => m(g.len)).join(', ')]] : []) });
-      for (const g of cov.gaps.slice(0, 4)) add('warn', 'Видеонаблюдение', `участок забора ${m(g.len)} не попадает ни в одну камеру — поверните камеру, расширьте угол или добавьте камеру`, 'Сектор камеры на плане — угол обзора и дальность различения человека', g.at);
+      stats.splice(at < 0 ? stats.length : at, 0, { title: 'Видеонаблюдение', rows: [['Камер', String(cov.cams)], ['Подходы к дому и гаражу в обзоре', `${cov.pctHouse.toFixed(0)}%`], ['Въезды и калитки в обзоре', `${cov.doors - cov.blind.length} из ${cov.doors}`], ['Периметр участка (справочно)', `${cov.pct.toFixed(0)}%`]] });
+      for (const g of cov.hGaps.slice(0, 4)) add('warn', 'Видеонаблюдение', `подход к стене ${m(g.len)} не попадает ни в одну камеру — поверните камеру на углу или добавьте`, 'Камеры на углах дома и гаража под свесом: каждая стена и вход — в обзоре соседней камеры', g.at);
+      for (const x of cov.blind) add('warn', 'Видеонаблюдение', `${x.it.label || catItem(x.it.key).name}: въезд не в обзоре камер`, 'ГОСТ Р 51558-2014: зона входа — с различением лица', x.p, x.it.id);
     }
 
     // ---------------- нормы отступов и сети ----------------
     for (const r of ch.results.filter(x => !x.ok)) add('bad', 'Отступы', `${r.a.name} — ${r.bName}: ${m(r.d)} (норма ≥ ${m(r.rule.min)})`, r.rule.src, r.pa || r.pb, Model.get(r.a.id) ? r.a.id : null);
     for (const n of (ch.nets || []).filter(x => x.ok === false)) {
       // водопровод мельче промерзания — опустить на промерзание + 0,5 м (все части трассы)
-      const fix = (n.kind === 'water' || n.kind === 'hotwater') && /глубина/.test(n.text) && !n.line.heated ? () => { for (const p of n.line.parts || [n.line]) { const o = Model.get(p.id); if (o) o.depth = Math.ceil((Climate.frost() + 50) / 10) * 10; } } : null;
+      const fix = (n.kind === 'water' || n.kind === 'hotwater') && /глубина/.test(n.text) && !n.line.heated ? () => { for (const p of n.line.parts || [n.line]) { const o = Model.get(p.id); if (o) o.depth = Math.ceil((Climate.frost() + 50) / 10) * 10; } }
+        : n.kind === 'sewer' && /глубина/.test(n.text) && !n.line.heated ? () => { for (const p of n.line.parts || [n.line]) { const o = Model.get(p.id); if (o) o.heated = true; } } : null;
       add('bad', 'Сети', `${n.title}: ${n.text}`, n.src, n.at, n.line.id, fix);
     }
     if (!plots.length && (ext.length || d.items.length)) add('warn', 'Отступы', 'Нет границы участка — отступы от соседей и улицы не проверяются (инструмент «Зона → Граница участка»)');
@@ -13851,7 +13993,7 @@ const Analysis = {
     const skew = d.items.filter(it => { const r = ((it.rot || 0) % 90 + 90) % 90; return Math.min(r, 90 - r) > 0.01 && Math.min(r, 90 - r) < 0.5; });
     if (skew.length) add('info', 'Чертёж', `Предметов, повёрнутых чуть мимо прямого угла (например, 89,97°): ${skew.length}`, '', skew[0], skew[0].id);
 
-    const order = { bad: 0, warn: 1, info: 2 };
+    const order = { bad: 0, warn: 1, info: 2, note: 3 };
     issues.sort((a, b) => order[a.sev] - order[b.sev]);
     return { stats, rooms, issues };
   },
@@ -13958,6 +14100,67 @@ const Analysis = {
     }
     if (rows.length) { const at = stats.findIndex(x => /Смета/.test(x.title)); stats.splice(at < 0 ? stats.length : at, 0, { title: 'Освещённость (факт / норма)', rows }); }
   },
+  /** Подключения по всем этажам: каждому прибору — нужные трассы (itemLinks); концы трасс — к прибору, колодцу или другой трассе */
+  links(d, add) {
+    const f1 = d.floors[0].id, SRC = { water: 'СП 30.13330.2020', hotwater: 'СП 30.13330.2020', sewer: 'СП 30.13330.2020; СП 32.13330.2018', drain: 'СП 32.13330.2018', heating: 'СП 60.13330.2020', gas: 'СП 62.13330.2011', gasAir: 'СП 62.13330.2011', power: 'ПУЭ 7-е изд., гл. 7.1', lowvolt: 'СП 134.13330.2022', freon: 'инструкция производителя', warmfloor: 'СП 60.13330.2020', airIn: 'СП 7.13130.2013 п. 5.14; инструкция изготовителя печи: воздух для горения — снаружи, не из помещения', socket: 'ПУЭ 7.1.47; СП 256.1325800' };
+    const SOCK = new Set(['socket', 'socket2', 'socketP', 'socketOut']);
+    for (const fl of d.floors) {
+      const lines = d.lines.filter(l => (l.floor || f1) === fl.id && l.pts.length >= 2 && l.kind !== 'overhead'), items = d.items.filter(it => (it.floor || f1) === fl.id);
+      const inRect = (it, p, tol) => { const q = G.toLocal(p, it.x, it.y, it.rot || 0); return Math.abs(q.x) <= it.w / 2 + tol && Math.abs(q.y) <= it.d / 2 + tol; };
+      const touches = (it, l) => l.pts.some(p => inRect(it, p, 20)) || l.pts.some((p, i) => i && G.distSeg(it, l.pts[i - 1], p) <= 6);
+      const has = (it, kd) => kd === 'socket' ? items.some(o => SOCK.has(catItem(o.key).shape) && G.dist(o, it) <= 150 + Math.max(it.w, it.d) / 2)
+        : kd === 'inlet' ? items.some(o => catItem(o.key).shape === 'stormInlet' && G.dist(o, it) < 60)
+        : lines.some(l => l.kind === kd && touches(it, l));
+      for (const it of items) {
+        const miss = itemLinks(it).filter(([, kinds]) => !kinds.some(kd => has(it, kd)));
+        if (!miss.length) continue;
+        const name = it.label || catItem(it.key).name, kinds = miss.flatMap(x => x[1]);
+        const can = miss.map(([, ks]) => ks.find(kd => lines.some(l => l.kind === kd))).filter(Boolean);
+        add('warn', 'Подключения', `${name}: не подключено — ${miss.map(x => x[0]).join(', ')}`, [...new Set(kinds.map(k => SRC[k]).filter(Boolean))].join('; '), { x: it.x, y: it.y }, it.id,
+          can.length ? () => { for (const kd of can) Analysis.autoLink(it, kd); } : null);
+      }
+      // концы трасс: в приборе (с нужной системой), в колодце, на другой трассе той же системы
+      const ok = (l, p) => items.some(it => inRect(it, p, 15) && (itemLinks(it).some(([, ks]) => ks.includes(l.kind)) || catItem(it.key).sym || ['pit', 'ring', 'borehole', 'well', 'septic', 'boiler', 'pole'].includes(catItem(it.key).shape)))
+        || lines.some(x => x !== l && sysOfLine(x) === sysOfLine(l) && x.pts.some((q, i) => G.dist(q, p) <= 15 || (i && G.distSeg(p, x.pts[i - 1], q) <= 8)));
+      const mans = items.filter(it => it.key === 'manifoldWF');
+      let nFeed = 0;
+      for (const l of lines) {
+        if (l.kind === 'warmfloor') {
+          // контур тёплого пола: начало (подача и обратка) — у коллектора или на подводке от него
+          const p = l.pts[0];
+          if (ok(l, p) || !mans.length) continue;
+          const m0 = mans.slice().sort((a, b) => G.dist(a, p) - G.dist(b, p))[0], k = nFeed++;
+          add('warn', 'Подключения', `${l.label || 'Контур тёплого пола'}: не подведён к коллектору тёплого пола`, SRC.warmfloor, p, l.id, () => {
+            const mx = Math.round(m0.x - 20 + (k % 8) * 5), my = Math.round(m0.y + 5);
+            Model.add('lines', { kind: 'warmfloor', dia: 16, depth: 0, floor: l.floor, label: 'ТП подводка: ' + (l.label || '').replace(/^ТП\s*/, ''), note: 'Подводка к контуру: подача и обратка, транзит под другими помещениями — в гофре и теплоизоляции', pts: [{ x: mx, y: my }, { x: mx, y: Math.round(p.y) }, { x: Math.round(p.x), y: Math.round(p.y) }] });
+          });
+          continue;
+        }
+        for (const p of [l.pts[0], l.pts[l.pts.length - 1]]) if (!ok(l, p)) add('warn', 'Подключения', `${l.label || LINE_KINDS[l.kind].code} — ${LINE_KINDS[l.kind].name.toLowerCase()}: конец трассы никуда не подключён (${U.fmtLen(p.x)}, ${U.fmtLen(p.y)})`, SRC[l.kind] || '', p, l.id);
+      }
+    }
+  },
+  /** Подключить прибор к ближайшей трассе вида kd: перпендикуляр к ближайшему участку (или «Г»), глубина и марка — как у трассы */
+  autoLink(it, kd) {
+    const f1 = App.doc.floors[0].id, fl = it.floor || f1;
+    let best = null;
+    if (it.key === 'lamp36') {                                                  // 36 В — только от разделительного трансформатора
+      const t = App.doc.items.filter(o => o.key === 'transformer36' && (o.floor || f1) === fl).sort((a, b) => G.dist(a, it) - G.dist(b, it))[0];
+      if (t) Model.add('lines', { kind: 'power', depth: 0, section: 'ВВГнг 2×1.5', label: `36 В → ${(it.label || 'светильник').replace(/^Светильник 36 В — /, '')}`, note: 'Безопасное напряжение 36 В от разделительного трансформатора (ПУЭ 6.1.16)', pts: [{ x: t.x, y: t.y }, { x: t.x, y: it.y }, { x: it.x, y: it.y }].filter((p, i, a) => !i || G.dist(p, a[i - 1]) > 1), floor: t.floor });
+      return;
+    }
+    const light = kd === 'power' && (catItem(it.key).lm || /lamp|light|spot|bollard|ledline|transformer/i.test(catItem(it.key).shape + it.key));
+    const pref = light && App.doc.lines.some(l => l.kind === 'power' && (l.floor || f1) === fl && /свет|освещ/i.test(l.label || ''));
+    for (const l of App.doc.lines) {
+      if (l.kind !== kd || (l.floor || f1) !== fl || (pref && !/свет|освещ/i.test(l.label || ''))) continue;
+      for (let i = 1; i < l.pts.length; i++) { const pr = G.proj(it, l.pts[i - 1], l.pts[i]); if (!best || pr.d < best.d) best = { d: pr.d, q: pr.q, l }; }
+    }
+    if (!best) return;
+    const c = { x: Math.round(it.x), y: Math.round(it.y) }, q = { x: Math.round(best.q.x), y: Math.round(best.q.y) };
+    const pts = Math.abs(c.x - q.x) < 3 || Math.abs(c.y - q.y) < 3 ? [q, c] : [q, { x: q.x, y: c.y }, c];
+    const L = best.l, name = it.label || catItem(it.key).name;
+    Model.add('lines', { kind: kd, depth: L.depth || 0, dia: L.dia, section: L.section, label: `${(L.label || LINE_KINDS[kd].code).split(' ')[0]} → ${name.split(' (')[0].slice(0, 30)}`, note: 'Подключение прибора (автоматически)', pts, floor: L.floor });
+  },
   /** Добавить светильники в помещение: сеткой по длинной стороне, внутри контура; подключить к ближайшей линии «Свет» */
   addLamps(poly, fid, needLm, key = 'lamp') {
     const def = catItem(key), n = Math.max(1, Math.ceil(needLm / def.lm)), b = G.bbox(poly), W = b.x1 - b.x0, H = b.y1 - b.y0, along = W >= H;
@@ -14036,7 +14239,29 @@ const Analysis = {
       }
     }
     if (run) gaps.push(run);
-    return { cams: cams.length, pct: total ? seen / total * 100 : 0, gaps: gaps.filter(g => g.len >= 100).sort((x, y) => y.len - x.len) };
+    // главное — подходы к дому и гаражу (полоса 1,5 м вдоль стен) и въезды: ворота и калитки
+    const ring = blds.slice(0, (fl ? fl.outlines.length : 0)).concat(d.items.filter(it => (it.floor || f1) === f1 && BLD_HOLLOW.has(catItem(it.key).shape)).map(it => Model.itemPts(it)));
+    let hT = 0, hS = 0;
+    const hGaps = [];
+    for (const poly of ring) {
+      const off = G.offsetPoly(poly, 150), P2 = Math.abs(G.polyArea(off)) > Math.abs(G.polyArea(poly)) ? off : G.offsetPoly(poly, -150);
+      let hr = null;
+      for (let i = 0; i < P2.length; i++) {
+        const a = P2[i], b = P2[(i + 1) % P2.length], L = G.dist(a, b), n = Math.max(1, Math.round(L / step));
+        for (let k = 0; k < n; k++) {
+          const p = G.add(a, G.mul(G.sub(b, a), (k + 0.5) / n));
+          if (blds.some(q => G.pointInPoly(p, q))) { if (hr) { hGaps.push(hr); hr = null; } continue; }   // вплотную к другой постройке
+          const ok = cams.some(c => sees(c, p));
+          hT += L / n; if (ok) { hS += L / n; if (hr) { hGaps.push(hr); hr = null; } } else if (hr) hr.len += L / n; else hr = { len: L / n, at: p };
+        }
+      }
+      if (hr) hGaps.push(hr);
+    }
+    const c0 = G.polyCentroid(plot.pts);
+    const doors = d.items.filter(it => ['gateSwing', 'gateSlide', 'wicket'].includes(catItem(it.key).shape) || /^gate|wicket/.test(it.key)).map(it => ({ it, p: G.add(it, G.mul(G.unit(G.sub(c0, it)), 150)) }));
+    const blind = doors.filter(x => !cams.some(c => sees(c, x.p)));
+    return { cams: cams.length, pct: total ? seen / total * 100 : 0, gaps: gaps.filter(g => g.len >= 100).sort((x, y) => y.len - x.len),
+      pctHouse: hT ? hS / hT * 100 : 100, hGaps: hGaps.filter(g => g.len >= 350).sort((x, y) => y.len - x.len), doors: doors.length, blind };
   },
   vent(d, fd, add, stats, m) {
     const f1 = d.floors[0].id, EXH = new Set(['ventGrille', 'ventShaft', 'ventShaft2', 'ventPipe', 'fan', 'recuperator']);
@@ -14139,10 +14364,10 @@ const Analysis = {
   render() {
     const R = Analysis.run(), box = $('anBody');
     box.textContent = '';
-    const bad = R.issues.filter(i => i.sev === 'bad').length, warn = R.issues.filter(i => i.sev === 'warn').length, info = R.issues.filter(i => i.sev === 'info').length;
+    const bad = R.issues.filter(i => i.sev === 'bad').length, warn = R.issues.filter(i => i.sev === 'warn').length, info = R.issues.filter(i => i.sev === 'info').length, notes = R.issues.filter(i => i.sev === 'note').length;
     const sum = U.el('div', { class: 'check-sum ' + (bad ? 'bad' : 'ok') },
       bad ? `✗ Нарушений норм: ${bad}` : '✓ Нарушений норм не найдено',
-      U.el('span', {}, ` · замечаний ${warn} · по чертежу ${info}`));
+      U.el('span', {}, ` · замечаний ${warn} · по чертежу ${info}${notes ? ` · указаний строителям ${notes}` : ''}`));
     const fixes = R.issues.filter(i => i.fix);
     if (fixes.length) sum.append(U.el('button', { type: 'button', class: 'primary an-fixall', title: 'Применить все автоисправления: автоматы по сечению, УЗО, кровля по уклону, снегозадержатели, высота труб', onclick: () => { for (const i of fixes) i.fix(); Model.commit(); Analysis.render(); UI.toast(`Исправлено автоматически: ${fixes.length}`); } }, `✓ Исправить автоматически (${fixes.length})`));
     const head = $('anSum');
@@ -14162,11 +14387,14 @@ const Analysis = {
             U.el('td', { class: 'num ' + ((r.living || r.kitchen) && r.ratio > 8.05 ? 'bad' : '') }, r.windows ? '1:' + r.ratio.toFixed(1) : '—'))))));
     }
     // замечания
-    const sevName = { bad: 'Нарушение', warn: 'Замечание', info: 'Неточности чертежа' };
-    if (R.issues.length) {
+    const sevName = { bad: 'Нарушение', warn: 'Замечание', info: 'Неточности чертежа', note: 'Указания строителям' };
+    const probs = R.issues.filter(i => i.sev !== 'note'), noteList = R.issues.filter(i => i.sev === 'note');
+    if (noteList.length) left.append(U.el('div', { class: 'an-card an-wide an-notes' }, U.el('h4', {}, `Указания строителям (${noteList.length}) — не нарушения, а готовые решения; печатаются на листах`),
+      U.el('ul', {}, noteList.map(i => U.el('li', { onclick: () => Analysis.show(i), title: 'Показать на плане' }, U.el('b', {}, i.group + ': '), i.text, i.src ? U.el('em', {}, ' § ' + i.src) : null)))));
+    if (probs.length) {
       const list = U.el('div', { class: 'an-issues' });
       let group = null;
-      for (const i of R.issues) {
+      for (const i of probs) {
         const g = i.sev === 'info' ? sevName.info : `${sevName[i.sev]} · ${i.group}`;
         if (g !== group) { group = g; list.append(U.el('h4', {}, g)); }
         const fx = i.fix ? U.el('span', { class: 'an-fix', role: 'button', title: 'Исправить автоматически по норме', onclick: (e) => { e.stopPropagation(); i.fix(); Model.commit(); Analysis.render(); } }, '✓ Исправить') : null;
@@ -14193,7 +14421,7 @@ const Analysis = {
     if (R.rooms.length) { L.push('ПОМЕЩЕНИЯ'); for (const r of R.rooms) L.push(`  ${r.name}: ${U.fmtArea(r.area)}${r.windows ? `, окна 1:${r.ratio.toFixed(1)}` : ''}`); L.push(''); }
     L.push('ЗАМЕЧАНИЯ');
     if (!R.issues.length) L.push('  нет');
-    for (const i of R.issues) L.push(`  [${{ bad: 'нарушение', warn: 'замечание', info: 'чертёж' }[i.sev]}] ${i.text}${i.src ? ` (${i.src})` : ''}`);
+    for (const i of R.issues) L.push(`  [${{ bad: 'нарушение', warn: 'замечание', info: 'чертёж', note: 'указание' }[i.sev]}] ${i.text}${i.src ? ` (${i.src})` : ''}`);
     return L.join('\n');
   },
   copy() {
@@ -14480,7 +14708,7 @@ const IO = {
         erows.length ? T(['Наименование', 'Кол.'], cut(erows, 14)) : null,
         id === 'found' ? T(['Параметр', ...FDs.map(F => F.name)], [
           ['Тип', ...FDs.map(F => FOUND_TYPES[F.type])],
-          ['Грунт, вода', ...FDs.map(F => `${F.soil.name}, УГВ ${(F.gwl / 100).toFixed(1)} м`)],
+          ['Грунт, вода', ...FDs.map(F => `${Struct.soilText()}; УГВ ${(F.gwl / 100).toFixed(1)} м`)],
           ['Промерзание: норм. × kh = расч.', ...FDs.map(F => `${F.dfn.toFixed(2)} × ${F.kh} = ${F.df.toFixed(2)} м (${F.khWhy})`)],
           ['Глубина / ширина / высота', ...FDs.map(F => F.type === 'pile' ? `сваи ${F.piles} шт.` : `${F.depth.toFixed(2)} / ${F.width.toFixed(2)} / ${F.H.toFixed(2)} м`)],
           ['Нагрузка', ...FDs.map(F => `${F.qn.toFixed(0)} кН/м; p = ${F.p.toFixed(0)} ≤ R = ${F.R.toFixed(0)} кПа`)],

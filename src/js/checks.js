@@ -264,6 +264,16 @@ const Checks = {
         const depth = l.depth || 0;
         out.push({ line: l, kind: l.kind, title, text: `уклон ≥ ${(slope * 100).toFixed(1)}% → перепад ${m(L * slope)}${depth ? `, в конце глубина ≈ ${m(depth + L * slope)}` : ''}`, ok: null, at: l.pts[l.pts.length - 1], src: 'СП 30.13330 / СП 32.13330' });
       }
+      if (l.kind === 'sewer') for (const P of l.parts || [l]) {
+        if (!((P.depth || 0) > 0)) continue;
+        // наружная канализация: не мельче промерзания − 0,3 м (Ø до 500) и не менее 0,7 м до верха трубы; мельче — только с утеплением
+        const inH = (p) => outlines.some(o => G.pointInPoly(p, o)), inWell = (p) => wells.some(w => G.dist(w, p) <= Math.max(w.w, w.d) / 2 + 10);
+        const outP = inWell(P.pts[0]) && inWell(P.pts[P.pts.length - 1]) && G.polyPerimeter(P.pts, false) < 400 ? null : P.pts.find(p => !inH(p));   // перелив между колодцами септика — не трасса
+        if (!outP) continue;
+        const need = Math.max(Climate.frost() - 30, 70 + (P.dia || 110) / 10), dep = P.depth, t2 = (P.label || LINE_KINDS.sewer.code) + ' — ' + LINE_KINDS.sewer.name.toLowerCase();
+        if (P.heated) out.push({ line: { ...P, parts: [P] }, kind: P.kind, title: t2, text: `глубина ${m(dep)}, утеплена (скорлупа ППУ / XPS над трубой)${dep < need ? ` — без утепления нужно ≥ ${m(need)}` : ''}`, ok: dep >= 49, at: outP, src: 'СП 32.13330.2018 п. 6.2.4 (уменьшение глубины при утеплении)' });
+        else out.push({ line: { ...P, parts: [P] }, kind: P.kind, title: t2, text: dep >= need - 1 ? `глубина ${m(dep)} — не мельче промерзания − 0,3 м (${m(need)})` : `глубина ${m(dep)} — нужно ≥ ${m(need)} (промерзание ${m(Climate.frost())} − 0,3 м, не менее 0,7 м до верха) или утеплить трубу`, ok: dep >= need - 1, at: outP, src: 'СП 32.13330.2018 п. 6.2.4' });
+      }
       if (l.kind === 'sewer') {
         // выпуск до колодца: Ø до 110 — не длиннее 12 м, Ø150 — 15 м; на поворотах трассы — колодец
         const maxRun = (l.dia || 110) <= 110 ? 1200 : 1500;

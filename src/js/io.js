@@ -259,7 +259,7 @@ const IO = {
         erows.length ? T(['Наименование', 'Кол.'], cut(erows, 14)) : null,
         id === 'found' ? T(['Параметр', ...FDs.map(F => F.name)], [
           ['Тип', ...FDs.map(F => FOUND_TYPES[F.type])],
-          ['Грунт, вода', ...FDs.map(F => `${F.soil.name}, УГВ ${(F.gwl / 100).toFixed(1)} м`)],
+          ['Грунт, вода', ...FDs.map(F => `${Struct.soilText()}; УГВ ${(F.gwl / 100).toFixed(1)} м`)],
           ['Промерзание: норм. × kh = расч.', ...FDs.map(F => `${F.dfn.toFixed(2)} × ${F.kh} = ${F.df.toFixed(2)} м (${F.khWhy})`)],
           ['Глубина / ширина / высота', ...FDs.map(F => F.type === 'pile' ? `сваи ${F.piles} шт.` : `${F.depth.toFixed(2)} / ${F.width.toFixed(2)} / ${F.H.toFixed(2)} м`)],
           ['Нагрузка', ...FDs.map(F => `${F.qn.toFixed(0)} кН/м; p = ${F.p.toFixed(0)} ≤ R = ${F.R.toFixed(0)} кПа`)],

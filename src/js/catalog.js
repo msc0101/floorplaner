@@ -43,6 +43,7 @@ const LINE_KINDS = {
   overhead: { name: 'Воздушная ЛЭП', code: 'ВЛ', color: '#555e6b', dash: [18, 5, 3, 5, 3, 5], layer: 'electric', dia: 0, depth: 0, section: 'СИП 4×16' },
   freon:    { name: 'Фреонопровод и дренаж кондиционера', code: 'ФР', color: '#0891b2', dash: [3, 3], layer: 'heating', dia: 10, depth: 0 },
   lowvolt:  { name: 'Слаботочка (сеть, ТВ)', code: 'СС', color: '#7c3aed', dash: [6, 4], layer: 'electric', dia: 0, depth: 0, section: 'UTP cat.5e' },
+  airIn:    { name: 'Приток наружного воздуха к топке печи', code: 'ПВ', color: '#0e9f6e', dash: [8, 3, 2, 3], layer: 'heating', dia: 110, depth: 0 },
   ground:   { name: 'Заземление', code: 'З', color: '#16a34a', dash: [2, 4], layer: 'electric', dia: 0, depth: 50, section: 'Полоса 40×4' },
 };
 
@@ -57,7 +58,7 @@ const SYSTEMS = {
     norms: 'СП 60.13330.2020 «Отопление, вентиляция и кондиционирование воздуха» (радиаторы — под окнами, п. 6.4.4); СП 50.13330.2012 (теплозащита)' },
   warmfloor: { name: 'Тёплый пол', short: 'Тёплый пол', color: '#e07b2f', lines: ['warmfloor'], keys: ['manifoldWF'],
     norms: 'СП 60.13330.2020 п. 6.4.10: температура поверхности пола ≤ 26 °C в жилых, ≤ 31 °C в ванных; контур ≤ 80–100 м (PE-Xa 16 мм)' },
-  vent:      { name: 'Вентиляция', short: 'Вентиляция', color: '#0e9f6e', lines: [], keys: ['ventSupply', 'ventGrille', 'ventTransfer', 'recuperator', 'fan'],
+  vent:      { name: 'Вентиляция', short: 'Вентиляция', color: '#0e9f6e', lines: ['airIn'], keys: ['ventSupply', 'ventGrille', 'ventTransfer', 'recuperator', 'fan'],
     norms: 'СП 54.13330.2022 / СП 55.13330.2016 (воздухообмен); СП 60.13330.2020 табл. 9.1; СП 402.1325800.2018 (помещения с газовыми приборами)' },
   ac:        { name: 'Кондиционирование', short: 'Кондиционеры', color: '#0891b2', lines: ['freon'], keys: ['ac', 'acout'],
     norms: 'СП 60.13330.2020 разд. 7; длина трассы и перепад высот — по паспорту кондиционера' },
@@ -89,8 +90,56 @@ function sysOf(it) {
   if (def.layer === 'electric' && def.sym) return 'power';
   return null;
 }
+/** Уклон самотечной трассы: канализация Ø ≤ 110 — 2 %, больше — 1 %, ливнёвка — 0,5 % (СП 30, СП 32) */
+function lineSlope(l) { return l.kind === 'sewer' ? ((l.dia || 110) <= 110 ? 0.02 : 0.01) : l.kind === 'drain' ? 0.005 : 0; }
+/** Глубина трассы в каждой вершине, см: у самотечных — растёт по уклону по ходу трассы */
+function lineDepths(l) {
+  const d0 = l.depth || 0, sl = d0 > 0 ? lineSlope(l) : 0;
+  let run = 0;
+  return l.pts.map((p, i) => { if (i) run += G.dist(l.pts[i - 1], p); return d0 + run * sl; });
+}
+/** Глубина колодца / септика / кессона, см: задана или по самой глубокой подключённой трубе + 50 см (не меньше типовой) */
+function wellDepth(it) {
+  if (U.isNum(it.wellDepth)) return it.wellDepth;
+  const k = catItem(it.key).key, R = Math.max(it.w, it.d) / 2 + 12;
+  let max = 0;
+  for (const l of App.doc.lines) { if ((l.floor || App.doc.floors[0].id) !== (it.floor || App.doc.floors[0].id)) continue; const ds = lineDepths(l); l.pts.forEach((p, i) => { if (G.dist(p, it) <= R) max = Math.max(max, ds[i]); }); }
+  const def = { septicRing: 300, cesspool: 250, drainWell: 200, manhole: 200, borehole: 200, boreholeArt: 200, well: 800 }[k] || 150;
+  return Math.max(def, Math.ceil((max + 50) / 10) * 10);
+}
 /** Инженерная система трассы */
 function sysOfLine(l) { for (const [id, s] of Object.entries(SYSTEMS)) if (s.lines.includes(l.kind)) return id; return null; }
+/** Что нужно подключить к прибору: [название, виды трасс] (виды — LINE_KINDS; 'socket' — розетка рядом, 'inlet' — дождеприёмник под трубой) */
+const LNK = { W: ['ХВС', ['water']], H: ['ГВС', ['hotwater']], K: ['канализация', ['sewer']], D: ['ливнёвка', ['drain', 'sewer']], T: ['отопление', ['heating']], G: ['газ', ['gas', 'gasAir']],
+  E: ['электропитание', ['power']], S: ['слаботочный кабель', ['lowvolt']], F: ['фреонопровод', ['freon']], WF: ['контуры тёплого пола', ['warmfloor']], TE: ['отопление или электропитание', ['heating', 'power']],
+  R: ['розетка рядом (≤ 1,5 м)', ['socket']], A: ['приток наружного воздуха к топке', ['airIn']], IN: ['дождеприёмник или ливнёвка', ['inlet', 'drain']] };
+function itemLinks(it) {
+  const def = catItem(it.key), k = def.key, sh = def.shape, L = LNK;
+  if (['sink', 'vanity', 'bath', 'bathCorner', 'shower', 'bidet', 'ksink'].includes(sh)) return [L.W, L.H, L.K];
+  if (KITCHEN_SHAPES.has(sh) && sh !== 'kitchenTall') return it.hob === 'gas' ? [L.W, L.H, L.K, L.G] : [L.W, L.H, L.K];
+  if (['toilet', 'urinal'].includes(sh)) return [L.W, L.K];
+  if (['washer', 'washerNarrow', 'dishwasher', 'dishwasher45'].includes(k)) return [L.W, L.K, L.R];
+  if (['fridge', 'fridgeSbs', 'hood', 'oven', 'microwave', 'dryer', 'nvr', 'router'].includes(k)) return [L.R];
+  if (['faucetOut', 'gardenHydrant', 'tap', 'waterIn', 'filter', 'hydroTank'].includes(k)) return [L.W];
+  if (['boiler50', 'boiler80', 'boilerFlat'].includes(k)) return [L.W, L.H, L.E];
+  if (k === 'indirect') return [L.W, L.H, L.T];
+  if (['stoveHeat', 'stoveMetal', 'fireplace', 'fireplaceCorner'].includes(sh) && k !== 'saunaStove') return [L.A];
+  if (k === 'towel') return [L.TE];
+  if (sh === 'radiator' || k === 'expansionTank') return [L.T];
+  if (['gasBoilerWall', 'boilerFloor'].includes(k)) return [L.T, L.G, L.R];
+  if (k === 'elBoiler') return [L.T, L.E];
+  if (k === 'manifoldWF') return [L.WF, L.T];
+  if (['gasMeter', 'gasValve', 'gasInlet'].includes(k)) return [L.G];
+  if (['septicRing', 'cesspool', 'septic2', 'septic3', 'filterField', 'riser'].includes(k)) return [L.K];
+  if (['drainWell', 'stormInlet', 'drainChannel'].includes(k)) return [L.D];
+  if (k === 'downspout') return [L.IN];
+  if (['borehole', 'boreholeArt'].includes(k)) return [L.W];
+  if (['socket', 'socket2', 'socketPower', 'socketOut', 'switch', 'switch2', 'lamp', 'spot', 'wallLamp', 'ledLinear', 'lamp36', 'transformer36', 'jbox', 'panel', 'meter', 'lightPole', 'bollardLight', 'facadeLight', 'recuperator'].includes(k)) return [L.E];
+  if (k === 'acout') return [L.F, L.E];
+  if (k === 'ac') return [L.F];
+  if (['cctvCam', 'wifiAp', 'lanSocket'].includes(k)) return [L.S];
+  return [];
+}
 /** Нормы для подсказки: по предмету или трассе */
 const ITEM_NORMS = {
   socket: 'ПУЭ 7.1.47–7.1.50; СП 256 п. 14: розеток — по одной на 4 м периметра комнаты, на кухне — от 4; в ванной — только зона 3 (≥ 0,6 м от ванны), IP44, УЗО ≤ 30 мА',

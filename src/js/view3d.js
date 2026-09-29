@@ -484,18 +484,50 @@ const View3D = {
   nets3d(f, e) {
     if (!View3D.opts.nets) return;
     const { wire, cyl } = View3D._g, f1 = App.doc.floors[0].id, items = App.doc.items.filter(it => (it.floor || f1) === f.id && catItem(it.key).sym);
-    for (const l of App.doc.lines) {
-      if ((l.floor || f1) !== f.id || l.kind === 'overhead' || l.kind === 'gasAir' || !Render.sysOn({}, sysOfLine(l)) || l.pts.length < 2) continue;
-      const k = LINE_KINDS[l.kind], col = View3D.hex(l.color || k.color), dep = l.depth || 0;
-      if (dep > 0 && !View3D.opts.xray) continue;                               // под землёй — только с прозрачной землёй
-      const top = e + (f.h || 300) - 30;
-      const z = dep > 0 ? e - dep : l.kind === 'warmfloor' ? e + 3.5 : ['power', 'lowvolt', 'ground'].includes(l.kind) ? top : l.kind === 'freon' ? top - 10 : e + 8;
+    const top = e + (f.h || 300) - 30;
+    // высота трассы в каждой вершине: под землёй — по глубине с уклоном (самотечные), в доме — у пола / под потолком
+    const zOf = (l) => {
+      const dep = l.depth || 0;
+      if (dep > 0) return lineDepths(l).map(dd => e - dd);
+      const z = l.kind === 'warmfloor' ? e + 3.5 : ['power', 'lowvolt', 'ground'].includes(l.kind) ? top : l.kind === 'freon' ? top - 10 : e + 8;
+      return l.pts.map(() => z);
+    };
+    const shown = App.doc.lines.filter(l => (l.floor || f1) === f.id && l.kind !== 'overhead' && l.kind !== 'gasAir' && Render.sysOn({}, sysOfLine(l)) && l.pts.length >= 2 && (!(l.depth > 0) || View3D.opts.xray));
+    const Z = new Map(shown.map(l => [l, zOf(l)]));
+    const rOf = (l) => {
       const r = l.kind === 'warmfloor' ? 0.9 : l.dia >= 50 ? l.dia / 20 : ['power', 'lowvolt'].includes(l.kind) ? 0.8 : Math.max(1, (l.dia || 16) / 20);
-      for (let i = 1; i < l.pts.length; i++) wire([l.pts[i - 1].x, l.pts[i - 1].y, z], [l.pts[i].x, l.pts[i].y, z], r, col);
-      for (const p of l.pts.slice(1, -1)) cyl(p.x, p.y, r * 1.2, z - r, z + r, col, 6);
+      return l.depth > 0 ? Math.max(r, ['power', 'lowvolt', 'ground'].includes(l.kind) ? 1.6 : 2.5) : r;   // под землёй — толще, чтобы читалось
+    };
+    // высота трассы B в точке p (у вершины или на отрезке)
+    const zAt = (B, p) => {
+      const zs = Z.get(B);
+      for (let i = 0; i < B.pts.length; i++) if (G.dist(B.pts[i], p) <= 15) return zs[i];
+      for (let i = 1; i < B.pts.length; i++) { const pr = G.proj(p, B.pts[i - 1], B.pts[i]); if (pr.d <= 8) return zs[i - 1] + (zs[i] - zs[i - 1]) * pr.tc; }
+      return null;
+    };
+    const WELLS = new Set(['ring', 'septic', 'borehole', 'well', 'pit']);
+    for (const l of shown) {
+      const k = LINE_KINDS[l.kind], col = View3D.hex(l.color || k.color), zs = Z.get(l), r = rOf(l), dep = l.depth || 0;
+      for (let i = 1; i < l.pts.length; i++) wire([l.pts[i - 1].x, l.pts[i - 1].y, zs[i - 1]], [l.pts[i].x, l.pts[i].y, zs[i]], r, col);
+      for (let i = 1; i < l.pts.length - 1; i++) cyl(l.pts[i].x, l.pts[i].y, r * 1.2, zs[i] - r, zs[i] + r, col, 6);
       if (dep === 0 && ['power', 'lowvolt'].includes(l.kind)) for (const p of l.pts) {       // спуски к розеткам, выключателям, щиту
         const it = items.find(o => G.dist(o, p) < 5);
-        if (it && !/lamp|spot|wifi/.test(catItem(it.key).shape)) wire([p.x, p.y, z], [p.x, p.y, e + (it.h || 30)], r, col);
+        if (it && !/lamp|spot|wifi/.test(catItem(it.key).shape)) wire([p.x, p.y, zs[0]], [p.x, p.y, e + (it.h || 30)], r, col);
+      }
+      // концы: стояк к другой трассе той же системы, к прибору на поверхности или к полу дома; в колодец — без стояка
+      for (const ei of [0, l.pts.length - 1]) {
+        const p = l.pts[ei], z = zs[ei];
+        let z2 = null;
+        for (const B of shown) {
+          if (B === l || sysOfLine(B) !== sysOfLine(l)) continue;
+          const zb = zAt(B, p);
+          if (zb != null && Math.abs(zb - z) > 2 && (z2 == null || Math.abs(zb - z) > Math.abs(z2 - z))) z2 = zb;
+        }
+        if (z2 == null && dep > 0) {
+          const well = App.doc.items.some(it => (it.floor || f1) === f.id && WELLS.has(catItem(it.key).shape) && G.dist(it, p) <= Math.max(it.w, it.d) / 2 + 12);
+          if (!well) z2 = e + (l.kind === 'water' || l.kind === 'hotwater' ? 8 : 0);
+        }
+        if (z2 != null) { wire([p.x, p.y, z], [p.x, p.y, z2], r, col); cyl(p.x, p.y, r * 1.25, Math.min(z, z2) - r, Math.min(z, z2) + r, col, 6); }
       }
     }
   },
@@ -978,7 +1010,7 @@ const View3D = {
     if (sh === 'downspout') { (View3D._spoutQ || []).push({ it, e }); return true; }
     if (sh === 'stormInlet') {
       const cast = [0.22, 0.23, 0.25];
-      bx(-W, -D, W, D, e - 2, e + 1.5, [0.62, 0.61, 0.58]);                                                                   // корпус в земле
+      bx(-W, -D, W, D, e - 40, e + 1.5, [0.62, 0.61, 0.58]);                                                                  // корпус в земле с пескоуловителем
       bx(-W + 3, -D + 3, W - 3, D - 3, e + 1.5, e + 1.6, [0.05, 0.05, 0.05]);
       for (let x = -W + 5; x < W - 4; x += 4) bx(x, -D + 3, x + 1.6, D - 3, e + 1.5, e + 2.2, cast);                      // решётка
       return true;
@@ -1567,7 +1599,13 @@ const View3D = {
     const conc = [0.68, 0.67, 0.64];
     if (sh === 'ring') {
       const R = Math.min(W, D), top = e + Math.max(12, H || 10), septicK = it.key === 'septicRing' || it.key === 'cesspool';
-      ringWall(R, 9, e - 10, top - 6, conc);
+      // под землёй (видно с прозрачной землёй): кольца по 90 см до глубины, днище; поглощающий — щебёночный фильтр
+      const bot = e - wellDepth(it), soak = it.key === 'drainWell' && /ДК|погл/i.test(it.label || '');
+      ringWall(R, 9, bot, top - 6, conc);
+      for (let z = e - 90; z > bot + 5; z -= 90) ringWall(R + 0.6, 10, z - 1.5, z + 1.5, conc.map(x => x * 0.7));   // стыки колец (на растворе)
+      if (soak) cy(0, 0, R - 9, bot, bot + 30, [0.55, 0.53, 0.5], 18);                                  // щебень 30 см
+      else cy(0, 0, R, bot - 10, bot, conc.map(x => x * 0.9), 20);                                       // днище
+      if (septicK) cy(0, 0, R - 9, bot, bot + (e - bot) * 0.55, [0.33, 0.3, 0.22], 18);                  // стоки до перелива
       cy(0, 0, R, top - 6, top, conc.map(x => x * 0.95), 20);                                           // плита перекрытия
       const hatch = septicK ? [0.24, 0.42, 0.28] : [0.2, 0.2, 0.22];
       cy(0, 0, 34, top, top + 2.5, hatch, 18);                                                            // люк
@@ -1578,6 +1616,7 @@ const View3D = {
     }
     if (sh === 'septic') {
       const ch = def.chambers || 2, body = [0.36, 0.44, 0.34], lid = [0.28, 0.46, 0.3];
+      bx(-W, -D, W, D, e - wellDepth(it), e, body.map(x => x * 0.8));                                    // корпус в земле
       bx(-W, -D, W, D, e, e + 4, body);
       for (let k = 0; k < ch; k++) {
         const x = -W + (k + 0.5) * w / ch, r = Math.min(D * 0.38, 32);
@@ -1590,6 +1629,14 @@ const View3D = {
     }
     if (sh === 'borehole') {
       const R = Math.min(W, D);
+      // под землёй: кессон Ø1 м ниже промерзания (вход трубы — на её глубине), оголовок, обсадная труба Ø133 и насосная труба
+      const kb = e - wellDepth(it) - 20, kR = Math.min(R * 0.66, 50), steel = [0.42, 0.45, 0.48];
+      cy(0, 0, kR, kb, e - 2, [0.3, 0.42, 0.55], 20);                                                   // кессон
+      cy(0, 0, kR - 3, kb + 6, e - 4, [0.12, 0.14, 0.16], 20);                                           // полость
+      cy(0, 0, 6.6, kb - 1200, kb + 25, steel, 12);                                                      // обсадная труба (показано 12 м)
+      cy(0, 0, 9, kb + 20, kb + 28, [0.2, 0.22, 0.25], 12);                                              // оголовок
+      cy(0, 0, 2, kb - 1150, kb + 20, [0.1, 0.2, 0.55], 8);                                              // насосная труба
+      cy(0, 0, 4.8, kb - 1180, kb - 1100, [0.75, 0.76, 0.78], 10);                                       // насос
       bx(-R, -R, R, R, e, e + 2, [0.72, 0.71, 0.68]);                                                    // отмостка у люка
       const neck = it.key === 'boreholeArt' ? [0.55, 0.58, 0.62] : [0.22, 0.4, 0.62];
       cy(0, 0, R * 0.42, e + 2, e + 38, neck, 20);                                                        // горловина кессона

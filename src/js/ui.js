@@ -673,7 +673,11 @@ const UI = {
     const o = Struct.opt(), Fd = Struct.foundation(), mm = (v) => U.fmtLen(v * 100);
     const set = (k, v) => { Struct.set(k, v); Model.commit(); };
     const body = [
-      F.select('Грунт основания', o.soil, Object.entries(SOILS).map(([k, v]) => [k, v.name]), (v) => set('soil', v)),
+      F.num('Растительный слой (снять)', o.top, (v) => set('top', U.clamp(v, 0, 100)), { min: 0, max: 100 }),
+      F.select('Грунт под ним', o.soil, Object.entries(SOILS).map(([k, v]) => [k, v.name]), (v) => set('soil', v)),
+      F.num('Толщина этого слоя (0 — до глубины)', o.layer, (v) => set('layer', U.clamp(v, 0, 1000)), { min: 0, step: 10 }),
+      o.layer ? F.select('Ниже', o.soil2 || 'clay', Object.entries(SOILS).map(([k, v]) => [k, v.name]), (v) => set('soil2', v)) : null,
+      F.check('Есть инженерно-геологические изыскания', !!o.survey, (v) => set('survey', v)),
       F.num('Грунтовые воды (от поверхности)', o.gwl, (v) => set('gwl', U.clamp(v, 0, 2000)), { min: 0, step: 10 }),
       F.select('Тип фундамента', o.type, Object.entries(FOUND_TYPES).map(([k, v]) => [k, v]), (v) => set('type', v)),
       F.num('Цоколь над землёй', o.plinth, (v) => set('plinth', U.clamp(v, 10, 150)), { min: 10, max: 150 }),
@@ -1090,6 +1094,7 @@ const UI = {
       k.section !== undefined ? F.text('Сечение / марка', l.section || '', (v) => UI.set(l, 'section', v), { placeholder: k.section }) : null,
       l.kind === 'overhead' || l.kind === 'gasAir' ? null : F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
       l.kind === 'water' || l.kind === 'hotwater' ? F.check('Греющий кабель и утеплитель (можно мельче промерзания)', !!l.heated, (v) => UI.set(l, 'heated', v || undefined)) : null,
+      l.kind === 'sewer' && l.depth > 0 ? F.check('Утеплена: скорлупа ППУ / XPS над трубой (можно мельче промерзания)', !!l.heated, (v) => UI.set(l, 'heated', v || undefined)) : null,
       l.kind === 'water' ? F.check('В стальном футляре на пересечениях с канализацией', !!l.sleeve, (v) => UI.set(l, 'sleeve', v || undefined)) : null,
       l.kind === 'water' ? F.note(`Водопровод кладут ниже промерзания на 0,5 м: сейчас нужно ≥ ${U.fmtLen(Climate.frost() + 50)} (глубина промерзания — вкладка «Проект»). Канализация — на 0,4 м ниже водопровода в местах пересечения; параллельно — не ближе 1,5 м.`) : null,
       l.kind === 'gasAir' ? F.num('Высота прокладки', l.height ?? LINE_KINDS.gasAir.height, (v) => UI.set(l, 'height', U.clamp(v, 30, 800)), { min: 30, max: 800 }) : null,

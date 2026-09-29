@@ -102,7 +102,7 @@ const Analysis = {
     Analysis.structure(d, fd, add, m);
     Struct.issues(add, m);
     for (const F of Struct.all()) { const at = stats.findIndex(x => /Смета/.test(x.title));
-      stats.splice(at < 0 ? stats.length : at, 0, { title: F.house ? 'Фундамент дома (авторасчёт)' : `Фундамент: ${F.name.toLowerCase()} (авторасчёт)`, rows: [['Тип', FOUND_TYPES[F.type]], ['Грунт / вода', `${F.soil.name.toLowerCase()} / ${m(F.gwl)}`], ['Промерзание', `${m(F.dfn * 100)} × ${String(F.kh).replace('.', ',')} = ${m(F.df * 100)} (${F.khWhy})`], ['Глубина / ширина', F.type === 'pile' ? `сваи ${F.piles} шт.` : `${m(F.depth * 100)} / ${m(F.width * 100)}`], ['Нагрузка / давление', `${F.qn.toFixed(0)} кН/м / ${F.p.toFixed(0)} из ${F.R.toFixed(0)} кПа`], ['Бетон B20 / арматура', `${F.concrete.toFixed(1)} м³ / ${F.rebar.toFixed(0)} кг`]] }); }
+      stats.splice(at < 0 ? stats.length : at, 0, { title: F.house ? 'Фундамент дома (авторасчёт)' : `Фундамент: ${F.name.toLowerCase()} (авторасчёт)`, rows: [['Тип', FOUND_TYPES[F.type]], ['Грунт / вода', `${Struct.soilText()} / УГВ ${m(F.gwl)}`], ['Промерзание', `${m(F.dfn * 100)} × ${String(F.kh).replace('.', ',')} = ${m(F.df * 100)} (${F.khWhy})`], ['Глубина / ширина', F.type === 'pile' ? `сваи ${F.piles} шт.` : `${m(F.depth * 100)} / ${m(F.width * 100)}`], ['Нагрузка / давление', `${F.qn.toFixed(0)} кН/м / ${F.p.toFixed(0)} из ${F.R.toFixed(0)} кПа`], ['Бетон B20 / арматура', `${F.concrete.toFixed(1)} м³ / ${F.rebar.toFixed(0)} кг`]] }); }
 
     // ---------------- вентиляция, дымоходы, печи ----------------
     Analysis.vent(d, fd, add, stats, m);
@@ -110,6 +110,9 @@ const Analysis = {
     // ---------------- климат: откуда берутся нагрузки и глубины ----------------
     { const cl = Climate.get(), at = stats.findIndex(x => /Смета/.test(x.title));
       stats.splice(at < 0 ? stats.length : at, 0, { title: 'Климат (' + cl.city + ')', rows: [['Климатический подрайон', cl.zone], ['Снеговой район / Sg', `${Climate.roman(cl.snow)} / ${cl.snowKpa.toFixed(1)} кПа`], ['Ветровой район / w0', `${Climate.roman(cl.wind, true)} / ${cl.windKpa.toFixed(2)} кПа`], ['Расчётная зимняя t', cl.t5 + ' °C'], ['Глубина промерзания', m(Climate.frost())]] }); }
+
+    // ---------------- подключения: приборам — их трассы, концы трасс — не в воздухе ----------------
+    Analysis.links(d, add);
 
     // ---------------- скважина / колодец у границы с соседом: его септик может оказаться рядом ----------------
     Analysis.wellsBound(d, add, m);
@@ -124,15 +127,17 @@ const Analysis = {
     const cov = Analysis.cctv(d, fd);
     if (cov) {
       const at = stats.findIndex(x => /Смета/.test(x.title));
-      stats.splice(at < 0 ? stats.length : at, 0, { title: 'Видеонаблюдение', rows: [['Камер', String(cov.cams)], ['Периметр участка в обзоре', `${cov.pct.toFixed(0)}%`]].concat(cov.gaps.length ? [['Слепые участки забора', cov.gaps.map(g => m(g.len)).join(', ')]] : []) });
-      for (const g of cov.gaps.slice(0, 4)) add('warn', 'Видеонаблюдение', `участок забора ${m(g.len)} не попадает ни в одну камеру — поверните камеру, расширьте угол или добавьте камеру`, 'Сектор камеры на плане — угол обзора и дальность различения человека', g.at);
+      stats.splice(at < 0 ? stats.length : at, 0, { title: 'Видеонаблюдение', rows: [['Камер', String(cov.cams)], ['Подходы к дому и гаражу в обзоре', `${cov.pctHouse.toFixed(0)}%`], ['Въезды и калитки в обзоре', `${cov.doors - cov.blind.length} из ${cov.doors}`], ['Периметр участка (справочно)', `${cov.pct.toFixed(0)}%`]] });
+      for (const g of cov.hGaps.slice(0, 4)) add('warn', 'Видеонаблюдение', `подход к стене ${m(g.len)} не попадает ни в одну камеру — поверните камеру на углу или добавьте`, 'Камеры на углах дома и гаража под свесом: каждая стена и вход — в обзоре соседней камеры', g.at);
+      for (const x of cov.blind) add('warn', 'Видеонаблюдение', `${x.it.label || catItem(x.it.key).name}: въезд не в обзоре камер`, 'ГОСТ Р 51558-2014: зона входа — с различением лица', x.p, x.it.id);
     }
 
     // ---------------- нормы отступов и сети ----------------
     for (const r of ch.results.filter(x => !x.ok)) add('bad', 'Отступы', `${r.a.name} — ${r.bName}: ${m(r.d)} (норма ≥ ${m(r.rule.min)})`, r.rule.src, r.pa || r.pb, Model.get(r.a.id) ? r.a.id : null);
     for (const n of (ch.nets || []).filter(x => x.ok === false)) {
       // водопровод мельче промерзания — опустить на промерзание + 0,5 м (все части трассы)
-      const fix = (n.kind === 'water' || n.kind === 'hotwater') && /глубина/.test(n.text) && !n.line.heated ? () => { for (const p of n.line.parts || [n.line]) { const o = Model.get(p.id); if (o) o.depth = Math.ceil((Climate.frost() + 50) / 10) * 10; } } : null;
+      const fix = (n.kind === 'water' || n.kind === 'hotwater') && /глубина/.test(n.text) && !n.line.heated ? () => { for (const p of n.line.parts || [n.line]) { const o = Model.get(p.id); if (o) o.depth = Math.ceil((Climate.frost() + 50) / 10) * 10; } }
+        : n.kind === 'sewer' && /глубина/.test(n.text) && !n.line.heated ? () => { for (const p of n.line.parts || [n.line]) { const o = Model.get(p.id); if (o) o.heated = true; } } : null;
       add('bad', 'Сети', `${n.title}: ${n.text}`, n.src, n.at, n.line.id, fix);
     }
     if (!plots.length && (ext.length || d.items.length)) add('warn', 'Отступы', 'Нет границы участка — отступы от соседей и улицы не проверяются (инструмент «Зона → Граница участка»)');
@@ -177,7 +182,7 @@ const Analysis = {
     const skew = d.items.filter(it => { const r = ((it.rot || 0) % 90 + 90) % 90; return Math.min(r, 90 - r) > 0.01 && Math.min(r, 90 - r) < 0.5; });
     if (skew.length) add('info', 'Чертёж', `Предметов, повёрнутых чуть мимо прямого угла (например, 89,97°): ${skew.length}`, '', skew[0], skew[0].id);
 
-    const order = { bad: 0, warn: 1, info: 2 };
+    const order = { bad: 0, warn: 1, info: 2, note: 3 };
     issues.sort((a, b) => order[a.sev] - order[b.sev]);
     return { stats, rooms, issues };
   },
@@ -284,6 +289,67 @@ const Analysis = {
     }
     if (rows.length) { const at = stats.findIndex(x => /Смета/.test(x.title)); stats.splice(at < 0 ? stats.length : at, 0, { title: 'Освещённость (факт / норма)', rows }); }
   },
+  /** Подключения по всем этажам: каждому прибору — нужные трассы (itemLinks); концы трасс — к прибору, колодцу или другой трассе */
+  links(d, add) {
+    const f1 = d.floors[0].id, SRC = { water: 'СП 30.13330.2020', hotwater: 'СП 30.13330.2020', sewer: 'СП 30.13330.2020; СП 32.13330.2018', drain: 'СП 32.13330.2018', heating: 'СП 60.13330.2020', gas: 'СП 62.13330.2011', gasAir: 'СП 62.13330.2011', power: 'ПУЭ 7-е изд., гл. 7.1', lowvolt: 'СП 134.13330.2022', freon: 'инструкция производителя', warmfloor: 'СП 60.13330.2020', airIn: 'СП 7.13130.2013 п. 5.14; инструкция изготовителя печи: воздух для горения — снаружи, не из помещения', socket: 'ПУЭ 7.1.47; СП 256.1325800' };
+    const SOCK = new Set(['socket', 'socket2', 'socketP', 'socketOut']);
+    for (const fl of d.floors) {
+      const lines = d.lines.filter(l => (l.floor || f1) === fl.id && l.pts.length >= 2 && l.kind !== 'overhead'), items = d.items.filter(it => (it.floor || f1) === fl.id);
+      const inRect = (it, p, tol) => { const q = G.toLocal(p, it.x, it.y, it.rot || 0); return Math.abs(q.x) <= it.w / 2 + tol && Math.abs(q.y) <= it.d / 2 + tol; };
+      const touches = (it, l) => l.pts.some(p => inRect(it, p, 20)) || l.pts.some((p, i) => i && G.distSeg(it, l.pts[i - 1], p) <= 6);
+      const has = (it, kd) => kd === 'socket' ? items.some(o => SOCK.has(catItem(o.key).shape) && G.dist(o, it) <= 150 + Math.max(it.w, it.d) / 2)
+        : kd === 'inlet' ? items.some(o => catItem(o.key).shape === 'stormInlet' && G.dist(o, it) < 60)
+        : lines.some(l => l.kind === kd && touches(it, l));
+      for (const it of items) {
+        const miss = itemLinks(it).filter(([, kinds]) => !kinds.some(kd => has(it, kd)));
+        if (!miss.length) continue;
+        const name = it.label || catItem(it.key).name, kinds = miss.flatMap(x => x[1]);
+        const can = miss.map(([, ks]) => ks.find(kd => lines.some(l => l.kind === kd))).filter(Boolean);
+        add('warn', 'Подключения', `${name}: не подключено — ${miss.map(x => x[0]).join(', ')}`, [...new Set(kinds.map(k => SRC[k]).filter(Boolean))].join('; '), { x: it.x, y: it.y }, it.id,
+          can.length ? () => { for (const kd of can) Analysis.autoLink(it, kd); } : null);
+      }
+      // концы трасс: в приборе (с нужной системой), в колодце, на другой трассе той же системы
+      const ok = (l, p) => items.some(it => inRect(it, p, 15) && (itemLinks(it).some(([, ks]) => ks.includes(l.kind)) || catItem(it.key).sym || ['pit', 'ring', 'borehole', 'well', 'septic', 'boiler', 'pole'].includes(catItem(it.key).shape)))
+        || lines.some(x => x !== l && sysOfLine(x) === sysOfLine(l) && x.pts.some((q, i) => G.dist(q, p) <= 15 || (i && G.distSeg(p, x.pts[i - 1], q) <= 8)));
+      const mans = items.filter(it => it.key === 'manifoldWF');
+      let nFeed = 0;
+      for (const l of lines) {
+        if (l.kind === 'warmfloor') {
+          // контур тёплого пола: начало (подача и обратка) — у коллектора или на подводке от него
+          const p = l.pts[0];
+          if (ok(l, p) || !mans.length) continue;
+          const m0 = mans.slice().sort((a, b) => G.dist(a, p) - G.dist(b, p))[0], k = nFeed++;
+          add('warn', 'Подключения', `${l.label || 'Контур тёплого пола'}: не подведён к коллектору тёплого пола`, SRC.warmfloor, p, l.id, () => {
+            const mx = Math.round(m0.x - 20 + (k % 8) * 5), my = Math.round(m0.y + 5);
+            Model.add('lines', { kind: 'warmfloor', dia: 16, depth: 0, floor: l.floor, label: 'ТП подводка: ' + (l.label || '').replace(/^ТП\s*/, ''), note: 'Подводка к контуру: подача и обратка, транзит под другими помещениями — в гофре и теплоизоляции', pts: [{ x: mx, y: my }, { x: mx, y: Math.round(p.y) }, { x: Math.round(p.x), y: Math.round(p.y) }] });
+          });
+          continue;
+        }
+        for (const p of [l.pts[0], l.pts[l.pts.length - 1]]) if (!ok(l, p)) add('warn', 'Подключения', `${l.label || LINE_KINDS[l.kind].code} — ${LINE_KINDS[l.kind].name.toLowerCase()}: конец трассы никуда не подключён (${U.fmtLen(p.x)}, ${U.fmtLen(p.y)})`, SRC[l.kind] || '', p, l.id);
+      }
+    }
+  },
+  /** Подключить прибор к ближайшей трассе вида kd: перпендикуляр к ближайшему участку (или «Г»), глубина и марка — как у трассы */
+  autoLink(it, kd) {
+    const f1 = App.doc.floors[0].id, fl = it.floor || f1;
+    let best = null;
+    if (it.key === 'lamp36') {                                                  // 36 В — только от разделительного трансформатора
+      const t = App.doc.items.filter(o => o.key === 'transformer36' && (o.floor || f1) === fl).sort((a, b) => G.dist(a, it) - G.dist(b, it))[0];
+      if (t) Model.add('lines', { kind: 'power', depth: 0, section: 'ВВГнг 2×1.5', label: `36 В → ${(it.label || 'светильник').replace(/^Светильник 36 В — /, '')}`, note: 'Безопасное напряжение 36 В от разделительного трансформатора (ПУЭ 6.1.16)', pts: [{ x: t.x, y: t.y }, { x: t.x, y: it.y }, { x: it.x, y: it.y }].filter((p, i, a) => !i || G.dist(p, a[i - 1]) > 1), floor: t.floor });
+      return;
+    }
+    const light = kd === 'power' && (catItem(it.key).lm || /lamp|light|spot|bollard|ledline|transformer/i.test(catItem(it.key).shape + it.key));
+    const pref = light && App.doc.lines.some(l => l.kind === 'power' && (l.floor || f1) === fl && /свет|освещ/i.test(l.label || ''));
+    for (const l of App.doc.lines) {
+      if (l.kind !== kd || (l.floor || f1) !== fl || (pref && !/свет|освещ/i.test(l.label || ''))) continue;
+      for (let i = 1; i < l.pts.length; i++) { const pr = G.proj(it, l.pts[i - 1], l.pts[i]); if (!best || pr.d < best.d) best = { d: pr.d, q: pr.q, l }; }
+    }
+    if (!best) return;
+    const c = { x: Math.round(it.x), y: Math.round(it.y) }, q = { x: Math.round(best.q.x), y: Math.round(best.q.y) };
+    const pts = Math.abs(c.x - q.x) < 3 || Math.abs(c.y - q.y) < 3 ? [q, c] : [q, { x: q.x, y: c.y }, c];
+    const L = best.l, name = it.label || catItem(it.key).name;
+    Model.add('lines', { kind: kd, depth: L.depth || 0, dia: L.dia, section: L.section, label: `${(L.label || LINE_KINDS[kd].code).split(' ')[0]} → ${name.split(' (')[0].slice(0, 30)}`, note: 'Подключение прибора (автоматически)', pts, floor: L.floor });
+  },
   /** Добавить светильники в помещение: сеткой по длинной стороне, внутри контура; подключить к ближайшей линии «Свет» */
   addLamps(poly, fid, needLm, key = 'lamp') {
     const def = catItem(key), n = Math.max(1, Math.ceil(needLm / def.lm)), b = G.bbox(poly), W = b.x1 - b.x0, H = b.y1 - b.y0, along = W >= H;
@@ -362,7 +428,29 @@ const Analysis = {
       }
     }
     if (run) gaps.push(run);
-    return { cams: cams.length, pct: total ? seen / total * 100 : 0, gaps: gaps.filter(g => g.len >= 100).sort((x, y) => y.len - x.len) };
+    // главное — подходы к дому и гаражу (полоса 1,5 м вдоль стен) и въезды: ворота и калитки
+    const ring = blds.slice(0, (fl ? fl.outlines.length : 0)).concat(d.items.filter(it => (it.floor || f1) === f1 && BLD_HOLLOW.has(catItem(it.key).shape)).map(it => Model.itemPts(it)));
+    let hT = 0, hS = 0;
+    const hGaps = [];
+    for (const poly of ring) {
+      const off = G.offsetPoly(poly, 150), P2 = Math.abs(G.polyArea(off)) > Math.abs(G.polyArea(poly)) ? off : G.offsetPoly(poly, -150);
+      let hr = null;
+      for (let i = 0; i < P2.length; i++) {
+        const a = P2[i], b = P2[(i + 1) % P2.length], L = G.dist(a, b), n = Math.max(1, Math.round(L / step));
+        for (let k = 0; k < n; k++) {
+          const p = G.add(a, G.mul(G.sub(b, a), (k + 0.5) / n));
+          if (blds.some(q => G.pointInPoly(p, q))) { if (hr) { hGaps.push(hr); hr = null; } continue; }   // вплотную к другой постройке
+          const ok = cams.some(c => sees(c, p));
+          hT += L / n; if (ok) { hS += L / n; if (hr) { hGaps.push(hr); hr = null; } } else if (hr) hr.len += L / n; else hr = { len: L / n, at: p };
+        }
+      }
+      if (hr) hGaps.push(hr);
+    }
+    const c0 = G.polyCentroid(plot.pts);
+    const doors = d.items.filter(it => ['gateSwing', 'gateSlide', 'wicket'].includes(catItem(it.key).shape) || /^gate|wicket/.test(it.key)).map(it => ({ it, p: G.add(it, G.mul(G.unit(G.sub(c0, it)), 150)) }));
+    const blind = doors.filter(x => !cams.some(c => sees(c, x.p)));
+    return { cams: cams.length, pct: total ? seen / total * 100 : 0, gaps: gaps.filter(g => g.len >= 100).sort((x, y) => y.len - x.len),
+      pctHouse: hT ? hS / hT * 100 : 100, hGaps: hGaps.filter(g => g.len >= 350).sort((x, y) => y.len - x.len), doors: doors.length, blind };
   },
   vent(d, fd, add, stats, m) {
     const f1 = d.floors[0].id, EXH = new Set(['ventGrille', 'ventShaft', 'ventShaft2', 'ventPipe', 'fan', 'recuperator']);
@@ -465,10 +553,10 @@ const Analysis = {
   render() {
     const R = Analysis.run(), box = $('anBody');
     box.textContent = '';
-    const bad = R.issues.filter(i => i.sev === 'bad').length, warn = R.issues.filter(i => i.sev === 'warn').length, info = R.issues.filter(i => i.sev === 'info').length;
+    const bad = R.issues.filter(i => i.sev === 'bad').length, warn = R.issues.filter(i => i.sev === 'warn').length, info = R.issues.filter(i => i.sev === 'info').length, notes = R.issues.filter(i => i.sev === 'note').length;
     const sum = U.el('div', { class: 'check-sum ' + (bad ? 'bad' : 'ok') },
       bad ? `✗ Нарушений норм: ${bad}` : '✓ Нарушений норм не найдено',
-      U.el('span', {}, ` · замечаний ${warn} · по чертежу ${info}`));
+      U.el('span', {}, ` · замечаний ${warn} · по чертежу ${info}${notes ? ` · указаний строителям ${notes}` : ''}`));
     const fixes = R.issues.filter(i => i.fix);
     if (fixes.length) sum.append(U.el('button', { type: 'button', class: 'primary an-fixall', title: 'Применить все автоисправления: автоматы по сечению, УЗО, кровля по уклону, снегозадержатели, высота труб', onclick: () => { for (const i of fixes) i.fix(); Model.commit(); Analysis.render(); UI.toast(`Исправлено автоматически: ${fixes.length}`); } }, `✓ Исправить автоматически (${fixes.length})`));
     const head = $('anSum');
@@ -488,11 +576,14 @@ const Analysis = {
             U.el('td', { class: 'num ' + ((r.living || r.kitchen) && r.ratio > 8.05 ? 'bad' : '') }, r.windows ? '1:' + r.ratio.toFixed(1) : '—'))))));
     }
     // замечания
-    const sevName = { bad: 'Нарушение', warn: 'Замечание', info: 'Неточности чертежа' };
-    if (R.issues.length) {
+    const sevName = { bad: 'Нарушение', warn: 'Замечание', info: 'Неточности чертежа', note: 'Указания строителям' };
+    const probs = R.issues.filter(i => i.sev !== 'note'), noteList = R.issues.filter(i => i.sev === 'note');
+    if (noteList.length) left.append(U.el('div', { class: 'an-card an-wide an-notes' }, U.el('h4', {}, `Указания строителям (${noteList.length}) — не нарушения, а готовые решения; печатаются на листах`),
+      U.el('ul', {}, noteList.map(i => U.el('li', { onclick: () => Analysis.show(i), title: 'Показать на плане' }, U.el('b', {}, i.group + ': '), i.text, i.src ? U.el('em', {}, ' § ' + i.src) : null)))));
+    if (probs.length) {
       const list = U.el('div', { class: 'an-issues' });
       let group = null;
-      for (const i of R.issues) {
+      for (const i of probs) {
         const g = i.sev === 'info' ? sevName.info : `${sevName[i.sev]} · ${i.group}`;
         if (g !== group) { group = g; list.append(U.el('h4', {}, g)); }
         const fx = i.fix ? U.el('span', { class: 'an-fix', role: 'button', title: 'Исправить автоматически по норме', onclick: (e) => { e.stopPropagation(); i.fix(); Model.commit(); Analysis.render(); } }, '✓ Исправить') : null;
@@ -519,7 +610,7 @@ const Analysis = {
     if (R.rooms.length) { L.push('ПОМЕЩЕНИЯ'); for (const r of R.rooms) L.push(`  ${r.name}: ${U.fmtArea(r.area)}${r.windows ? `, окна 1:${r.ratio.toFixed(1)}` : ''}`); L.push(''); }
     L.push('ЗАМЕЧАНИЯ');
     if (!R.issues.length) L.push('  нет');
-    for (const i of R.issues) L.push(`  [${{ bad: 'нарушение', warn: 'замечание', info: 'чертёж' }[i.sev]}] ${i.text}${i.src ? ` (${i.src})` : ''}`);
+    for (const i of R.issues) L.push(`  [${{ bad: 'нарушение', warn: 'замечание', info: 'чертёж', note: 'указание' }[i.sev]}] ${i.text}${i.src ? ` (${i.src})` : ''}`);
     return L.join('\n');
   },
   copy() {

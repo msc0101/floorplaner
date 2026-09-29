@@ -552,6 +552,10 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
 .check-item.an-info { border-left-color: var(--border-2); }
 .an-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 0 18px; }
 .an-card { min-width: 0; }
+.an-notes ul { margin: 4px 0 0; padding-left: 16px; font-size: 12.5px; line-height: 1.45; }
+.an-notes li { margin: 0 0 6px; cursor: pointer; }
+.an-notes li:hover { color: var(--accent); }
+.an-notes em { color: var(--muted); font-style: normal; font-size: 11px; }
 .an-card .tbl { width: 100%; table-layout: fixed; }
 .an-card .tbl td { overflow-wrap: anywhere; vertical-align: top; }
 .an-card .tbl td, .an-card .tbl th { padding: 3px 6px; font-size: 12.5px; line-height: 1.35; }

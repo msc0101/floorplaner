@@ -214,7 +214,13 @@ const Climate = {
     return { city, exact, snow, snowKpa: Climate.SNOW_KPA[snow], wind, windKpa: Climate.WIND_KPA[wind], zone, t5, frost };
   },
   /** Глубина промерзания, см: задана вручную на вкладке «Проект» или по климату города */
-  frost() { const f = App.doc.settings.frost; return U.isNum(f) ? f : Climate.get().frost; },
+  /** Нормативная глубина промерзания, см: из таблицы (суглинки, d0 = 0,23) с поправкой на грунт верхнего слоя (пески и супеси — d0 0,28–0,30), СП 22.13330 п. 5.5.3 */
+  frost() {
+    const f = App.doc.settings.frost;
+    if (U.isNum(f)) return f;
+    const s = (App.doc.settings.found || {}).soil, S = typeof SOILS !== 'undefined' && s ? SOILS[s] : null;
+    return Math.round(Climate.get().frost * (S ? S.d0 / 0.23 : 1));
+  },
 };
 
 const Sun = {

@@ -9,12 +9,12 @@
 
 /* Грунты основания: R0 — расчётное сопротивление, кПа (СП 22.13330 прил. Б, ориентировочно); heave — пучинистый */
 const SOILS = {
-  sand:      { name: 'Песок средней крупности, крупный', R0: 400, heave: false },
-  sandFine:  { name: 'Песок мелкий, пылеватый', R0: 300, heave: true },
-  sandyLoam: { name: 'Супесь', R0: 250, heave: true },
-  loam:      { name: 'Суглинок', R0: 220, heave: true },
-  clay:      { name: 'Глина', R0: 250, heave: true },
-  peat:      { name: 'Торф, насыпной, ил (слабый)', R0: 50, heave: true, weak: true },
+  sand:      { name: 'Песок средней крупности, крупный', R0: 400, heave: false, d0: 0.30 },
+  sandFine:  { name: 'Песок мелкий, пылеватый', R0: 300, heave: true, d0: 0.28 },
+  sandyLoam: { name: 'Супесь', R0: 250, heave: true, d0: 0.28 },
+  loam:      { name: 'Суглинок', R0: 220, heave: true, d0: 0.23 },
+  clay:      { name: 'Глина', R0: 250, heave: true, d0: 0.23 },
+  peat:      { name: 'Торф, насыпной, ил (слабый)', R0: 50, heave: true, weak: true, d0: 0.23 },
 };
 const FOUND_TYPES = { auto: 'Подобрать автоматически', strip: 'Ленточный монолитный', mzlf: 'Мелкозаглублённый утеплённый (МЗЛФ)', slab: 'Утеплённая плита (УШП)', pile: 'Свайно-винтовой / буронабивной с ростверком' };
 /* Плотность кладки, кН/м³ (с раствором и влажностью) */
@@ -38,10 +38,18 @@ const WALL_REINF = {
 const REBAR_KG = { 6: 0.222, 8: 0.395, 10: 0.617, 12: 0.888, 14: 1.21 };
 
 const Struct = {
+  /** Настройки основания: soil — грунт под растительным слоем (толщиной top), layer — его мощность, soil2 — что ниже; survey — есть изыскания */
   opt() {
     const s = App.doc.settings;
-    return Object.assign({ soil: 'loam', gwl: 300, type: 'auto', plinth: 40 }, s.found || {});
+    return Object.assign({ soil: 'loam', gwl: 300, type: 'auto', plinth: 40, top: 20, layer: 0, soil2: 'clay', survey: false }, s.found || {});
   },
+  /** Грунт словами: «растительный 5 см, песок мелкий 1,0 м, ниже глина» */
+  soilText() {
+    const o = Struct.opt(), S1 = SOILS[o.soil] || SOILS.loam, S2 = o.soil2 && o.layer ? SOILS[o.soil2] : null;
+    return (o.top ? `растительный слой ${o.top} см, ` : '') + S1.name.toLowerCase() + (S2 ? ` ${(o.layer / 100).toFixed(1).replace('.', ',')} м, ниже ${S2.name.toLowerCase()}` : '') + (o.survey ? '' : ' (без изысканий — запас 0,8 к R)');
+  },
+  /** Грунт на глубине z (м от поверхности) */
+  soilAt(z) { const o = Struct.opt(); return o.soil2 && o.layer && z * 100 >= o.layer ? SOILS[o.soil2] || SOILS.loam : SOILS[o.soil] || SOILS.loam; },
   set(k, v) { App.doc.settings.found = { ...(App.doc.settings.found || {}), [k]: v }; },
   /** Несущие стены этажа: наружные и внутренние несущие (перегородки — на стяжке) */
   bearing(fid) { return App.doc.walls.filter(w => (w.floor === fid) && (w.kind === 'ext' || w.kind === 'int')); },
@@ -119,25 +127,32 @@ const Struct = {
   },
   /** Общий расчёт: нагрузка на 1 м → тип, глубина (промерзание × kh), ширина подошвы, давление, армирование, объёмы */
   _calc(sp) {
-    const o = Struct.opt(), S = SOILS[o.soil] || SOILS.loam;
+    const o = Struct.opt(), S1 = SOILS[o.soil] || SOILS.loam, S2 = o.soil2 && o.layer ? SOILS[o.soil2] : null;
     const L = sp.Lext + sp.Lint, Lroof = sp.Lroof || L;
     const qn = (sp.Gw + sp.Gceil) / Math.max(L, 1) + sp.Groof / Math.max(Lroof, 1);   // кН/м по наиболее нагруженной стене (без веса фундамента)
     const q = qn * 1.2;                                                     // с коэффициентом надёжности по нагрузке
     // глубина: пучинистые грунты — не меньше расчётного промерзания df = kh · dfn
-    const dfn = Climate.frost() / 100, df = +(sp.kh * dfn).toFixed(2);
+    const dfn = Climate.frost() / 100, df = +(sp.kh * dfn).toFixed(2);   // промерзание — по грунту верхнего слоя (Climate.frost)
     const high = o.gwl / 100 < df + 2;                                      // вода близко — пучение сильнее
-    const type = FOUND_TYPES[sp.type] && sp.type !== 'auto' ? sp.type : S.weak ? 'pile' : S.heave && o.gwl < 150 ? 'slab' : S.heave && high ? 'mzlf' : 'strip';   // вода ближе промерзания + 2 м — МЗЛФ с утеплением, чтобы не ловить пучение
-    let depth = type === 'strip' ? (S.heave ? Math.max(df, 0.5) : 0.5) : type === 'mzlf' ? 0.5 : type === 'slab' ? 0.35 : 0;
+    // пучение: грунт основания пучинистый или пучинистый слой ниже, но в зоне промерзания
+    const heave = S1.heave || !!(S2 && S2.heave && df * 100 > o.layer);
+    const S = { ...S1, heave, weak: S1.weak || !!(S2 && S2.weak && o.layer < 150) };
+    // песок поверх пучинистой глины: МЗЛФ на природной песчаной подушке, промерзание глины отсекает утеплённая отмостка
+    const sandTop = /^sand/.test(o.soil) && S2 && S2.heave;
+    const type = FOUND_TYPES[sp.type] && sp.type !== 'auto' ? sp.type : S.weak ? 'pile' : heave && o.gwl < 150 ? 'slab' : heave && (high || sandTop) ? 'mzlf' : 'strip';
+    let depth = type === 'strip' ? (heave ? Math.max(df, 0.5) : 0.5) : type === 'mzlf' ? 0.5 : type === 'slab' ? 0.35 : 0;
     if (U.isNum(sp.depth)) depth = sp.depth / 100;
     // ширина подошвы: q / (R − γ·d); не меньше стены + 10 см и не меньше 30 см
     const H = depth + o.plinth / 100;                                        // высота ленты с цоколем
-    const R = S.R0 * (type === 'mzlf' ? 0.9 : 1);
+    // расчётное сопротивление: грунт под подошвой, а если слабее грунт ниже в пределах ~1 м — по нему; без изысканий — запас 0,8
+    const Sb = Struct.soilAt(depth), Sd = Struct.soilAt(depth + 1), R0 = Math.min(Sb.R0, Sd.R0);
+    const R = R0 * (type === 'mzlf' ? 0.9 : 1) * (o.survey ? 1 : 0.8);
     let b = q / Math.max(30, R - 24 * H);                                  // та же формула, что и в проверке давления
     b = Math.max(b, sp.thMax + 0.1, 0.3);
     b = Math.ceil(b * 20) / 20;
     if (U.isNum(sp.width)) b = sp.width / 100;
     const p = (q + 24 * b * H) / b;                                          // давление под подошвой, кПа
-    const out = { ...sp, soil: S, soilKey: o.soil, gwl: o.gwl, type, depth, width: b, H, qn, q, p, R, df, dfn, L, high, plinth: o.plinth };
+    const out = { ...sp, soil: S, soil2: S2, layer: o.layer, survey: o.survey, soilKey: o.soil, gwl: o.gwl, type, depth, width: b, H, qn, q, p, R, df, dfn, L, high, plinth: o.plinth };
     const { Lext, Lint, area } = sp;
     if (type === 'strip' || type === 'mzlf') {
       out.concrete = L * b * H;
@@ -206,7 +221,8 @@ const Struct = {
       if (F.soil.heave && (F.type === 'strip') && F.depth < F.df - 0.005) add('bad', nm, `глубина заложения ${m(F.depth * 100)} меньше расчётного промерзания ${m(F.df * 100)} на пучинистом грунте — фундамент будет выпирать`, 'СП 22.13330.2016 п. 5.5.3, табл. 5.3', pos, id, F.house ? fix('depth', undefined) : null);
       if (F.soil.heave && F.type === 'strip' && F.high) add('warn', nm, `грунтовые воды на ${m(o.gwl)} — ближе промерзания + 2 м: для ленты нужны дренаж и утепление отмостки, либо МЗЛФ / УШП`, 'СП 22.13330.2016 п. 5.5.4; СП 104.13330', pos, id, fix('type', 'mzlf'));
       if (F.soil.weak && F.type !== 'pile') add('bad', nm, 'слабый грунт (торф, насыпной, ил) — нужен свайный фундамент до плотного слоя или замена грунта', 'СП 22.13330.2016 п. 6.4; СП 24.13330', pos, id, fix('type', 'pile'));
-      if (!F.house && F.soil.heave && F.type === 'mzlf') add('info', nm, `МЗЛФ ${m(F.depth * 100)} при промерзании ${m(F.df * 100)} (${F.khWhy}): обязательно утеплить подошву и отмостку XPS по периметру (юбка ≥ 1,2 м) и сделать подушку из непучинистого песка`, 'СП 22.13330.2016 п. 5.5.4; СП 50-101-2004 п. 12');
+      if (F.house && o.top) add('note', nm, `срезать растительный слой ${o.top} см по пятну застройки + 1 м; котлован — по разметке осей, дно уплотнить; обратная засыпка пазух — песком послойно с трамбованием`, 'СП 45.13330.2017 п. 6.1, 7.4');
+      if (F.soil.heave && F.type === 'mzlf') add('note', nm, `МЗЛФ ${m(F.depth * 100)} при промерзании ${m(F.df * 100)} (${F.khWhy}): обязательно утеплить подошву и отмостку XPS по периметру (юбка ≥ 1,2 м) и сделать подушку из непучинистого песка`, 'СП 22.13330.2016 п. 5.5.4; СП 50-101-2004 п. 12');
       // ямы и погреба у ленты: дно ниже подошвы ближе, чем на разность отметок, — лента «подрезается» (СП 22.13330 п. 5.5.9: Δh ≤ a·(tgφ + c/p) ≈ a)
       if (F.type !== 'slab') for (const pit of App.doc.items.filter(x => catItem(x.key).shape === 'pit' && (x.floor || App.doc.floors[0].id) === App.doc.floors[0].id)) {
         const pd = pitGeom(pit, pit.w, pit.d).depth / 100, dh = pd - F.bottom;
@@ -214,7 +230,7 @@ const Struct = {
         const pp = Model.itemPts(pit), gap = Math.min(...F.segs.map(sg => Struct._polySegDist(pp, sg))) / 100 - F.width / 2;
         if (gap >= dh) continue;
         const name = pit.label || catItem(pit.key).name, src = 'СП 22.13330.2016 п. 5.5.9, 5.5.10; СП 63.13330.2018; СП 50-101-2004';
-        if (pit.monolith) add('info', nm, `${name} глубиной ${m(pd * 100)} в ${m(Math.max(0, gap) * 100)} от подошвы: стенки — монолит ж/б 200 мм, две сетки Ø10–12 шаг 200, рассчитать как подпорные на давление грунта с пригрузом от ленты; бетонировать до устройства ленты, наружная гидроизоляция и дренаж`, src, { x: pit.x, y: pit.y }, pit.id);
+        if (pit.monolith) add('note', nm, `${name} глубиной ${m(pd * 100)} в ${m(Math.max(0, gap) * 100)} от подошвы: стенки — монолит ж/б 200 мм, две сетки Ø10–12 шаг 200, рассчитать как подпорные на давление грунта с пригрузом от ленты; бетонировать до устройства ленты, наружная гидроизоляция и дренаж`, src, { x: pit.x, y: pit.y }, pit.id);
         else add(gap < 0.05 ? 'bad' : 'warn', nm, `${name} глубиной ${m(pd * 100)} — на ${m(dh * 100)} ниже подошвы (${m(F.bottom * 100)}) и в ${m(Math.max(0, gap) * 100)} от неё: грунт из-под ленты «поплывёт». Отодвиньте яму на ≥ ${m(dh * 100)} от края подошвы или сделайте стенки монолитными ж/б (подпорными)`, src, { x: pit.x, y: pit.y }, pit.id, () => { pit.monolith = true; });
       }
     }
@@ -224,13 +240,13 @@ const Struct = {
       const near = Math.min(...F.segs.flatMap(sg => Hs.segs.map(hs => Struct._segSegDist(sg, hs))));
       if (near > (F.wallT + 60)) continue;
       const dd = Math.round((F.bottom - Hs.bottom) * 100);
-      add('info', 'Фундамент: ' + F.name.toLowerCase(), `примыкает к дому: между фундаментами и стенами — деформационный шов 20–30 мм (ленты арматурой не связывать — нагрузки и осадки разные); кровлю — с компенсатором` + (Math.abs(dd) >= 5 ? `. Подошвы отличаются на ${m(Math.abs(dd))} — у примыкания на длине ≥ 1 м ${dd > 0 ? 'заглубите ленту дома' : 'заглубите ленту постройки'} до общей отметки ${m(Math.max(F.bottom, Hs.bottom) * 100)}, иначе более глубокий котлован подрежет основание соседней ленты` : ''), 'СП 22.13330.2016 п. 5.5.9, 6.13; СП 70.13330', { x: F.item.x, y: F.item.y }, F.id);
+      add('note', 'Фундамент: ' + F.name.toLowerCase(), `примыкает к дому: между фундаментами и стенами — деформационный шов 20–30 мм (ленты арматурой не связывать — нагрузки и осадки разные); кровлю — с компенсатором` + (Math.abs(dd) >= 5 ? `. Подошвы отличаются на ${m(Math.abs(dd))} — у примыкания на длине ≥ 1 м ${dd > 0 ? 'заглубите ленту дома' : 'заглубите ленту постройки'} до общей отметки ${m(Math.max(F.bottom, Hs.bottom) * 100)}, иначе более глубокий котлован подрежет основание соседней ленты` : ''), 'СП 22.13330.2016 п. 5.5.9, 6.13; СП 70.13330', { x: F.item.x, y: F.item.y }, F.id);
     }
     // ячеистые блоки: опирание перемычек и армопояс под крышу
     for (const w of App.doc.walls) {
       const R = WALL_REINF[w.mat];
       if (!R || !R.ring || w.kind !== 'ext') continue;
-      for (const op of App.doc.openings.filter(x => x.wall === w.id && x.w > 150)) add('info', 'Конструкции', `${OPENING_TYPES[op.type].name} ${m(op.w)} в стене «${(WALL_MATERIALS[w.mat] || {}).name}»: перемычка — из U-блоков с армированием 2–4 Ø12 или готовая, опирание ≥ 25 см; ряд под окном — армировать с заходом 0,9 м в стороны`, R.src, G.mid(w.a, w.b), op.id);
+      for (const op of App.doc.openings.filter(x => x.wall === w.id && x.w > 150)) add('note', 'Конструкции', `${OPENING_TYPES[op.type].name} ${m(op.w)} в стене «${(WALL_MATERIALS[w.mat] || {}).name}»: перемычка — из U-блоков с армированием 2–4 Ø12 или готовая, опирание ≥ 25 см; ряд под окном — армировать с заходом 0,9 м в стороны`, R.src, G.mid(w.a, w.b), op.id);
     }
   },
   /** Слой «Кладка»: по стенам — материал и армирование, над проёмами несущих стен — перемычки с опиранием 25 см */
