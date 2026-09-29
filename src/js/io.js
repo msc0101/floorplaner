@@ -222,8 +222,8 @@ const IO = {
     const boxW = PW - 20 - M - descW - 4, boxH = PH - 2 * M - tbH - 2, dpmm = o.paper === 'A2' ? 5 : 7;
     const std = [20, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 2000];
     const ids = Object.keys(SYSTEMS).filter(id => (o.sys || {})[id] !== false && (d.items.some(it => sysOf(it) === id) || d.lines.some(l => sysOfLine(l) === id)));
-    const FD = Struct.foundation();
-    if (FD) ids.unshift('found');                                           // первым — план фундамента
+    const FDs = Struct.all();
+    if (FDs.length) ids.unshift('found');                                           // первым — план фундамента
     const issues = (() => { try { return Analysis.run().issues; } catch { return []; } })();
     const grp = { power: 'Электрика', lowvolt: 'Видеонаблюдение', vent: 'Вентиляция', gas: 'Газ' };
     const date = new Date().toLocaleDateString('ru-RU'), out = [];
@@ -234,6 +234,7 @@ const IO = {
       let b = Drawing.regionFor(ground.id);
       for (const l of lines) b = G.bboxUnion(b, G.bbox(l.pts));
       for (const it of items) b = G.bboxUnion(b, G.bbox(Model.itemPts(it)));
+      if (id === 'found') for (const F of FDs) if (F.item) b = G.bboxUnion(b, G.bbox(Model.itemPts(F.item)));
       const pad = 120, reg0 = { x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad };
       const need = Math.max((reg0.x1 - reg0.x0) * 10 / boxW, (reg0.y1 - reg0.y0) * 10 / boxH), N = std.find(x => x >= need) || Math.ceil(need);
       const cx = (reg0.x0 + reg0.x1) / 2, cy = (reg0.y0 + reg0.y1) / 2, reg = { x0: cx - boxW * N / 20, x1: cx + boxW * N / 20, y0: cy - boxH * N / 20, y1: cy + boxH * N / 20 };
@@ -256,7 +257,15 @@ const IO = {
         lines.length ? T(['Обозн.', 'Марка / Ø', 'Длина, м', 'Глуб., м', id === 'power' ? 'Автомат / УЗО' : ''], cut(lrows, id === 'power' ? 24 : 16)) : null,
         erows.length ? U.el('h4', {}, 'Оборудование') : null,
         erows.length ? T(['Наименование', 'Кол.'], cut(erows, 14)) : null,
-        id === 'found' ? T(['Параметр', 'Значение'], [['Тип', FOUND_TYPES[FD.type]], ['Грунт, вода', `${FD.soil.name}, УГВ ${(FD.gwl / 100).toFixed(1)} м`], ['Промерзание (норм. / расч.)', `${FD.dfn.toFixed(2)} / ${FD.df.toFixed(2)} м`], ['Глубина / ширина / высота', FD.type === 'pile' ? `сваи ${FD.piles} шт.` : `${FD.depth.toFixed(2)} / ${FD.width.toFixed(2)} / ${FD.H.toFixed(2)} м`], ['Нагрузка', `${FD.qn.toFixed(0)} кН/м; p = ${FD.p.toFixed(0)} ≤ R = ${FD.R.toFixed(0)} кПа`], ['Армирование', FD.bars], ['Бетон B20 W6 F150', `${FD.concrete.toFixed(1)} м³`], ['Арматура', `${FD.rebar.toFixed(0)} кг`], ['Подушка / XPS', `${(FD.sand || 0).toFixed(1)} м³ / ${FD.xps.toFixed(0)} м²`]]) : null,
+        id === 'found' ? T(['Параметр', ...FDs.map(F => F.name)], [
+          ['Тип', ...FDs.map(F => FOUND_TYPES[F.type])],
+          ['Грунт, вода', ...FDs.map(F => `${F.soil.name}, УГВ ${(F.gwl / 100).toFixed(1)} м`)],
+          ['Промерзание: норм. × kh = расч.', ...FDs.map(F => `${F.dfn.toFixed(2)} × ${F.kh} = ${F.df.toFixed(2)} м (${F.khWhy})`)],
+          ['Глубина / ширина / высота', ...FDs.map(F => F.type === 'pile' ? `сваи ${F.piles} шт.` : `${F.depth.toFixed(2)} / ${F.width.toFixed(2)} / ${F.H.toFixed(2)} м`)],
+          ['Нагрузка', ...FDs.map(F => `${F.qn.toFixed(0)} кН/м; p = ${F.p.toFixed(0)} ≤ R = ${F.R.toFixed(0)} кПа`)],
+          ['Армирование', ...FDs.map(F => F.bars)],
+          ['Бетон B20 W6 F150 / арматура', ...FDs.map(F => `${F.concrete.toFixed(1)} м³ / ${F.rebar.toFixed(0)} кг`)],
+          ['Подушка / XPS', ...FDs.map(F => `${(F.sand || 0).toFixed(1)} м³ / ${F.xps.toFixed(0)} м²`)]]) : null,
         id === 'found' ? U.el('h4', {}, 'Кладка и армирование стен') : null,
         id === 'found' ? T(['Стена', 'Армирование'], Struct.masonry().filter(r => r.lenBear || r.rule.every).map(r => [`${r.name}, ${r.th} см, ${r.len.toFixed(1)} м`, (r.rule.every ? `1-й и каждый ${r.rule.every}-й ряд: ${r.rule.how}` : r.rule.how) + (r.ring ? '; армопояс 250 мм, 4 Ø12' : '') + (r.ops ? `; перемычки ${r.ops} шт.` : '')])) : null,
         U.el('h4', {}, 'Требования'),

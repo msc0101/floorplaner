@@ -101,8 +101,8 @@ const Analysis = {
     // ---------------- конструкции: уклон кровли, простенки у углов, пролёты, снегозадержание, фундамент ----------------
     Analysis.structure(d, fd, add, m);
     Struct.issues(add, m);
-    { const F = Struct.foundation(), at = stats.findIndex(x => /Смета/.test(x.title));
-      if (F) stats.splice(at < 0 ? stats.length : at, 0, { title: 'Фундамент (авторасчёт)', rows: [['Тип', FOUND_TYPES[F.type]], ['Грунт / вода', `${F.soil.name.toLowerCase()} / ${m(F.gwl)}`], ['Глубина / ширина', F.type === 'pile' ? `сваи ${F.piles} шт.` : `${m(F.depth * 100)} / ${m(F.width * 100)}`], ['Нагрузка / давление', `${F.qn.toFixed(0)} кН/м / ${F.p.toFixed(0)} из ${F.R.toFixed(0)} кПа`], ['Бетон B20 / арматура', `${F.concrete.toFixed(1)} м³ / ${F.rebar.toFixed(0)} кг`]] }); }
+    for (const F of Struct.all()) { const at = stats.findIndex(x => /Смета/.test(x.title));
+      stats.splice(at < 0 ? stats.length : at, 0, { title: F.house ? 'Фундамент дома (авторасчёт)' : `Фундамент: ${F.name.toLowerCase()} (авторасчёт)`, rows: [['Тип', FOUND_TYPES[F.type]], ['Грунт / вода', `${F.soil.name.toLowerCase()} / ${m(F.gwl)}`], ['Промерзание', `${m(F.dfn * 100)} × ${String(F.kh).replace('.', ',')} = ${m(F.df * 100)} (${F.khWhy})`], ['Глубина / ширина', F.type === 'pile' ? `сваи ${F.piles} шт.` : `${m(F.depth * 100)} / ${m(F.width * 100)}`], ['Нагрузка / давление', `${F.qn.toFixed(0)} кН/м / ${F.p.toFixed(0)} из ${F.R.toFixed(0)} кПа`], ['Бетон B20 / арматура', `${F.concrete.toFixed(1)} м³ / ${F.rebar.toFixed(0)} кг`]] }); }
 
     // ---------------- вентиляция, дымоходы, печи ----------------
     Analysis.vent(d, fd, add, stats, m);
@@ -110,6 +110,9 @@ const Analysis = {
     // ---------------- климат: откуда берутся нагрузки и глубины ----------------
     { const cl = Climate.get(), at = stats.findIndex(x => /Смета/.test(x.title));
       stats.splice(at < 0 ? stats.length : at, 0, { title: 'Климат (' + cl.city + ')', rows: [['Климатический подрайон', cl.zone], ['Снеговой район / Sg', `${Climate.roman(cl.snow)} / ${cl.snowKpa.toFixed(1)} кПа`], ['Ветровой район / w0', `${Climate.roman(cl.wind, true)} / ${cl.windKpa.toFixed(2)} кПа`], ['Расчётная зимняя t', cl.t5 + ' °C'], ['Глубина промерзания', m(Climate.frost())]] }); }
+
+    // ---------------- скважина / колодец у границы с соседом: его септик может оказаться рядом ----------------
+    Analysis.wellsBound(d, add, m);
 
     // ---------------- электрика: группы щита, автомат против сечения, УЗО на розетках ----------------
     Analysis.electric(d, add, stats);
@@ -232,6 +235,21 @@ const Analysis = {
     }
     // снегозадержатели: скатная кровля с наружным водостоком над входами и дорожками
     for (const r of d.roofs) if (r.type !== 'flat' && (r.pitch || 0) >= 5 && !r.snowGuard) add('warn', 'Кровля', 'Крыша дома: нужны снегозадержатели над входами, крыльцом и дорожками (и на металлической кровле — по всему периметру карниза)', 'СП 17.13330.2017 п. 9.11', r, r.id, () => { r.snowGuard = true; });
+  },
+  /** Колодец / скважина ближе 20 м к границе с соседом: санитарный разрыв до чужого септика и уборной от нас не зависит */
+  wellsBound(d, add, m) {
+    const f1 = d.floors[0].id, plots = d.areas.filter(a => a.kind === 'plot' && (a.floor || f1) === f1);
+    for (const w of d.items.filter(it => (it.floor || f1) === f1 && ['well', 'borehole', 'boreholeArt'].includes(it.key))) {
+      let best = null;
+      for (const pl of plots) pl.pts.forEach((a, i) => {
+        if (Checks.edgeType(pl, i) !== 'neighbor') return;
+        const dd = G.distSeg(w, a, pl.pts[(i + 1) % pl.pts.length]);
+        if (!best || dd < best) best = dd;
+      });
+      if (best == null || best >= 2000) continue;
+      const name = w.label || catItem(w.key).name, art = w.key === 'boreholeArt';
+      add('warn', 'Водоснабжение', `${name} в ${m(best)} от границы с соседом: он вправе поставить у своего забора септик, уборную или компост — и до скважины окажется меньше санитарных 20 м (у поля фильтрации — 50 м). Надёжнее — ≥ 20 м от соседских границ, ближе к улице и подальше от чужих выгребов; обсадка с цементацией затрубья, герметичный оголовок или кессон` + (art ? '. Артезианскую — оформить: паспорт скважины, для водоносного горизонта, используемого для централизованного водоснабжения, — лицензия на пользование недрами (уточните в местном органе)' : ''), 'СП 53.13330.2019 п. 6.8; СанПиН 2.1.3684-21 (зона санитарной охраны); Закон РФ «О недрах» ст. 19', { x: w.x, y: w.y }, w.id);
+    }
   },
   /** Освещённость: E ≈ Φ·η / S (η = 0,45 — коэффициент использования с запасом); нет света или мало — автоисправление */
   LUX_K: 0.45,

@@ -691,6 +691,12 @@ const UI = {
       F.info('Утеплитель XPS', `${Fd.xps.toFixed(0)} м²`),
       F.btns([[App.doc.settings.layers.found ? 'Скрыть контур на плане' : 'Показать контур на плане', () => { App.doc.settings.layers.found = !App.doc.settings.layers.found; App.redraw(); UI.refresh(); }]]),
       F.note('Считается само по стенам, крыше, снеговому району и промерзанию города. Пучинистые грунты (суглинок, глина, супесь) — ниже промерзания; близкие грунтовые воды — МЗЛФ или утеплённая плита; торф — сваи. Уточните грунт по изысканиям (СП 47.13330) — хотя бы по соседям или шурфу.'));
+    for (const B of Struct.all().filter(x => !x.house)) body.push(U.el('div', { class: 'mas' }, U.el('b', {}, `Фундамент: ${B.name}`),
+      U.el('div', { class: 'mas-row' },
+        U.el('div', {}, `${FOUND_TYPES[B.type]}${B.type === 'pile' ? `, сваи ${B.piles} шт.` : `: глубина ${mm(B.depth)}${B.type === 'slab' ? '' : `, ширина ${mm(B.width)}`}`}`),
+        U.el('div', {}, `Промерзание ${mm(B.dfn)} × ${String(B.kh).replace('.', ',')} = ${mm(B.df)} (${B.khWhy}); нагрузка ${B.qn.toFixed(0)} кН/м, давление ${B.p.toFixed(0)} из ${B.R.toFixed(0)} кПа ${B.p <= B.R ? '✓' : '✗'}`),
+        U.el('div', {}, `${B.bars}. Бетон ${B.concrete.toFixed(1)} м³, арматура ${B.rebar.toFixed(0)} кг${B.sand ? `, подушка ${B.sand.toFixed(1)} м³` : ''}, XPS ${B.xps.toFixed(0)} м².`),
+        U.el('small', {}, 'Тип можно сменить в свойствах постройки. § СП 22.13330.2016 табл. 5.3, п. 5.5'))));
     const rows = Struct.masonry().filter(r => r.lenBear || r.rule.every);
     return F.section('Конструкции: фундамент и стены', ...body,
       rows.length ? U.el('div', { class: 'mas' }, U.el('b', {}, 'Кладка и армирование стен'), ...rows.map(r => U.el('div', { class: 'mas-row' },
@@ -1007,6 +1013,15 @@ const UI = {
         it.blind > 0 && bldRoof(it).type !== 'none' && it.blind < bldRoof(it).over + 20 ? F.note(`<b style="color:var(--danger)">Отмостка должна быть шире свеса крыши (${U.fmtLen(bldRoof(it).over)}) минимум на 20 см.</b>`) : null,
         F.info('Внутри', `${U.fmtLen(sh.inner.x1 - sh.inner.x0)} × ${U.fmtLen(sh.inner.y1 - sh.inner.y0)}`),
         F.note('Внутри постройки видно всё, что в ней стоит: погреб, смотровую яму, машину, верстак. Крыша рисуется в слое «Крыша» — выключите его (на плане или в 3D), чтобы посмотреть сверху. В 3D пол вырезается под открытую яму.')));
+      const Fb = Struct.all().find(x => x.item === it), mm = (v) => U.fmtLen(v * 100);
+      if (Fb) body.append(F.section('Фундамент (авторасчёт)',
+        F.select('Тип фундамента', it.foundType || 'auto', Object.entries(FOUND_TYPES), (v) => { if (v === 'auto') delete it.foundType; else it.foundType = v; Model.commit(); }),
+        F.info('Подобран', FOUND_TYPES[Fb.type]),
+        Fb.type !== 'pile' ? F.info('Глубина заложения', `${mm(Fb.depth)}${Fb.soil.heave ? ` (промерзание ${mm(Fb.dfn)} × ${String(Fb.kh).replace('.', ',')} = ${mm(Fb.df)}: ${Fb.khWhy})` : ' (грунт непучинистый)'}`) : F.info('Сваи', `${Fb.piles} шт.`),
+        Fb.type !== 'slab' && Fb.type !== 'pile' ? F.info('Ширина подошвы', mm(Fb.width)) : null,
+        F.info('Нагрузка / давление', `${Fb.qn.toFixed(0)} кН/м · ${Fb.p.toFixed(0)} из ${Fb.R.toFixed(0)} кПа ${Fb.p <= Fb.R ? '✓' : '✗'}`),
+        F.info('Бетон / арматура', `${Fb.concrete.toFixed(1)} м³ / ${Fb.rebar.toFixed(0)} кг`),
+        F.note('Грунт и грунтовые воды — общие для участка (вкладка «Проект» → «Конструкции»). Глубина зависит от обогрева: неотапливаемая постройка промерзает сильнее (kh 1,1), тёплый гараж +5 °C — kh 0,8 (СП 22.13330 табл. 5.3). Контур — слой «Фундамент».')));
       const edit = (i, fn) => UI.bldOpEdit(it, i, fn);
       const rows = bldOps(it).map((o, i) => UI.bldOpRow(it, i, true));
       body.append(F.section('Ворота, двери и окна',
@@ -1027,6 +1042,7 @@ const UI = {
         g.stair === 'stairs' ? F.info('Ступени', `${g.n} шт., подъём ${U.fmtLen(g.rise)}, проступь ${U.fmtLen(g.tread)}, марш ${U.fmtLen(g.L)}${g.tread < 14 ? ' — очень круто, лучше удлинить яму' : ''}`) : null,
         F.info('Внутри', `${U.fmtLen(g.iw)} × ${U.fmtLen(g.id)}, стенки ${g.t} см`),
         F.info('Выемка грунта', `${g.volume.toFixed(1)} м³`),
+        F.check('Стенки — монолит ж/б 200 мм (подпорные)', !!it.monolith, (v) => { if (v) it.monolith = true; else delete it.monolith; Model.commit(); }),
         F.note('Размеры — снаружи по стенкам. Под домом ставьте люк: пол дома его перекрывает, в 3D виден только люк. В гараже или сарае подойдёт и открытая (смотровая яма) — пол постройки под ней вырезается. Открытую яму видно в 3D, в прогулке в неё можно спуститься по ступеням.')));
     }
     if (def.shape === 'veranda') {

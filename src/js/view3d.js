@@ -502,15 +502,15 @@ const View3D = {
   /** Фундамент в 3D — под землёй (виден при «прозрачной земле» или при включённом слое «Фундамент») */
   found3d(e) {
     if (!View3D.opts.xray && !App.doc.settings.layers.found) return;
-    const F = Struct.foundation();
-    if (!F) return;
     const { box, prism, cyl } = View3D._g, con = [0.62, 0.62, 0.6];
-    if (F.type === 'slab') { for (const ol of (App.floorData || [])[0]?.outlines || []) prism(G.offsetPoly(ol.outer, 30), e - F.depth * 100, e - 1, con); return; }
-    const bw = F.type === 'pile' ? 40 : F.width * 100, h0 = F.type === 'pile' ? 40 : F.depth * 100;
-    for (const w of Struct.bearing(App.doc.floors[0].id)) {
-      const L = Model.wallLen(w), m = G.mid(w.a, w.b), ang = U.deg(Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x));
-      box(m.x, m.y, L + bw, bw, ang, e - h0, e - 1, con);
-      if (F.type === 'pile') { const u = G.unit(G.sub(w.b, w.a)), k = Math.max(1, Math.round(L / 250)); for (let i = 0; i <= k; i++) { const c = G.add(w.a, G.mul(u, L * i / k)); cyl(c.x, c.y, 6, e - Math.max(250, F.dfn * 100 + 100), e - h0, [0.45, 0.46, 0.48], 10); } }
+    for (const F of Struct.all()) {
+      if (F.type === 'slab') { for (const pts of F.slabs) prism(pts, e - F.depth * 100, e - 1, con); continue; }
+      const bw = F.type === 'pile' ? 40 : F.width * 100, h0 = F.type === 'pile' ? 40 : F.depth * 100;
+      for (const w of F.segs) {
+        const L = G.dist(w.a, w.b), m = G.mid(w.a, w.b), ang = U.deg(Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x));
+        box(m.x, m.y, L + bw, bw, ang, e - h0, e - 1, con);
+        if (F.type === 'pile') { const u = G.unit(G.sub(w.b, w.a)), k = Math.max(1, Math.round(L / 250)); for (let i = 0; i <= k; i++) { const c = G.add(w.a, G.mul(u, L * i / k)); cyl(c.x, c.y, 6, e - Math.max(250, F.dfn * 100 + 100), e - h0, [0.45, 0.46, 0.48], 10); } }
+      }
     }
   },
   /** Кладка в 3D: армопояс поверх несущих стен из блоков и перемычки над проёмами (бетон) */

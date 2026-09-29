@@ -66,13 +66,16 @@ const Estimate = {
     const fd = App.floorData || [];
     const perim = fd.length ? fd[0].outlines.reduce((s, o) => s + G.polyPerimeter(o.outer), 0) / 100 : 0;
     // фундамент — по авторасчёту (тип, объёмы, арматура); без стен — по периметру
-    const Fd = Struct.foundation();
+    const Fs = Struct.all(), Fd = Fs[0];
+    for (const F of Fs) {
+      const g = 'Фундамент, перекрытия, полы', k = F.house ? 'found' : 'found:' + F.id, who = F.house ? '' : ` (${F.name.toLowerCase()})`;
+      add(g, k + ':concrete', `Фундамент${who}: ${FOUND_TYPES[F.type][0].toLowerCase() + FOUND_TYPES[F.type].slice(1)} — бетон B20 W6 F150 с работой`, 'м³', F.concrete, 'found:concrete');
+      add(g, k + ':rebar', `Арматура фундамента${who} А500/А240`, 'кг', F.rebar, 'found:rebar');
+      if (F.sand) add(g, k + ':sand', `Песчаная подушка с трамбованием${who}`, 'м³', F.sand, 'found:sand');
+      add(g, k + ':xps', `Утепление фундамента XPS 50–100 мм${who}`, 'м²', F.xps, 'found:xps');
+      if (F.piles) add(g, k + ':pile', `Сваи с монтажом${who}`, 'шт.', F.piles, 'found:pile');
+    }
     if (Fd) {
-      add('Фундамент, перекрытия, полы', 'found:concrete', `Фундамент: ${FOUND_TYPES[Fd.type].toLowerCase()} — бетон B20 W6 F150 с работой`, 'м³', Fd.concrete);
-      add('Фундамент, перекрытия, полы', 'found:rebar', 'Арматура фундамента А500/А240', 'кг', Fd.rebar);
-      if (Fd.sand) add('Фундамент, перекрытия, полы', 'found:sand', 'Песчаная подушка с трамбованием', 'м³', Fd.sand);
-      add('Фундамент, перекрытия, полы', 'found:xps', 'Утепление фундамента XPS 50–100 мм', 'м²', Fd.xps);
-      if (Fd.piles) add('Фундамент, перекрытия, полы', 'found:pile', 'Сваи с монтажом', 'шт.', Fd.piles);
       const ms = Struct.masonry();
       add('Стены и перегородки', 'wall:rebar', 'Армирование кладки (штробы, сетка)', 'кг', ms.reduce((a, r) => a + r.rebar, 0));
       add('Стены и перегородки', 'wall:ring', 'Армопояс монолитный с арматурой', 'м³', ms.reduce((a, r) => a + (r.ring ? r.ring.vol : 0), 0));
@@ -129,7 +132,7 @@ const Estimate = {
     for (const it of d.items) if (PRICE_DEFAULTS['item:' + it.key] !== undefined || U.isNum((d.settings.prices || {})['item:' + it.key])) cnt[it.key] = (cnt[it.key] || 0) + 1;
     for (const [k, n] of Object.entries(cnt)) {
       const def = catItem(k);
-      add(def.layer === 'siteobj' ? 'Постройки на участке' : 'Оборудование', 'item:' + k, def.name, 'шт.', n);
+      add(def.layer === 'siteobj' ? 'Постройки на участке' : 'Оборудование', 'item:' + k, def.name + (Fs.some(F => F.item && F.item.key === k) ? ' — коробка, крыша, ворота (фундамент — отдельной строкой)' : ''), 'шт.', n);
     }
     // заборы
     for (const m of Rooms.materials().rows) if (m.fence) {
