@@ -847,6 +847,8 @@ const UI = {
     if (def.shape === 'radiator') {
       body.append(F.section('Монтаж',
         F.num('Низ от пола', U.isNum(it.z0) ? it.z0 : it.key === 'towel' ? 50 : 12, (v) => { it.z0 = U.clamp(v, 0, 200); Model.commit(); }),
+        it.key === 'towel' ? null : F.select('Термоголовка', U.isNum(it.tset) ? String(it.tset) : '', [['', 'комфорт 20–22 °C'], ['16', 'эконом +16 °C'], ['12', 'дежурный +12 °C'], ['5', '✱ защита от замерзания +5 °C']], (v) => { if (v) it.tset = +v; else delete it.tset; Model.commit(); }),
+        it.key === 'towel' ? null : F.info('Мощность (биметалл 500 мм)', `${radSections(it)} секц. × 180 Вт ≈ ${(radSections(it) * 0.18).toFixed(1)} кВт`),
         F.note('Радиатор — под окном, длиной 50–75 % ширины окна, 10–12 см от пола и от подоконника, 3–5 см от стены: тёплый воздух отсекает холод от стекла.')));
     }
     if (KITCHEN_SHAPES.has(def.shape) && kitchenLayout(def.shape, it.w, it.d).hob) {
@@ -965,6 +967,9 @@ const UI = {
       l.kind === 'gasAir' ? F.note('Надземный газопровод: не ниже 2,2 м там, где ходят люди, и не ниже 5 м над проездами; по фасаду — на кронштейнах, не ближе 0,5 м к окнам и дверям. Ввод в котельную — через футляр в стене.') : null,
       l.kind === 'overhead' ? F.num('Охранная зона (в каждую сторону)', (l.zone ?? 200) / 100, (v) => UI.set(l, 'zone', Math.round(v * 100)), { unit: 'м', min: 0, max: 50, step: 0.5 }) : null,
       l.kind === 'overhead' ? F.note('Опоры рисуются в вершинах и через ~40 м; столб из библиотеки в вершине заменяет нарисованный. Конец у стены дома — ввод (крюк на фасаде). Охранная зона ВЛ 0,4 кВ — 2 м, 10 кВ — 10 м: строить под проводами нельзя.') : null,
+      l.kind === 'power' ? F.text('Автомат', l.breaker || '', (v) => UI.set(l, 'breaker', v.trim() || undefined), { placeholder: 'C16' }) : null,
+      l.kind === 'power' ? F.text('УЗО / дифавтомат', l.rcd || '', (v) => UI.set(l, 'rcd', v.trim() || undefined), { placeholder: '30 мА' }) : null,
+      l.kind === 'power' ? F.note('Автомат — не больше допустимого тока кабеля (медь, скрыто, ПУЭ табл. 1.3.4): 1,5 мм² — C10 (свет), 2,5 мм² — C16, 4 мм² — C25, 6 мм² — C32. Розеточные группы, ванные и улица — через УЗО 30 мА (ПУЭ 7.1.71, 7.1.79, 7.1.83), стиральная машина и ванная — лучше 10 мА.') : null,
       F.text('Обозначение', l.label || '', (v) => UI.set(l, 'label', v.trim() || undefined), { placeholder: k.code }),
       F.text('Примечание', l.note || '', (v) => UI.set(l, 'note', v), { multiline: true }),
     ));

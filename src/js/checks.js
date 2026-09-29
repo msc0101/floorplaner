@@ -242,7 +242,8 @@ const Checks = {
       while (grown) {
         grown = false;
         for (const x of lines) {
-          if (used.has(x) || x.kind !== l0.kind) continue;
+          // подземная трасса и разводка в доме (глубина 0) — разные линии, даже если концы рядом
+          if (used.has(x) || x.kind !== l0.kind || ((x.depth || 0) > 0) !== ((l0.depth || 0) > 0)) continue;
           const a = x.pts[0], b = x.pts[x.pts.length - 1], s0 = pts[0], s1 = pts[pts.length - 1];
           if (G.dist(s1, a) <= 60) pts = pts.concat(x.pts);
           else if (G.dist(s1, b) <= 60) pts = pts.concat(x.pts.slice().reverse());

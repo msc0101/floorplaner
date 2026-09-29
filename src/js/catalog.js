@@ -39,6 +39,7 @@ const LINE_KINDS = {
   gasAir:   { name: 'Газопровод надземный (на опорах / по фасаду)', code: 'Г', color: '#e3a400', dash: [], layer: 'gas', dia: 32, depth: 0, height: 220 },
   power:    { name: 'Электрокабель', code: 'Э', color: '#d21f3c', dash: [], layer: 'electric', dia: 0, depth: 70, section: 'ВВГнг 3×2.5' },
   overhead: { name: 'Воздушная ЛЭП', code: 'ВЛ', color: '#555e6b', dash: [18, 5, 3, 5, 3, 5], layer: 'electric', dia: 0, depth: 0, section: 'СИП 4×16' },
+  freon:    { name: 'Фреонопровод и дренаж кондиционера', code: 'ФР', color: '#0891b2', dash: [3, 3], layer: 'heating', dia: 10, depth: 0 },
   lowvolt:  { name: 'Слаботочка (сеть, ТВ)', code: 'СС', color: '#7c3aed', dash: [6, 4], layer: 'electric', dia: 0, depth: 0, section: 'UTP cat.5e' },
   ground:   { name: 'Заземление', code: 'З', color: '#16a34a', dash: [2, 4], layer: 'electric', dia: 0, depth: 50, section: 'Полоса 40×4' },
 };
@@ -237,7 +238,7 @@ const CATALOG = [
     { key: 'washerNarrow', name: 'Стиральная машина узкая', shape: 'washer', w: 60, d: 45, h: 85, layer: 'plumbing' },
     { key: 'dryer', name: 'Сушильная машина', shape: 'washer', w: 60, d: 60, h: 85 },
     { key: 'microwave', name: 'Микроволновка', shape: 'oven', w: 48, d: 36, h: 28 },
-    { key: 'ac', name: 'Кондиционер (внутр. блок)', shape: 'labelbox', w: 80, d: 25, h: 28, label: 'К', layer: 'electric' },
+    { key: 'ac', name: 'Кондиционер (внутр. блок)', kw: 'кондиционер сплит мульти-сплит климат', shape: 'labelbox', w: 80, d: 25, h: 28, label: 'К', layer: 'electric' },
     { key: 'acout', name: 'Кондиционер (наруж. блок)', shape: 'fan', w: 80, d: 30, h: 55, layer: 'electric' },
   ]},
   { id: 'bath', name: 'Ванная и санузел', layer: 'plumbing', items: [
@@ -688,6 +689,9 @@ function bldShell(it, w, d) {
   return { t, ops, walls, inner: R(-w / 2 + t, -d / 2 + t, w / 2 - t, d / 2 - t) };
 }
 
+/** Секций у радиатора (шаг секции 8 см) */
+function radSections(it) { return Math.max(2, Math.round((it.w - 4) / 8)); }
+
 /* ============================ КУХОННЫЕ ГАРНИТУРЫ ============================ */
 const KITCHEN_SHAPES = new Set(['kitchenI', 'kitchenL', 'kitchenU', 'kitchenII', 'kitchenIsland', 'kitchenBar', 'kitchenPen', 'kitchenTall']);
 /** Ленты модулей в локальных координатах (центр — 0,0; y вниз). front — сторона фасада,
@@ -1054,6 +1058,7 @@ const Painters = (() => {
   S.radiator = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 1); thin(P);
     for (let x = -w / 2 + 8; x < w / 2; x += 8) line(P, [x, -d / 2, x, d / 2]);
+    if (U.isNum(P.it.tset)) text(P, (P.it.tset <= 5 ? '✱' : '') + '+' + P.it.tset + '°', 0, d / 2 + 9, 11, { bold: true, color: P.it.tset <= 5 ? '#1e6fe0' : P.C.ink });
   };
   S.pump = (P, w, d) => {
     circle(P, 0, 0, Math.min(w, d) / 2); thin(P);

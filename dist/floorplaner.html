@@ -1220,6 +1220,7 @@ const LINE_KINDS = {
   gasAir:   { name: 'Газопровод надземный (на опорах / по фасаду)', code: 'Г', color: '#e3a400', dash: [], layer: 'gas', dia: 32, depth: 0, height: 220 },
   power:    { name: 'Электрокабель', code: 'Э', color: '#d21f3c', dash: [], layer: 'electric', dia: 0, depth: 70, section: 'ВВГнг 3×2.5' },
   overhead: { name: 'Воздушная ЛЭП', code: 'ВЛ', color: '#555e6b', dash: [18, 5, 3, 5, 3, 5], layer: 'electric', dia: 0, depth: 0, section: 'СИП 4×16' },
+  freon:    { name: 'Фреонопровод и дренаж кондиционера', code: 'ФР', color: '#0891b2', dash: [3, 3], layer: 'heating', dia: 10, depth: 0 },
   lowvolt:  { name: 'Слаботочка (сеть, ТВ)', code: 'СС', color: '#7c3aed', dash: [6, 4], layer: 'electric', dia: 0, depth: 0, section: 'UTP cat.5e' },
   ground:   { name: 'Заземление', code: 'З', color: '#16a34a', dash: [2, 4], layer: 'electric', dia: 0, depth: 50, section: 'Полоса 40×4' },
 };
@@ -1418,7 +1419,7 @@ const CATALOG = [
     { key: 'washerNarrow', name: 'Стиральная машина узкая', shape: 'washer', w: 60, d: 45, h: 85, layer: 'plumbing' },
     { key: 'dryer', name: 'Сушильная машина', shape: 'washer', w: 60, d: 60, h: 85 },
     { key: 'microwave', name: 'Микроволновка', shape: 'oven', w: 48, d: 36, h: 28 },
-    { key: 'ac', name: 'Кондиционер (внутр. блок)', shape: 'labelbox', w: 80, d: 25, h: 28, label: 'К', layer: 'electric' },
+    { key: 'ac', name: 'Кондиционер (внутр. блок)', kw: 'кондиционер сплит мульти-сплит климат', shape: 'labelbox', w: 80, d: 25, h: 28, label: 'К', layer: 'electric' },
     { key: 'acout', name: 'Кондиционер (наруж. блок)', shape: 'fan', w: 80, d: 30, h: 55, layer: 'electric' },
   ]},
   { id: 'bath', name: 'Ванная и санузел', layer: 'plumbing', items: [
@@ -1869,6 +1870,9 @@ function bldShell(it, w, d) {
   return { t, ops, walls, inner: R(-w / 2 + t, -d / 2 + t, w / 2 - t, d / 2 - t) };
 }
 
+/** Секций у радиатора (шаг секции 8 см) */
+function radSections(it) { return Math.max(2, Math.round((it.w - 4) / 8)); }
+
 /* ============================ КУХОННЫЕ ГАРНИТУРЫ ============================ */
 const KITCHEN_SHAPES = new Set(['kitchenI', 'kitchenL', 'kitchenU', 'kitchenII', 'kitchenIsland', 'kitchenBar', 'kitchenPen', 'kitchenTall']);
 /** Ленты модулей в локальных координатах (центр — 0,0; y вниз). front — сторона фасада,
@@ -2235,6 +2239,7 @@ const Painters = (() => {
   S.radiator = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 1); thin(P);
     for (let x = -w / 2 + 8; x < w / 2; x += 8) line(P, [x, -d / 2, x, d / 2]);
+    if (U.isNum(P.it.tset)) text(P, (P.it.tset <= 5 ? '✱' : '') + '+' + P.it.tset + '°', 0, d / 2 + 9, 11, { bold: true, color: P.it.tset <= 5 ? '#1e6fe0' : P.C.ink });
   };
   S.pump = (P, w, d) => {
     circle(P, 0, 0, Math.min(w, d) / 2); thin(P);
@@ -4550,7 +4555,8 @@ const Checks = {
       while (grown) {
         grown = false;
         for (const x of lines) {
-          if (used.has(x) || x.kind !== l0.kind) continue;
+          // подземная трасса и разводка в доме (глубина 0) — разные линии, даже если концы рядом
+          if (used.has(x) || x.kind !== l0.kind || ((x.depth || 0) > 0) !== ((l0.depth || 0) > 0)) continue;
           const a = x.pts[0], b = x.pts[x.pts.length - 1], s0 = pts[0], s1 = pts[pts.length - 1];
           if (G.dist(s1, a) <= 60) pts = pts.concat(x.pts);
           else if (G.dist(s1, b) <= 60) pts = pts.concat(x.pts.slice().reverse());
@@ -6857,6 +6863,27 @@ const View3D = {
       for (let k = 0; k < 4; k++) bx(-W + 6 + k * 3, D - 1.5, -W + 7.5 + k * 3, D - 1.2, zb + 26, zb + 27.5, k === 3 ? [0.9, 0.5, 0.1] : [0.2, 0.9, 0.3]);
       bx(-W + 1, D - 1.5, W - 1, D - 0.8, zb + 2, top - 2, [0.6, 0.7, 0.75], { glass: true });                            // дверца
       cy(-W + 5, -D + 5, 1.2, top, View3D.ceilZ(it, e), [0.35, 0.36, 0.38], 8);                                           // кабели — вверх, на чердак
+      return true;
+    }
+    // --- кондиционер: внутренний блок под потолком (жалюзи, дисплей), наружный — корпус с решёткой вентилятора на кронштейнах ---
+    if (it.key === 'ac') {
+      const zb = e + (U.isNum(it.z0) ? it.z0 : 225), zt = zb + (H || 28), wt = [0.97, 0.97, 0.96];
+      bx(-W, -D, W, D - 4, zb + 4, zt, wt);
+      bx(-W + 1, D - 4, W - 1, D, zb + 8, zt - 1, [0.99, 0.99, 0.98]);                                                  // лицевая панель
+      bx(-W + 4, D - 6, W - 4, D - 1, zb, zb + 5, [0.78, 0.8, 0.82]);                                                     // жалюзи
+      bx(W - 14, D, W - 6, D + 0.3, zb + 10, zb + 13, [0.2, 0.7, 0.9]);                                                   // дисплей
+      return true;
+    }
+    if (it.key === 'acout') {
+      const zb = e + (U.isNum(it.z0) ? it.z0 : 0), zt = zb + (H || 55), body = [0.9, 0.9, 0.88], dk = [0.2, 0.21, 0.22];
+      if (zb > e + 5) for (const s2 of [-1, 1]) { bx(s2 * (W - 8) - 2, -D - 12, s2 * (W - 8) + 2, D, zb - 4, zb, [0.35, 0.36, 0.38]); bx(s2 * (W - 8) - 2, -D - 12, s2 * (W - 8) + 2, -D - 9, zb - 30, zb, [0.35, 0.36, 0.38]); }   // кронштейны
+      else { bx(-W + 4, -D + 2, -W + 10, D - 2, e, e + 10, dk); bx(W - 10, -D + 2, W - 4, D - 2, e, e + 10, dk); }       // опоры на земле
+      const z0 = zb + (zb > e + 5 ? 0 : 10);
+      bx(-W, -D, W, D, z0, z0 + (H || 55), body);
+      const r = Math.min(W * 0.55, (H || 55) * 0.42), cxf = -W * 0.25, zc = z0 + (H || 55) / 2;
+      face(Array.from({ length: 20 }, (_, k) => { const a2 = k / 20 * Math.PI * 2; return V(cxf + Math.cos(a2) * r, D + 0.3, zc + Math.sin(a2) * r); }), dk, V(cxf, 0, zc));   // решётка вентилятора
+      for (let k = -2; k <= 2; k++) bx(cxf - r, D + 0.3, cxf + r, D + 0.8, zc + k * r * 0.35 - 0.4, zc + k * r * 0.35 + 0.4, [0.55, 0.56, 0.58]);
+      bx(W * 0.45, D, W - 3, D + 0.5, z0 + 6, zt - 6, [0.8, 0.8, 0.78]);                                                   // крышка вентилей
       return true;
     }
     // --- уличный кран на фасаде: пластина, корпус, маховик и излив вниз ---
@@ -10878,6 +10905,8 @@ const UI = {
     if (def.shape === 'radiator') {
       body.append(F.section('Монтаж',
         F.num('Низ от пола', U.isNum(it.z0) ? it.z0 : it.key === 'towel' ? 50 : 12, (v) => { it.z0 = U.clamp(v, 0, 200); Model.commit(); }),
+        it.key === 'towel' ? null : F.select('Термоголовка', U.isNum(it.tset) ? String(it.tset) : '', [['', 'комфорт 20–22 °C'], ['16', 'эконом +16 °C'], ['12', 'дежурный +12 °C'], ['5', '✱ защита от замерзания +5 °C']], (v) => { if (v) it.tset = +v; else delete it.tset; Model.commit(); }),
+        it.key === 'towel' ? null : F.info('Мощность (биметалл 500 мм)', `${radSections(it)} секц. × 180 Вт ≈ ${(radSections(it) * 0.18).toFixed(1)} кВт`),
         F.note('Радиатор — под окном, длиной 50–75 % ширины окна, 10–12 см от пола и от подоконника, 3–5 см от стены: тёплый воздух отсекает холод от стекла.')));
     }
     if (KITCHEN_SHAPES.has(def.shape) && kitchenLayout(def.shape, it.w, it.d).hob) {
@@ -10996,6 +11025,9 @@ const UI = {
       l.kind === 'gasAir' ? F.note('Надземный газопровод: не ниже 2,2 м там, где ходят люди, и не ниже 5 м над проездами; по фасаду — на кронштейнах, не ближе 0,5 м к окнам и дверям. Ввод в котельную — через футляр в стене.') : null,
       l.kind === 'overhead' ? F.num('Охранная зона (в каждую сторону)', (l.zone ?? 200) / 100, (v) => UI.set(l, 'zone', Math.round(v * 100)), { unit: 'м', min: 0, max: 50, step: 0.5 }) : null,
       l.kind === 'overhead' ? F.note('Опоры рисуются в вершинах и через ~40 м; столб из библиотеки в вершине заменяет нарисованный. Конец у стены дома — ввод (крюк на фасаде). Охранная зона ВЛ 0,4 кВ — 2 м, 10 кВ — 10 м: строить под проводами нельзя.') : null,
+      l.kind === 'power' ? F.text('Автомат', l.breaker || '', (v) => UI.set(l, 'breaker', v.trim() || undefined), { placeholder: 'C16' }) : null,
+      l.kind === 'power' ? F.text('УЗО / дифавтомат', l.rcd || '', (v) => UI.set(l, 'rcd', v.trim() || undefined), { placeholder: '30 мА' }) : null,
+      l.kind === 'power' ? F.note('Автомат — не больше допустимого тока кабеля (медь, скрыто, ПУЭ табл. 1.3.4): 1,5 мм² — C10 (свет), 2,5 мм² — C16, 4 мм² — C25, 6 мм² — C32. Розеточные группы, ванные и улица — через УЗО 30 мА (ПУЭ 7.1.71, 7.1.79, 7.1.83), стиральная машина и ванная — лучше 10 мА.') : null,
       F.text('Обозначение', l.label || '', (v) => UI.set(l, 'label', v.trim() || undefined), { placeholder: k.code }),
       F.text('Примечание', l.note || '', (v) => UI.set(l, 'note', v), { multiline: true }),
     ));
@@ -12730,6 +12762,9 @@ const Analysis = {
     // ---------------- вентиляция, дымоходы, печи ----------------
     Analysis.vent(d, fd, add, stats, m);
 
+    // ---------------- электрика: группы щита, автомат против сечения, УЗО на розетках ----------------
+    Analysis.electric(d, add, stats);
+
     // ---------------- видеонаблюдение: охват периметра участка ----------------
     const cov = Analysis.cctv(d, fd);
     if (cov) {
@@ -12788,6 +12823,24 @@ const Analysis = {
     return { stats, rooms, issues };
   },
   /** Вентиляция по помещениям (СП 54.13330 табл. 9.1, СП 55.13330, СП 60.13330), трубы над крышей и печи (СП 7.13130) */
+  /** Группы электрощита — внутренние кабельные линии (глубина 0) с автоматом; проверки по ПУЭ */
+  electric(d, add, stats) {
+    const groups = d.lines.filter(l => l.kind === 'power' && !(l.depth > 0) && (l.breaker || l.rcd));
+    if (!groups.length) return;
+    const LIM = { 1.5: 16, 2.5: 25, 4: 32, 6: 40, 10: 50, 16: 63, 25: 80 };
+    const SOCK = new Set(['socket', 'socket2', 'socketP', 'socketOut']);
+    const rows = [];
+    for (const l of groups) {
+      const sec = parseFloat(String(l.section || '').replace(',', '.').split('×').pop()), amp = parseFloat(String(l.breaker || '').replace(/^[A-Z]*/i, ''));
+      const devs = d.items.filter(it => catItem(it.key).sym && l.pts.some(p => G.dist(it, p) < 5));   // точки, через которые проведена линия
+      const socks = devs.filter(it => SOCK.has(catItem(it.key).shape));
+      rows.push([l.label || 'Линия', `${l.breaker || '—'}${l.rcd ? ' + УЗО ' + l.rcd : ''} · ${l.section || ''}${devs.length ? ` · ${devs.length} точ.` : ''}`]);
+      if (LIM[sec] && amp > LIM[sec]) add('bad', 'Электрика', `${l.label || 'Линия'}: автомат ${l.breaker} больше допустимого для кабеля ${sec} мм² (до ${LIM[sec]} А) — кабель перегреется раньше, чем сработает автомат`, 'ПУЭ табл. 1.3.4, п. 3.1.4', l.pts[0], l.id);
+      if (socks.length && !l.rcd) add('warn', 'Электрика', `${l.label || 'Линия'}: розетки без УЗО — поставьте УЗО или дифавтомат 30 мА`, 'ПУЭ 7.1.79, 7.1.83; СП 256.1325800.2016 п. 15.3', l.pts[0], l.id);
+    }
+    const at = stats.findIndex(x => /Смета/.test(x.title));
+    stats.splice(at < 0 ? stats.length : at, 0, { title: 'Электрощит: группы', rows });
+  },
   /** Какая часть забора (границы участка) видна камерам: дальность, угол обзора, постройки заслоняют.
    *  Под самой камерой (до 1 м) — считаем видно: там её опора. null — нет камер или границы участка */
   cctv(d, fd) {

@@ -93,6 +93,9 @@ const Analysis = {
     // ---------------- вентиляция, дымоходы, печи ----------------
     Analysis.vent(d, fd, add, stats, m);
 
+    // ---------------- электрика: группы щита, автомат против сечения, УЗО на розетках ----------------
+    Analysis.electric(d, add, stats);
+
     // ---------------- видеонаблюдение: охват периметра участка ----------------
     const cov = Analysis.cctv(d, fd);
     if (cov) {
@@ -151,6 +154,24 @@ const Analysis = {
     return { stats, rooms, issues };
   },
   /** Вентиляция по помещениям (СП 54.13330 табл. 9.1, СП 55.13330, СП 60.13330), трубы над крышей и печи (СП 7.13130) */
+  /** Группы электрощита — внутренние кабельные линии (глубина 0) с автоматом; проверки по ПУЭ */
+  electric(d, add, stats) {
+    const groups = d.lines.filter(l => l.kind === 'power' && !(l.depth > 0) && (l.breaker || l.rcd));
+    if (!groups.length) return;
+    const LIM = { 1.5: 16, 2.5: 25, 4: 32, 6: 40, 10: 50, 16: 63, 25: 80 };
+    const SOCK = new Set(['socket', 'socket2', 'socketP', 'socketOut']);
+    const rows = [];
+    for (const l of groups) {
+      const sec = parseFloat(String(l.section || '').replace(',', '.').split('×').pop()), amp = parseFloat(String(l.breaker || '').replace(/^[A-Z]*/i, ''));
+      const devs = d.items.filter(it => catItem(it.key).sym && l.pts.some(p => G.dist(it, p) < 5));   // точки, через которые проведена линия
+      const socks = devs.filter(it => SOCK.has(catItem(it.key).shape));
+      rows.push([l.label || 'Линия', `${l.breaker || '—'}${l.rcd ? ' + УЗО ' + l.rcd : ''} · ${l.section || ''}${devs.length ? ` · ${devs.length} точ.` : ''}`]);
+      if (LIM[sec] && amp > LIM[sec]) add('bad', 'Электрика', `${l.label || 'Линия'}: автомат ${l.breaker} больше допустимого для кабеля ${sec} мм² (до ${LIM[sec]} А) — кабель перегреется раньше, чем сработает автомат`, 'ПУЭ табл. 1.3.4, п. 3.1.4', l.pts[0], l.id);
+      if (socks.length && !l.rcd) add('warn', 'Электрика', `${l.label || 'Линия'}: розетки без УЗО — поставьте УЗО или дифавтомат 30 мА`, 'ПУЭ 7.1.79, 7.1.83; СП 256.1325800.2016 п. 15.3', l.pts[0], l.id);
+    }
+    const at = stats.findIndex(x => /Смета/.test(x.title));
+    stats.splice(at < 0 ? stats.length : at, 0, { title: 'Электрощит: группы', rows });
+  },
   /** Какая часть забора (границы участка) видна камерам: дальность, угол обзора, постройки заслоняют.
    *  Под самой камерой (до 1 м) — считаем видно: там её опора. null — нет камер или границы участка */
   cctv(d, fd) {
