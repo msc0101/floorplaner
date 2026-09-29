@@ -57,8 +57,10 @@ const Sheets = {
     for (const id of Object.keys(SYSTEMS)) {
       const lines = d.lines.filter(l => sysOfLine(l) === id && onG(l)), items = d.items.filter(it => sysOf(it) === id && onG(it));
       if (!lines.length && !items.length) continue;
-      const out1 = (l) => l.depth > 0 || l.pts.some(p => !hb || !Sheets.inBox(p, hb));
-      const inner = !hb ? [] : lines.filter(l => !(l.depth > 0) && l.pts.every(p => Sheets.inBox(p, hb))), outer = lines.filter(out1);
+      // внутри дома — трассы целиком в габарите дома (в т. ч. под полом); остальные — на участке
+      const fdo = (App.floorData || []).find(x => x.floor.id === g.id), inH = (p) => fdo ? fdo.outlines.some(o => G.distPoly(p, o.outer) < 40) : hb && Sheets.inBox(p, hb);
+      const out1 = (l) => l.pts.some(p => !inH(p));
+      const inner = !hb ? [] : lines.filter(l => !out1(l)), outer = lines.filter(out1);
       const inItems = hb ? items.filter(it => Sheets.inBox(it, hb)) : [], outItems = items.filter(it => !hb || !Sheets.inBox(it, hb));
       const S = SYSTEMS[id];
       if (house && (inner.length || inItems.length)) out.push({ key: 'sys-in:' + id, kind: 'sys', sys: id, lineSet: new Set(inner.map(l => l.id)), fid: g.id, title: 'Сети в доме: ' + S.name.toLowerCase(), sub: 'Внутренние сети, первый этаж', bbox: () => { let b = house; for (const l of inner) b = G.bboxUnion(b, G.bbox(l.pts)); return b; },
@@ -152,7 +154,7 @@ const Sheets = {
   },
   /** Слои и фильтры отрисовки плана по виду листа */
   renderOpts(spec, t) {
-    const L = { grid: false, underlay: false, site: false, siteobj: false, walls: true, roof: false, lower: false, rooms: true, furniture: false, plumbing: false, heating: false, gas: false, electric: false, dims: !!t.dims, notes: false, checks: false, found: false, masonry: false, shadows: false, heat: false };
+    const L = { grid: false, underlay: false, site: false, siteobj: false, walls: true, roof: false, lower: false, rooms: true, furniture: false, plumbing: false, heating: false, gas: false, electric: false, dims: !!t.dims, notes: false, checks: false, found: false, masonry: false, finish: false, shadows: false, heat: false };
     const none = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, false])), all = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, true]));
     switch (spec.kind) {
       case 'site': {

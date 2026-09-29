@@ -67,7 +67,7 @@ const View3D = {
   active: false, gl: null, canvas: null, prog: null, dirty: true,
   mesh: null, glass: null,
   cam: { yaw: -0.75, pitch: 0.5, dist: 40, tx: 0, ty: 1, tz: 0 },
-  opts: { upper: true, roof: true, items: true, site: true, sun: true, shadows: true, nets: true, xray: false },
+  opts: { upper: true, roof: true, items: true, site: true, sun: true, shadows: true, nets: true, xray: false, mode: 'all', clip: null },
 
   hex(c) {
     const m = /^#?([0-9a-f]{6})$/i.exec(c || '');
@@ -214,7 +214,7 @@ const View3D = {
     const bb = Model.contentBBox() || { x0: -1000, y0: -1000, x1: 1000, y1: 1000 };
     View3D.bounds = bb;
     // ---------------- участок ----------------
-    if (View3D.opts.site) {
+    if (View3D.opts.site && View3D.opts.mode !== 'found') {
       // газон — сетка с лёгкой вариацией цвета
       const pad = 3000, step = 250;
       const gx0 = Math.floor((bb.x0 - pad) / step) * step, gy0 = Math.floor((bb.y0 - pad) / step) * step;
@@ -275,9 +275,16 @@ const View3D = {
       }
     }
     // ---------------- этажи ----------------
+    const mode = View3D.opts.mode || 'all';
     for (const f of floors) Drawing.onFloor(f.id, () => {
       const e = f.elev, first = f === d.floors[0];
       const fd = (App.floorData || []).find(x => x.floor.id === f.id);
+      // «Только фундамент»: без дома — ленты с арматурой, подушка, утепление, пол по грунту, ямы и подземные сети
+      if (mode === 'found') {
+        if (first) { View3D.found3d(e, true); for (const it of App.V.items) if (catItem(it.key).shape === 'pit') View3D.item(it, catItem(it.key), e, top => top); }
+        View3D.nets3d(f, e);
+        return;
+      }
       if (fd) {
         for (const o of fd.outlines) prism(o.outer, e - (first ? 0 : 25), e + 2, View3D.hex(first ? '#b9b4ab' : '#d8d2c6'), { noSides: first });
         // отмостка вокруг дома и построек
@@ -301,7 +308,7 @@ const View3D = {
       for (const w of App.V.walls) {
         const top = e + w.h;
         if (w.kind === 'fence') { View3D.fence(w, e, top); continue; }
-        const M = WALL_MATERIALS[w.mat], FO = Finish.opt(), finOn = App.doc.settings.layers.finish !== false;
+        const M = WALL_MATERIALS[w.mat], FO = Finish.opt(), finOn = App.doc.settings.layers.finish !== false && mode !== 'masonry';
         // с отделкой: стены окрашены (светлые), облицовка — кирпичом; без — цвет материала кладки
         const col = finOn && w.kind !== 'fence' ? View3D.hex(FO.wallColor) : View3D.hex(M ? M.color : '#dddddd').map(x => x * 0.95);
         const brickC = View3D.hex(Finish.brickColor()), cl = wallClad(w);
@@ -329,6 +336,12 @@ const View3D = {
           }
         };
         for (const poly0 of Render.wallPieces(w, cache)) {
+          if (mode === 'masonry') {                                             // кладка без отделки: блоки со швами, утеплитель, без облицовки
+            const mOut = G.mid(w.a, w.b), core = View3D.clipSlab(poly0, mOut, nOut, -w.th / 2 - 1, w.th / 2 - wallClad(w) - (w.ins || 0));
+            if (core.length >= 3) { body(core, e, top); View3D.joints3d(w, core, e, top, nOut); }
+            if (w.ins > 0) { const ins = View3D.clipSlab(poly0, mOut, nOut, w.th / 2 - wallClad(w) - w.ins, w.th / 2 - wallClad(w)); if (ins.length >= 3) prism(ins, e + 5, top - 5, View3D.hex('#f2dc6a')); }
+            continue;
+          }
           if (!(w.clad > 0)) { body(poly0, e, top); continue; }
           // облицовка: несущая часть и кирпич отдельными телами, по кирпичу — растворные швы через 77 мм
           const mOut = G.mid(w.a, w.b), inner = View3D.clipSlab(poly0, mOut, nOut, -w.th / 2 - 1, w.th / 2 - cl), brick = View3D.clipSlab(poly0, mOut, nOut, w.th / 2 - w.clad, w.th / 2 + 1);
@@ -419,7 +432,7 @@ const View3D = {
           }
         }
       }
-      if (View3D.opts.items) for (const it of App.V.items) {
+      if (View3D.opts.items && mode !== 'masonry') for (const it of App.V.items) {
         const def = catItem(it.key);
         if (def.shape === 'rug') continue;
         View3D.item(it, def, e + View3D.deckZ(it), top => top);
@@ -427,7 +440,7 @@ const View3D = {
       // инженерные сети (как включены слои на плане), фундамент и кладка
       View3D.nets3d(f, e);
       if (first) View3D.found3d(e);
-      if (App.doc.settings.layers.masonry) View3D.masonry3d(f, e);
+      if (App.doc.settings.layers.masonry || mode === 'masonry') View3D.masonry3d(f, e);
       // надземный газопровод: жёлтая труба на высоте, стойки на участке (у стен — кронштейны)
       for (const l of App.V.lines) {
         if (l.kind !== 'gasAir') continue;
@@ -473,9 +486,9 @@ const View3D = {
       }
     });
     // ---------------- крыши ----------------
-    if (View3D.opts.roof) for (const r of d.roofs) {
+    if (View3D.opts.roof && mode !== 'found') for (const r of d.roofs) {
       if (!View3D.opts.upper && Model.floorIdx(r.floor) > active) continue;
-      View3D.roof(r);
+      if (mode === 'roofFrame') View3D.roofFrame3d(r); else View3D.roof(r);
     }
     View3D.downspouts();
     View3D.arrays = { P, N, C: Cc, GP, GN, GC };
@@ -522,7 +535,7 @@ const View3D = {
       const z = l.kind === 'warmfloor' ? e + 3.5 : ['power', 'lowvolt', 'ground'].includes(l.kind) ? top : l.kind === 'freon' ? top - 10 : e + 8;
       return l.pts.map(() => z);
     };
-    const shown = App.doc.lines.filter(l => (l.floor || f1) === f.id && l.kind !== 'overhead' && l.kind !== 'gasAir' && Render.sysOn({}, sysOfLine(l)) && l.pts.length >= 2 && (!(l.depth > 0) || View3D.opts.xray));
+    const shown = App.doc.lines.filter(l => (l.floor || f1) === f.id && l.kind !== 'overhead' && l.kind !== 'gasAir' && Render.sysOn({}, sysOfLine(l)) && l.pts.length >= 2 && (!(l.depth > 0) || View3D.opts.xray) && (View3D.opts.mode !== 'found' || l.depth > 0));
     const Z = new Map(shown.map(l => [l, zOf(l)]));
     const rOf = (l) => {
       const r = l.kind === 'warmfloor' ? 0.9 : l.dia >= 50 ? l.dia / 20 : ['power', 'lowvolt'].includes(l.kind) ? 0.8 : Math.max(1, (l.dia || 16) / 20);
@@ -561,17 +574,118 @@ const View3D = {
       }
     }
   },
-  /** Фундамент в 3D — под землёй (виден при «прозрачной земле» или при включённом слое «Фундамент») */
-  found3d(e) {
-    if (!View3D.opts.xray && !App.doc.settings.layers.found) return;
-    const { box, prism, cyl } = View3D._g, con = [0.62, 0.62, 0.6];
+  /** Фундамент в 3D — под землёй (виден при «прозрачной земле» или при включённом слое «Фундамент»);
+   *  detailed — «только фундамент»: бетон прозрачный, видна арматура, подушка, утеплитель, пол по грунту */
+  found3d(e, detailed) {
+    if (!detailed && !View3D.opts.xray && !App.doc.settings.layers.found) return;
+    const { box, prism, cyl, wire } = View3D._g, con = [0.62, 0.62, 0.6], red = [0.75, 0.2, 0.15], sand = View3D.hex('#e3cf9a'), xps = View3D.hex('#8fc3e6');
+    const fd = (App.floorData || [])[0], inside = (p) => fd && fd.outlines.some(o => G.pointInPoly(p, o.outer));
     for (const F of Struct.all()) {
-      if (F.type === 'slab') { for (const pts of F.slabs) prism(pts, e - F.depth * 100, e - 1, con); continue; }
+      if (F.type === 'slab') { for (const pts of F.slabs) prism(pts, e - F.depth * 100, e - 1, con, { glass: detailed }); continue; }
       const bw = F.type === 'pile' ? 40 : F.width * 100, h0 = F.type === 'pile' ? 40 : F.depth * 100;
+      const inB = (p) => F.house ? inside(p) : G.pointInPoly(p, Model.itemPts(F.item));
       for (const w of F.segs) {
-        const L = G.dist(w.a, w.b), m = G.mid(w.a, w.b), ang = U.deg(Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x));
-        box(m.x, m.y, L + bw, bw, ang, e - h0, e - 1, con);
-        if (F.type === 'pile') { const u = G.unit(G.sub(w.b, w.a)), k = Math.max(1, Math.round(L / 250)); for (let i = 0; i <= k; i++) { const c = G.add(w.a, G.mul(u, L * i / k)); cyl(c.x, c.y, 6, e - Math.max(250, F.dfn * 100 + 100), e - h0, [0.45, 0.46, 0.48], 10); } }
+        const L = G.dist(w.a, w.b), m = G.mid(w.a, w.b), ang = U.deg(Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x)), u = G.unit(G.sub(w.b, w.a));
+        box(m.x, m.y, L + bw, bw, ang, e - h0, e - 1, con, { glass: detailed });
+        if (F.type === 'pile') { const k = Math.max(1, Math.round(L / 250)); for (let i = 0; i <= k; i++) { const c = G.add(w.a, G.mul(u, L * i / k)); cyl(c.x, c.y, 6, e - Math.max(250, F.dfn * 100 + 100), e - h0, [0.45, 0.46, 0.48], 10); } continue; }
+        if (!detailed) continue;
+        box(m.x, m.y, L + bw + 40, bw + 40, ang, e - h0 - 20, e - h0, sand);                           // песчаная подушка
+        // арматурный каркас: продольные стержни низ/верх, хомуты через 50 см
+        const n = G.perp(u), nb = bw <= 40 ? 2 : 3, zb = e - h0 + 5, zt = e - 6;
+        for (const z of [zb, zt]) for (let i = 0; i < nb; i++) { const off = -bw / 2 + 5 + i * (bw - 10) / (nb - 1), a = G.add(G.sub(w.a, G.mul(u, bw / 2 - 5)), G.mul(n, off)), b = G.add(G.add(w.b, G.mul(u, bw / 2 - 5)), G.mul(n, off)); wire([a.x, a.y, z], [b.x, b.y, z], 1.2, red); }
+        for (let s2 = 0; s2 <= L; s2 += 50) {
+          const c = G.add(w.a, G.mul(u, s2)), p1 = G.add(c, G.mul(n, bw / 2 - 4)), p2 = G.sub(c, G.mul(n, bw / 2 - 4));
+          for (const [a, b] of [[[p1.x, p1.y, zb - 1], [p2.x, p2.y, zb - 1]], [[p1.x, p1.y, zt + 1], [p2.x, p2.y, zt + 1]], [[p1.x, p1.y, zb - 1], [p1.x, p1.y, zt + 1]], [[p2.x, p2.y, zb - 1], [p2.x, p2.y, zt + 1]]]) wire(a, b, 0.7, red);
+        }
+        // XPS по наружной грани и утеплённая «юбка» под отмосткой
+        const out = inB(G.add(m, G.mul(n, bw))) ? -1 : 1, no = G.mul(n, out);
+        if (!inB(G.add(m, G.mul(no, bw))) || !F.house) {
+          const q = G.add(m, G.mul(no, bw / 2 + 5));
+          box(q.x, q.y, L + bw + 20, 10, ang, e - h0, e - 2, xps);
+          const q2 = G.add(m, G.mul(no, bw / 2 + 70));
+          box(q2.x, q2.y, L + bw + 140, 120, ang, e - 35, e - 30, xps);
+        }
+      }
+    }
+    // пол по грунту: песок, XPS 100, плита 100 с сеткой (прозрачно)
+    if (detailed && fd) for (const o of fd.outlines) {
+      const inner = G.offsetPoly(o.outer, -40).length >= 3 ? G.offsetPoly(o.outer, -40) : o.outer;
+      prism(inner, e - 26, e - 16, xps);
+      prism(inner, e - 16, e - 6, con, { glass: true });
+      const b = G.bbox(inner);
+      for (let x = b.x0 + 20; x < b.x1; x += 40) for (const sg of View3D.clipLine(inner, { x, y: b.y0 }, { x, y: b.y1 })) wire([sg[0].x, sg[0].y, e - 12], [sg[1].x, sg[1].y, e - 12], 0.35, red);
+      for (let y = b.y0 + 20; y < b.y1; y += 40) for (const sg of View3D.clipLine(inner, { x: b.x0, y }, { x: b.x1, y })) wire([sg[0].x, sg[0].y, e - 12], [sg[1].x, sg[1].y, e - 12], 0.35, red);
+    }
+  },
+  /** Плоскость разреза для шейдера: [nx, 0, nz, d] в метрах; без разреза — w = 1e9.
+   *  «Поперёк» — плоскость поперёк конька (видны фермы и узлы), «вдоль» — вдоль конька; k — положение 0…1 */
+  clipPlane() {
+    const c = View3D.opts.clip;
+    if (!c || !c.dir) return [0, 1, 0, 1e9];
+    const r = App.doc.roofs[0], rot = U.rad(r ? r.rot || 0 : 0), u = { x: Math.cos(rot), y: Math.sin(rot) }, v = { x: -u.y, y: u.x };
+    const n = c.dir === 'v' ? v : u;
+    const pts = App.doc.walls.filter(w => w.kind !== 'fence').flatMap(w => [w.a, w.b]);
+    if (!pts.length) return [0, 1, 0, 1e9];
+    const ks = pts.map(p => G.dot(p, n)), k0 = Math.min(...ks), k1 = Math.max(...ks), d = k0 + (k1 - k0) * U.clamp(c.k ?? 0.5, 0, 1);
+    return [n.x, 0, n.y, d / 100];
+  },
+  /** Брус произвольного направления: сечение w×h (h — в вертикальной плоскости бруса), концы a, b = [x, y, z] (см) */
+  beam3(a, b, w, h, col) {
+    const { face, V3 } = View3D._g;
+    const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L = Math.hypot(...d) || 1, dn = d.map(x => x / L);
+    let s = [dn[1], -dn[0], 0]; const sl = Math.hypot(s[0], s[1]); s = sl < 1e-6 ? [1, 0, 0] : [s[0] / sl, s[1] / sl, 0];
+    const up = [s[1] * dn[2] - s[2] * dn[1], s[2] * dn[0] - s[0] * dn[2], s[0] * dn[1] - s[1] * dn[0]];
+    const P = (p, i, j) => { const q = [p[0] + s[0] * w / 2 * i + up[0] * h / 2 * j, p[1] + s[1] * w / 2 * i + up[1] * h / 2 * j, p[2] + s[2] * w / 2 * i + up[2] * h / 2 * j]; return V3({ x: q[0], y: q[1] }, q[2]); };
+    const A = [P(a, -1, -1), P(a, 1, -1), P(a, 1, 1), P(a, -1, 1)], B = [P(b, -1, -1), P(b, 1, -1), P(b, 1, 1), P(b, -1, 1)];
+    const c = V3({ x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 }, (a[2] + b[2]) / 2);
+    face(A, col, c); face(B, col, c);
+    for (let i = 0; i < 4; i++) face([A[i], A[(i + 1) % 4], B[(i + 1) % 4], B[i]], col, c);
+  },
+  /** Каркас крыши без покрытия: фермы / стропила с шагом, опорный брус, обрешётка, лобовые доски, утеплитель чердака */
+  roofFrame3d(r) {
+    const fr = Roof.frame(r);
+    if (!fr) { View3D.roof(r); return; }
+    const { prism } = View3D._g, wood = View3D.hex('#c9a06a'), woodD = View3D.hex('#a67c4a'), plate = [0.62, 0.64, 0.68];
+    const S = fr.S, W = r.w / 2, Dh = r.d / 2, base = r.base || 0, t = Math.tan(U.rad(r.pitch || 0)), rise = Dh * t;
+    const T = (u, v, z) => { const p = G.toWorld({ x: u, y: v }, r.x, r.y, r.rot || 0); return [p.x, p.y, z]; };
+    const zr = (v) => base + t * (Dh - Math.abs(v));
+    const hb = fr.h / 10, hr = fr.h / 10 / Math.cos(U.rad(r.pitch || 0)), bb = fr.b / 10;
+    const A0 = S.v0, A1 = S.v1, span = A1 - A0, mid = (A0 + A1) / 2;
+    for (const v of [A0, A1]) View3D.beam3(T(S.u0 - 10, v, base + 2.5), T(S.u1 + 10, v, base + 2.5), 15, 5, woodD);   // опорный лежень
+    for (let u = S.u0; u <= S.u1 + 1; u += fr.step * 100) {
+      const zb = base + 5 + hb / 2;
+      View3D.beam3(T(u, A0 - 12, zb), T(u, A1 + 12, zb), bb, hb, wood);                                 // нижний пояс / затяжка
+      for (const sg of r.type === 'shed' ? [1] : [-1, 1]) View3D.beam3(T(u, sg * Dh, zr(sg * Dh) - hr / 2), T(u, 0, zr(0) - hr / 2), bb, fr.h / 10, wood);   // верхний пояс / стропило
+      if (fr.scheme === 'truss') {
+        const B1 = A0 + span / 3, B2 = A0 + 2 * span / 3, T1 = A0 + span / 4, T2 = A0 + 3 * span / 4, zc = base + 5 + hb;
+        for (const [va, za, vb, zb2] of [[T1, zr(T1) - hr, B1, zc], [B1, zc, mid, zr(mid) - hr], [mid, zr(mid) - hr, B2, zc], [B2, zc, T2, zr(T2) - hr]]) View3D.beam3(T(u, va, za), T(u, vb, zb2), bb, 10, woodD);
+        for (const [v, z] of [[A0, base + 5 + hb / 2], [A1, base + 5 + hb / 2], [mid, zr(mid) - hr / 2]]) View3D.beam3(T(u - bb / 2 - 0.2, v - 8, z), T(u - bb / 2 - 0.2, v + 8, z), 0.3, 14, plate);   // пластины МЗП
+      }
+    }
+    // обрешётка по скатам вдоль конька (у мягкой кровли — под сплошной OSB)
+    for (const sg of r.type === 'shed' ? [1] : [-1, 1]) for (let v = sg * (Dh - 10); Math.abs(v) > 12; v -= sg * fr.batStep * 100 * Math.cos(U.rad(r.pitch || 0))) View3D.beam3(T(-W, v, zr(v) + 3), T(W, v, zr(v) + 3), 10, 2.5, View3D.hex('#dcc095'));
+    // лобовые доски по карнизу
+    for (const sg of r.type === 'shed' ? [1] : [-1, 1]) View3D.beam3(T(-W, sg * Dh, zr(sg * Dh) - 6), T(W, sg * Dh, zr(sg * Dh) - 6), 2.5, 15, woodD);
+    // утеплитель чердака по нижним поясам
+    const fd = (App.floorData || []).find(f => f.floor.id === r.floor) || (App.floorData || [])[0];
+    if (fd) for (const o of fd.outlines) { const p = G.offsetPoly(o.outer, -20); if (p.length >= 3) prism(p, base + 5 + hb, base + 5 + hb + 20, View3D.hex('#f2dc6a')); }
+    void rise;
+  },
+  /** Швы кладки на обеих гранях несущего слоя: ряды и вертикальные швы с перевязкой в полблока */
+  joints3d(w, core, e, top, nOut) {
+    const { face, V3 } = View3D._g, M = WALL_MATERIALS[w.mat] || {}, [bl, bh0] = M.block || [39, 18.8], bh = bh0 + 1;
+    const u = Model.wallDir(w), mOut = G.mid(w.a, w.b), ks = core.map(p => G.dot(G.sub(p, mOut), nOut)), jc = View3D.hex(M.color || '#cccccc').map(x => x * 0.72);
+    for (const side of [Math.min(...ks), Math.max(...ks)]) {
+      const pts = core.filter((p, i) => Math.abs(ks[i] - side) < 0.5);
+      if (pts.length < 2) continue;
+      const ss = pts.map(p => G.dot(p, u)), a = pts[ss.indexOf(Math.min(...ss))], b = pts[ss.indexOf(Math.max(...ss))], L = G.dist(a, b), o = G.mul(nOut, side > 0 ? 0.2 : -0.2), ref = (z) => V3(G.sub(G.mid(a, b), G.mul(nOut, side > 0 ? 10 : -10)), z);
+      let row = 0;
+      for (let z = e + bh; z < top - 1; z += bh, row++) {
+        face([V3(G.add(a, o), z - 0.5), V3(G.add(b, o), z - 0.5), V3(G.add(b, o), z + 0.5), V3(G.add(a, o), z + 0.5)], jc, ref(z));
+        for (let s2 = (row % 2 ? bl / 2 : 0) + bl; s2 < L - 2; s2 += bl + 1) {
+          const p = G.add(G.add(a, G.mul(G.unit(G.sub(b, a)), s2)), o), q = G.add(p, G.mul(G.unit(G.sub(b, a)), 1));
+          face([V3(p, z), V3(q, z), V3(q, z + bh - 1), V3(p, z + bh - 1)], jc, ref(z));
+        }
       }
     }
   },
@@ -2382,7 +2496,7 @@ const View3D = {
        varying vec3 vN; varying vec3 vC; varying vec3 vW; varying vec4 vL;
        uniform vec3 uL; uniform vec3 uSky; uniform vec3 uGround; uniform vec3 uEye; uniform vec3 uSunCol;
        uniform float uFog; uniform float uSunK; uniform float uAmb; uniform float uUseShadow; uniform float uTexel; uniform float uAlpha; uniform sampler2D uShadow;
-       uniform float uNight; uniform float uGlow; uniform float uPLn;${NL ? ` uniform vec4 uPL[${NL}];` : ''}
+       uniform float uNight; uniform float uGlow; uniform float uPLn; uniform vec4 uClip;${NL ? ` uniform vec4 uPL[${NL}];` : ''}
        float unpack(vec4 v){ return dot(v, vec4(1.0, 1.0/255.0, 1.0/65025.0, 1.0/16581375.0)); }
        float shadowAt(vec3 n){
          vec3 s = vL.xyz / vL.w * 0.5 + 0.5;
@@ -2396,7 +2510,10 @@ const View3D = {
          return sum / 9.0;
        }
        void main(){
+         if (uClip.w < 1e8 && dot(vW, uClip.xyz) > uClip.w) discard;       // разрез
          vec3 n = normalize(vN);
+         // при разрезе видна изнанка граней (внутренность стен, перекрытий) — заливаем цветом сечения, как на чертеже
+         if (uClip.w < 1e8 && dot(n, uEye - vW) < 0.0) { gl_FragColor = vec4(0.72, 0.36, 0.3, uAlpha); return; }
          float dif = max(dot(n, uL), 0.0) * uSunK;
          float sh = (uUseShadow > 0.5 && dif > 0.0) ? shadowAt(n) : 1.0;
          vec3 amb = mix(uGround, uSky, 0.5 + 0.5 * n.y) * uAmb;
@@ -2418,14 +2535,14 @@ const View3D = {
        }`);
     const pr = View3D.prog;
     View3D.loc = { p: gl.getAttribLocation(pr, 'p'), n: gl.getAttribLocation(pr, 'n'), c: gl.getAttribLocation(pr, 'c') };
-    for (const u of ['uAmb', 'uVP', 'uLVP', 'uL', 'uSky', 'uGround', 'uEye', 'uSunCol', 'uFog', 'uSunK', 'uUseShadow', 'uTexel', 'uAlpha', 'uShadow', 'uNight', 'uGlow', 'uPLn', 'uPL']) View3D.loc[u] = gl.getUniformLocation(pr, u);
+    for (const u of ['uAmb', 'uVP', 'uLVP', 'uL', 'uSky', 'uGround', 'uEye', 'uSunCol', 'uFog', 'uSunK', 'uUseShadow', 'uTexel', 'uAlpha', 'uShadow', 'uNight', 'uGlow', 'uPLn', 'uPL', 'uClip']) View3D.loc[u] = gl.getUniformLocation(pr, u);
     // карта теней: глубина, упакованная в RGBA
     View3D.depthProg = prog(
-      `attribute vec3 p; uniform mat4 uLVP; void main(){ gl_Position = uLVP * vec4(p, 1.0); }`,
-      `precision ${hp} float;
+      `attribute vec3 p; uniform mat4 uLVP; varying vec3 vW; void main(){ vW = p; gl_Position = uLVP * vec4(p, 1.0); }`,
+      `precision ${hp} float; varying vec3 vW; uniform vec4 uClip;
        vec4 pack(float d){ vec4 e = fract(vec4(1.0, 255.0, 65025.0, 16581375.0) * d); e -= e.yzww * vec4(1.0/255.0, 1.0/255.0, 1.0/255.0, 0.0); return e; }
-       void main(){ gl_FragColor = pack(gl_FragCoord.z); }`);
-    View3D.dloc = { p: gl.getAttribLocation(View3D.depthProg, 'p'), uLVP: gl.getUniformLocation(View3D.depthProg, 'uLVP') };
+       void main(){ if (uClip.w < 1e8 && dot(vW, uClip.xyz) > uClip.w) discard; gl_FragColor = pack(gl_FragCoord.z); }`);
+    View3D.dloc = { p: gl.getAttribLocation(View3D.depthProg, 'p'), uLVP: gl.getUniformLocation(View3D.depthProg, 'uLVP'), uClip: gl.getUniformLocation(View3D.depthProg, 'uClip') };
     const SM = 2048;
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -2508,6 +2625,7 @@ const View3D = {
       gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
       gl.useProgram(View3D.depthProg);
       gl.uniformMatrix4fv(View3D.dloc.uLVP, false, LVP);
+      gl.uniform4fv(View3D.dloc.uClip, View3D.clipPlane());
       if (L.n >= 0) gl.disableVertexAttribArray(L.n);
       if (L.c >= 0) gl.disableVertexAttribArray(L.c);
       bind(View3D.mesh, { p: View3D.dloc.p });
@@ -2540,6 +2658,7 @@ const View3D = {
     gl.uniform1f(L.uFog, 0.35 / (R * 6)); gl.uniform1f(L.uSunK, lt.sunK);
     gl.uniform1f(L.uAmb, lt.night ? (Walk.on ? 0.55 : 0.45) : Walk.on ? 0.82 : 0.62);   // на прогулке внутри дома светлее
     gl.uniform1f(L.uNight, lt.night ? 1 : 0); gl.uniform1f(L.uGlow, 0);
+    gl.uniform4fv(L.uClip, View3D.clipPlane());
     const pls = lt.night ? (View3D.lights || []).slice(0, View3D.NL) : [];
     gl.uniform1f(L.uPLn, pls.length);
     if (pls.length && L.uPL) gl.uniform4fv(L.uPL, new Float32Array(pls.flat()));
