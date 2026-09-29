@@ -180,7 +180,7 @@ const Vector = {
     const layers = { ...App.doc.settings.layers, grid: !!o.grid, shadows: false, heat: false, lower: o.lower ?? false, checks: false, underlay: !!o.underlay && App.doc.settings.layers.underlay, ...(o.planOnly ? { site: false, siteobj: false, fence: false, roof: false } : {}) };
     try {
       // 1 единица = 1 см; «экранный пиксель» ≈ 0.27 мм на бумаге при масштабе 1:N
-      Render.draw({ ctx, w: W, h: H, dpr: 1, fs: 0.027 * scaleN, scale: 1, ox: region.x0, oy: region.y0, C: Theme.light, exporting: true, printGrid: !!o.grid, layers });
+      Render.draw({ ctx, w: W, h: H, dpr: 1, fs: 0.027 * scaleN, scale: 1, ox: region.x0, oy: region.y0, C: Theme.light, exporting: true, printGrid: !!o.grid, layers, sys: o.sys });
       ctx.setLayer('COMPASS');
       const k = 0.027 * scaleN;
       ctx.setTransform(k, 0, 0, k, 0, 0);

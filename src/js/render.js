@@ -751,11 +751,12 @@ const Render = {
       const arrows = l.kind === 'sewer' || l.kind === 'drain' || l.flow;
       // у змеек тёплого пола — одна подпись (на самом длинном участке), иначе ими зарастает весь план
       let only = -1;
-      if (l.kind === 'warmfloor') { let best = 0; for (let i = 0; i < l.pts.length - 1; i++) { const s2 = G.dist(l.pts[i], l.pts[i + 1]); if (s2 > best) { best = s2; only = i; } } }
+      // одна подпись на трассу — на самом длинном участке (стрелки уклона — на каждом)
+      { let best = 0; for (let i = 0; i < l.pts.length - 1; i++) { const s2 = G.dist(l.pts[i], l.pts[i + 1]); if (s2 > best) { best = s2; only = i; } } }
       for (let i = 0; i < l.pts.length - 1; i++) {
         const a = l.pts[i], b = l.pts[i + 1];
         const segL = G.dist(a, b) * env.scale;
-        if (segL < 70 || (only >= 0 && i !== only)) continue;
+        if (segL < 70) continue;
         const m = G.mid(a, b);
         if (arrows) {
           const u = G.unit(G.sub(b, a)), n = G.perp(u);
@@ -766,6 +767,7 @@ const Render = {
           ctx.lineTo(q.x - u.x * 8 * px - n.x * 4 * px, q.y - u.y * 8 * px - n.y * 4 * px);
           ctx.lineWidth = 1.6 * px; ctx.stroke();
         }
+        if (i !== only) continue;
         const du = G.mul(G.unit(G.sub(b, a)), Math.min(G.dist(a, b) * 0.3, 50 * px));
         Render.label(env, l.label || k.code, m, 0, { size: 10, bold: true, color, bg: true, pad: 2, border: color, prio: 2, alts: [G.add(m, du), G.sub(m, du)] });
       }

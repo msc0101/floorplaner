@@ -71,7 +71,9 @@ const App = {
     });
   },
   /** После фиксации изменения (история уже записана) */
+  rev: 0,
   changed(viewOnly) {
+    App.rev++;
     Model.reindex();
     Underlay.sync();
     Rooms.detectAll();

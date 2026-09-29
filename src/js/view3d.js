@@ -657,8 +657,9 @@ const View3D = {
       }
       if (sh === 'riser') { cyl(it.x, it.y, it.w / 2, e, e + Math.max(H, 250), C('#8a5a2b'), 8); return; }
       if (sh === 'lamp' || sh === 'spot') {
-        const ceil = e + Math.max(220, (App.V.walls.find(w => w.kind !== 'fence') || { h: 270 }).h) - 4;
+        const ceil = View3D.ceilZ(it, e) - 1;
         cyl(it.x, it.y, it.w / 2, ceil - (sh === 'lamp' ? 10 : 2), ceil, View3D.GLOW, 12);
+        View3D.lights.push([it.x / 100, (ceil - 20) / 100, it.y / 100, sh === 'lamp' ? 4.2 : 2.4]);   // ночью — светит в комнате
         return;
       }
       // розетки, выключатели, щиток, счётчик, краны: коробочка на высоте монтажа
@@ -987,6 +988,19 @@ const View3D = {
       bx(-W, -D, W, D, e - 2, e + 1.2, [0.66, 0.65, 0.62]);
       bx(-W + 1, -D + 3, W - 1, D - 3, e + 1.2, e + 1.3, [0.05, 0.05, 0.05]);
       for (let x = -W + 2; x < W - 2; x += 5) bx(x, -D + 3, x + 2, D - 3, e + 1.2, e + 2, cast);
+      return true;
+    }
+    // --- линейный LED-светильник под потолком; светильник 36 В — на стенке ямы/погреба (h < 0 — ниже пола) ---
+    if (sh === 'ledline') {
+      const ceil = View3D.ceilZ(it, e) - 1;
+      bx(-W, -D, W, D, ceil - 5, ceil, [0.9, 0.9, 0.9]); bx(-W + 2, -D + 1, W - 2, D - 1, ceil - 5.5, ceil - 5, View3D.GLOW);
+      View3D.lights.push([it.x / 100, (ceil - 25) / 100, it.y / 100, 5.5]);
+      return true;
+    }
+    if (sh === 'lamp36') {
+      const z = e + (H || -60);
+      bx(-W, -D, W, D, z - 5, z + 5, [0.25, 0.26, 0.28]); bx(-W + 1.5, D - 0.5, W - 1.5, D + 0.5, z - 3.5, z + 3.5, View3D.GLOW);
+      View3D.lights.push([it.x / 100, z / 100, it.y / 100, 2.6]);
       return true;
     }
     // --- точка Wi-Fi: белый диск на потолке с индикатором ---
@@ -1903,6 +1917,9 @@ const View3D = {
   /** Потолок помещения, где стоит предмет: по высоте внутренних стен этажа (иначе — высота этажа) */
   ceilZ(it, e) {
     const f1 = App.doc.floors[0].id, fl = it.floor || f1, f = App.doc.floors.find(x => x.id === fl) || App.doc.floors[0];
+    // внутри гаража / постройки — под её карнизом
+    const b = App.doc.items.find(o => (o.floor || f1) === fl && BLD_HOLLOW.has(catItem(o.key).shape) && catItem(o.key).key !== 'house' && G.pointInPoly(it, Model.itemPts(o)));
+    if (b) return e + bldWallH(b) - 5;
     const hs = App.doc.walls.filter(w => (w.floor || f1) === fl && (w.kind === 'int' || w.kind === 'part')).map(w => w.h);
     return e + (hs.length ? Math.max(...hs) : f.h || 270);
   },
@@ -2251,7 +2268,7 @@ const View3D = {
     const prog = (vs, fs) => { const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(pr); if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr)); return pr; };
     const hp = gl.getShaderPrecisionFormat && gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT).precision > 0 ? 'highp' : 'mediump';
     // ночные точечные источники (фонари): сколько влезает в uniform-регистры фрагментного шейдера
-    const NL = View3D.NL = U.clamp(((gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) || 16) - 24) | 0, 0, 32);
+    const NL = View3D.NL = U.clamp(((gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) || 16) - 24) | 0, 0, 64);
     // основная программа: полусферическое освещение, солнце с тенями (PCF), дымка; ночью — фонари и светящиеся окна
     View3D.prog = prog(
       `attribute vec3 p; attribute vec3 n; attribute vec3 c; uniform mat4 uVP; uniform mat4 uLVP;
@@ -2434,7 +2451,7 @@ const View3D = {
     drawMesh(View3D.mesh, 1);
     gl.uniform1f(L.uUseShadow, 0);
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
-    if (lt.night) gl.uniform1f(L.uGlow, 1);                           // ночью окна светятся изнутри
+    if (lt.night && !View3D.opts.xray) gl.uniform1f(L.uGlow, 1);      // ночью окна светятся (с прозрачной землёй газон в том же слое — без свечения)
     drawMesh(View3D.glass, lt.night ? 0.7 : 0.42);
     gl.depthMask(true); gl.disable(gl.BLEND);
     View3D.hud();

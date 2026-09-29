@@ -593,7 +593,12 @@ const Model = {
     };
     const lines = [];
     let prev = null;
-    for (let v = v0; v <= v1 + 0.01; v += pitch) {
+    // чётное число проходов (змейка возвращается к той же стене) — шаг чуть уменьшаем, но дальнюю стену не теряем
+    let N = Math.floor((v1 - v0) / pitch + 1e-6) + 1;
+    if (N % 2) N++;
+    const step = N > 1 ? (v1 - v0) / (N - 1) : pitch;
+    for (let k = 0; k < N; k++) {
+      const v = v0 + k * step;
       const s = spans(v);
       if (!s.length) { prev = null; continue; }
       // при нескольких интервалах — тот, что продолжает предыдущий, иначе самый длинный

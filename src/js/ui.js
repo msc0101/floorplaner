@@ -704,7 +704,7 @@ const UI = {
   stepsCard() {
     const d = App.doc, has = (fn) => d.items.some(fn), sys = (id) => d.items.some(it => sysOf(it) === id) || d.lines.some(l => sysOfLine(l) === id);
     let issues = null;
-    try { issues = Analysis.run().issues.filter(x => x.sev === 'bad').length; } catch (e) { issues = null; }
+    try { issues = Analysis.run().issues.filter(x => x.sev === 'bad').length; } catch { issues = null; }
     const steps = [
       ['Участок: граница и стороны света', d.areas.some(a => a.kind === 'plot'), () => { Tools.opts.areaKind = 'plot'; Tools.set('area', { force: true }); }, 'Зона → Граница участка (B), затем поверните компас'],
       ['Дом: стены', d.walls.some(w => w.kind === 'ext'), () => Tools.set('wall'), 'Стена (W) или Комната (Q)'],
@@ -1278,7 +1278,7 @@ const UI = {
     ));
     // тёплый пол: змейки по помещению — отдельные контуры до 80 м, начало у ближайшего коллектора
     const wf = App.V.lines.filter(l => l.kind === 'warmfloor' && l.pts.every(p => G.pointInPoly(p, r.axis)));
-    const wfLen = (l) => l.pts.reduce((s, p, i) => i ? s + G.dist(p, l.pts[i - 1]) : 0, 0);
+    const wfLen = (l) => G.polyPerimeter(l.pts, false);
     const layWF = (pitch) => {
       Model.remove(wf.map(l => l.id));
       const man = App.V.items.filter(i => i.key === 'manifold' || i.key === 'manifoldWF').sort((a, b) => G.dist(a, r.label) - G.dist(b, r.label))[0];
@@ -1435,7 +1435,7 @@ const UI = {
     body.append(F.section('Климат и нагрузки (считается сам)',
       F.info('Климатический подрайон', cl.zone + ' (СП 131.13330)'),
       F.info('Снеговой район', `${Climate.roman(cl.snow)} — Sg ${cl.snowKpa.toFixed(1)} кПа (${Math.round(cl.snowKpa * 102)} кг/м²)`),
-      F.info('Ветровой район', `${Climate.roman(cl.wind)} — w0 ${cl.windKpa.toFixed(2)} кПа`),
+      F.info('Ветровой район', `${Climate.roman(cl.wind, true)} — w0 ${cl.windKpa.toFixed(2)} кПа`),
       F.info('Расчётная зимняя t', `${cl.t5} °C (пятидневка 0,92)`),
       F.info('Глубина промерзания', `${U.fmtLen(Climate.frost())}${U.isNum(App.doc.settings.frost) ? ' (задана вручную)' : ' (суглинки, глины)'}`),
       F.note(`${cl.exact ? '' : `Города нет в списке — данные ближайшего: ${cl.city}. `}Используется в проверках: глубина водопровода, снеговая нагрузка на кровлю и стропила, теплопотери. Значения ориентировочные по картам СП 20.13330.2016 и СП 131.13330.2020 — для рабочего проекта уточните по адресу.`)));

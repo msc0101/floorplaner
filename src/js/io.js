@@ -224,12 +224,13 @@ const IO = {
     const ids = Object.keys(SYSTEMS).filter(id => (o.sys || {})[id] !== false && (d.items.some(it => sysOf(it) === id) || d.lines.some(l => sysOfLine(l) === id)));
     const FD = Struct.foundation();
     if (FD) ids.unshift('found');                                           // первым — план фундамента
-    const issues = (() => { try { return Analysis.run().issues; } catch (e) { return []; } })();
+    const issues = (() => { try { return Analysis.run().issues; } catch { return []; } })();
     const grp = { power: 'Электрика', lowvolt: 'Видеонаблюдение', vent: 'Вентиляция', gas: 'Газ' };
     const date = new Date().toLocaleDateString('ru-RU'), out = [];
     ids.forEach((id, i) => {
       const S = id === 'found' ? { name: 'Фундамент и армирование стен', norms: 'СП 22.13330.2016 «Основания зданий и сооружений»; СП 63.13330.2018 «Бетонные и железобетонные конструкции»; СП 15.13330.2020 «Каменные и армокаменные конструкции»; СП 50-101-2004' } : SYSTEMS[id];
-      const lines = id === 'found' ? [] : d.lines.filter(l => sysOfLine(l) === id), items = id === 'found' ? [] : d.items.filter(it => sysOf(it) === id);
+      const onG = (o) => (o.floor || ground.id) === ground.id;                 // лист — по первому этажу (как и картинка)
+      const lines = id === 'found' ? [] : d.lines.filter(l => sysOfLine(l) === id && onG(l)), items = id === 'found' ? [] : d.items.filter(it => sysOf(it) === id && onG(it));
       let b = Drawing.regionFor(ground.id);
       for (const l of lines) b = G.bboxUnion(b, G.bbox(l.pts));
       for (const it of items) b = G.bboxUnion(b, G.bbox(Model.itemPts(it)));

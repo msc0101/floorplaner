@@ -47,6 +47,12 @@ const Struct = {
   bearing(fid) { return App.doc.walls.filter(w => (w.floor === fid) && (w.kind === 'ext' || w.kind === 'int')); },
   /** Расчёт фундамента дома: нагрузки, ширина, глубина, тип, армирование, объёмы */
   foundation() {
+    if (Struct._fc && Struct._fc.rev === App.rev && Struct._fc.doc === App.doc && Struct._fc.key === JSON.stringify(App.doc.settings.found || {})) return Struct._fc.F;
+    const F = Struct._foundation();
+    Struct._fc = { rev: App.rev, doc: App.doc, key: JSON.stringify(App.doc.settings.found || {}), F };
+    return F;
+  },
+  _foundation() {
     const d = App.doc, o = Struct.opt(), f1 = d.floors[0], cl = Climate.get(), S = SOILS[o.soil] || SOILS.loam;
     const walls = Struct.bearing(f1.id);
     if (!walls.length) return null;
@@ -73,7 +79,7 @@ const Struct = {
     const thMax = Math.max(...walls.filter(w => w.kind === 'ext').map(w => w.th)) / 100;
     const H = depth + o.plinth / 100;                                        // высота ленты с цоколем
     const R = S.R0 * (type === 'mzlf' ? 0.9 : 1);
-    let b = q / Math.max(30, R - 20 * H);
+    let b = q / Math.max(30, R - 24 * H);                                  // та же формула, что и в проверке давления
     b = Math.max(b, thMax + 0.1, 0.3);
     b = Math.ceil(b * 20) / 20;
     if (U.isNum(o.width)) b = o.width / 100;
@@ -129,7 +135,7 @@ const Struct = {
     const F = Struct.foundation();
     if (!F) return;
     const o = Struct.opt(), fix = (k, v) => () => Struct.set(k, v);
-    if (F.p > F.R * 1.001) add('bad', 'Фундамент', `давление под подошвой ${F.p.toFixed(0)} кПа больше расчётного сопротивления грунта ${F.R.toFixed(0)} кПа — расширьте подошву`, 'СП 22.13330.2016 п. 5.6', null, null, U.isNum(o.width) ? fix('width', undefined) : null);
+    if ((F.type === 'strip' || F.type === 'mzlf') && F.p > F.R * 1.001) add('bad', 'Фундамент', `давление под подошвой ${F.p.toFixed(0)} кПа больше расчётного сопротивления грунта ${F.R.toFixed(0)} кПа — расширьте подошву`, 'СП 22.13330.2016 п. 5.6', null, null, U.isNum(o.width) ? fix('width', undefined) : null);
     if (F.soil.heave && (F.type === 'strip') && F.depth < F.df - 0.005) add('bad', 'Фундамент', `глубина заложения ${m(F.depth * 100)} меньше расчётного промерзания ${m(F.df * 100)} на пучинистом грунте — фундамент будет выпирать`, 'СП 22.13330.2016 п. 5.5.3, табл. 5.3', null, null, fix('depth', undefined));
     if (F.soil.heave && F.type === 'strip' && F.high) add('warn', 'Фундамент', `грунтовые воды на ${m(o.gwl)} — ближе промерзания + 2 м: для ленты нужны дренаж и утепление отмостки, либо МЗЛФ / УШП`, 'СП 22.13330.2016 п. 5.5.4; СП 104.13330', null, null, fix('type', 'mzlf'));
     if (F.soil.weak && F.type !== 'pile') add('bad', 'Фундамент', 'слабый грунт (торф, насыпной, ил) — нужен свайный фундамент до плотного слоя или замена грунта', 'СП 22.13330.2016 п. 6.4; СП 24.13330', null, null, fix('type', 'pile'));

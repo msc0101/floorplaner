@@ -204,7 +204,8 @@ const CITIES = [
 const Climate = {
   SNOW_KPA: [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0],            // Sg, кПа, по районам I…VIII
   WIND_KPA: [0.17, 0.23, 0.30, 0.38, 0.48, 0.60, 0.73, 0.85],       // w0, кПа, районы Ia, I…VII
-  roman: (n) => ['Ia', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'][n] || String(n),
+  /** Римский номер района: снеговые I…VIII (1…8), ветровые Ia, I…VII (0…7) */
+  roman: (n, wind) => (wind ? ['Ia', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII'] : ['—', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'])[n] || String(n),
   get() {
     const g = App.doc.geo;
     let c = CITIES.find(x => x[0] === g.city), exact = !!c;

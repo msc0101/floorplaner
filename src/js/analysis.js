@@ -7,7 +7,14 @@
 
 const Analysis = {
   /** Собрать отчёт: { stats: [{ title, rows: [[имя, значение]] }], rooms: [...], issues: [{ sev, group, text, src, at, id }] } */
+  /** Результат на текущую ревизию проекта (App.rev растёт при каждом изменении) — чтобы не считать по нескольку раз */
   run() {
+    if (Analysis._cache && Analysis._cache.rev === App.rev && Analysis._cache.doc === App.doc) return Analysis._cache.r;
+    const r = Analysis._run();
+    Analysis._cache = { rev: App.rev, doc: App.doc, r };
+    return r;
+  },
+  _run() {
     const d = App.doc, s = Rooms.summary(), ch = Checks.run(), issues = [];
     const m2 = (v) => U.fmtArea(v), m = (v) => (v / 100).toFixed(2).replace(/\.?0+$/, '') + ' м';
     // fix — автоисправление (кнопка «Исправить» в анализе)
@@ -102,10 +109,13 @@ const Analysis = {
 
     // ---------------- климат: откуда берутся нагрузки и глубины ----------------
     { const cl = Climate.get(), at = stats.findIndex(x => /Смета/.test(x.title));
-      stats.splice(at < 0 ? stats.length : at, 0, { title: 'Климат (' + cl.city + ')', rows: [['Климатический подрайон', cl.zone], ['Снеговой район / Sg', `${Climate.roman(cl.snow)} / ${cl.snowKpa.toFixed(1)} кПа`], ['Ветровой район / w0', `${Climate.roman(cl.wind)} / ${cl.windKpa.toFixed(2)} кПа`], ['Расчётная зимняя t', cl.t5 + ' °C'], ['Глубина промерзания', m(Climate.frost())]] }); }
+      stats.splice(at < 0 ? stats.length : at, 0, { title: 'Климат (' + cl.city + ')', rows: [['Климатический подрайон', cl.zone], ['Снеговой район / Sg', `${Climate.roman(cl.snow)} / ${cl.snowKpa.toFixed(1)} кПа`], ['Ветровой район / w0', `${Climate.roman(cl.wind, true)} / ${cl.windKpa.toFixed(2)} кПа`], ['Расчётная зимняя t', cl.t5 + ' °C'], ['Глубина промерзания', m(Climate.frost())]] }); }
 
     // ---------------- электрика: группы щита, автомат против сечения, УЗО на розетках ----------------
     Analysis.electric(d, add, stats);
+
+    // ---------------- освещение помещений и гаража (СП 52.13330) ----------------
+    Analysis.lighting(d, fd, add, stats);
 
     // ---------------- видеонаблюдение: охват периметра участка ----------------
     const cov = Analysis.cctv(d, fd);
@@ -174,7 +184,7 @@ const Analysis = {
   _prev: null,
   live: U.debounce(() => {
     let iss;
-    try { iss = Analysis.run().issues; } catch (e) { return; }
+    try { iss = Analysis.run().issues; } catch { return; }
     const key = (x) => x.group + '|' + (x.id || '') + '|' + x.text.replace(/[\d.,]+/g, '#');
     const prev = Analysis._prev, now = new Set(iss.map(key));
     if (prev && App.doc.settings.liveChecks !== false) iss.filter(x => !prev.has(key(x)) && (x.sev === 'bad' || x.sev === 'warn')).slice(0, 2).forEach(x => UI.warnToast(x));
@@ -207,7 +217,7 @@ const Analysis = {
       if (!w || w.kind !== 'ext') continue;
       const L = Model.wallLen(w);
       for (const [end, dist] of [[w.a, o.pos - o.w / 2], [w.b, L - o.pos - o.w / 2]]) {
-        const other = d.walls.find(x => x !== w && x.kind !== 'fence' && (x.floor || f1) === (w.floor || f1) && (G.dist(x.a, end) < 2 || G.dist(x.b, end) < 2));
+        const uw = G.unit(G.sub(w.b, w.a)), other = d.walls.find(x => x !== w && x.kind !== 'fence' && (x.floor || f1) === (w.floor || f1) && (G.dist(x.a, end) < 2 || G.dist(x.b, end) < 2) && Math.abs(G.dot(uw, G.unit(G.sub(x.b, x.a)))) < 0.9);   // соосное продолжение — не угол
         if (!other) continue;
         const clear = dist - other.th / 2;
         if (clear < 30 && clear > -1) add('warn', 'Конструкции', `${OPENING_TYPES[o.type].name}: простенок до угла ${m(Math.max(0, clear))} — перемычке нужно опирание не меньше 25 см, а угол кладки ослаблен. Сдвиньте проём от угла`, 'СП 15.13330.2020 п. 9.33; СП 339.13330 (перемычки)', G.add(end, G.mul(G.unit(G.sub(end === w.a ? w.b : w.a, end)), Math.max(dist, 20))), o.id);
@@ -223,6 +233,68 @@ const Analysis = {
     // снегозадержатели: скатная кровля с наружным водостоком над входами и дорожками
     for (const r of d.roofs) if (r.type !== 'flat' && (r.pitch || 0) >= 5 && !r.snowGuard) add('warn', 'Кровля', 'Крыша дома: нужны снегозадержатели над входами, крыльцом и дорожками (и на металлической кровле — по всему периметру карниза)', 'СП 17.13330.2017 п. 9.11', r, r.id, () => { r.snowGuard = true; });
   },
+  /** Освещённость: E ≈ Φ·η / S (η = 0,45 — коэффициент использования с запасом); нет света или мало — автоисправление */
+  LUX_K: 0.45,
+  luxNorm(nm) {
+    if (/кухн|гостин|спальн|детск|кабинет|комнат|столов/.test(nm)) return 150;
+    if (/гардероб/.test(nm)) return 75;
+    if (/гараж|мастерск/.test(nm)) return 75;
+    return 50;                                                             // санузлы, коридоры, прихожая, кладовая, котельная
+  },
+  lighting(d, fd, add, stats) {
+    const f1 = d.floors[0].id, rows = [], src = 'СП 52.13330.2016 табл. 4.1; СанПиН 1.2.3685-21';
+    const check = (name, poly, fid, at, key) => {
+      const A = Math.abs(G.polyArea(poly)) / 1e4;
+      if (A < 1.5) return;
+      const lamps = d.items.filter(it => (it.floor || f1) === fid && catItem(it.key).lm && catItem(it.key).key !== 'lamp36' && G.pointInPoly(it, poly));
+      const lm = lamps.reduce((s, it) => s + catItem(it.key).lm, 0), E = lm * Analysis.LUX_K / A, norm = Analysis.luxNorm(name.toLowerCase());
+      rows.push([name, `${Math.round(E)} / ${norm} лк`]);
+      const fix = () => Analysis.addLamps(poly, fid, norm * A / Analysis.LUX_K - lm, key);
+      if (!lamps.length) add('warn', 'Освещение', `${name}: нет светильника (нужно ≈ ${Math.ceil(norm * A / Analysis.LUX_K / 100) * 100} лм)`, src, at, null, fix);
+      else if (E < norm * 0.9) add('warn', 'Освещение', `${name}: освещённость ≈ ${Math.round(E)} лк при норме ${norm} лк — добавьте светильники`, src, at, null, fix);
+    };
+    for (const f of fd) for (const r of f.rooms) check(r.name, r.floor || r.axis, f.floor.id, G.polyCentroid(r.floor || r.axis), 'lamp');
+    for (const it of d.items) {
+      if (!BLD_HOLLOW.has(catItem(it.key).shape) || catItem(it.key).key === 'house' || (it.floor || f1) !== f1) continue;
+      const s = bldShell(it, it.w, it.d), q = [[s.inner.x0, s.inner.y0], [s.inner.x1, s.inner.y0], [s.inner.x1, s.inner.y1], [s.inner.x0, s.inner.y1]].map(([x, y]) => G.toWorld({ x, y }, it.x, it.y, it.rot || 0));
+      check(it.label || catItem(it.key).name, q, f1, it, catItem(it.key).shape === 'garage' ? 'ledLinear' : 'lamp');
+      // ямы и погреба внутри — безопасное напряжение 36 В
+      for (const p of d.items.filter(o => ['inspPit', 'cellar', 'podpol'].includes(o.key) && G.pointInPoly(o, q))) {
+        const pp = Model.itemPts(p);
+        if (!d.items.some(o => o.key === 'lamp36' && G.distPoly(o, pp) < 40)) add('warn', 'Освещение', `${p.label || catItem(p.key).name}: нужен светильник 36 В (IP65) через разделительный трансформатор — обычная сеть 220 В в яме запрещена`, 'ПУЭ 6.1.16, 1.7.79', p, p.id, () => Analysis.addPitLamp(p, it));
+      }
+    }
+    if (rows.length) { const at = stats.findIndex(x => /Смета/.test(x.title)); stats.splice(at < 0 ? stats.length : at, 0, { title: 'Освещённость (факт / норма)', rows }); }
+  },
+  /** Добавить светильники в помещение: сеткой по длинной стороне, внутри контура; подключить к ближайшей линии «Свет» */
+  addLamps(poly, fid, needLm, key = 'lamp') {
+    const def = catItem(key), n = Math.max(1, Math.ceil(needLm / def.lm)), b = G.bbox(poly), W = b.x1 - b.x0, H = b.y1 - b.y0, along = W >= H;
+    // перебор сеток (n, n+1, …): центр часто уже занят существующим светильником
+    const pts = [], free = (p) => G.pointInPoly(p, poly) && !App.doc.items.some(o => catItem(o.key).lm && G.dist(o, p) < 80) && !pts.some(q => G.dist(q, p) < 80);
+    for (let m = n; m <= n + 6 && pts.length < n; m++) {
+      const rowsN = Math.max(1, Math.round(Math.sqrt(m * (along ? H / W : W / H)))), cols = Math.ceil(m / rowsN);
+      for (let i = 0; i < rowsN && pts.length < n; i++) for (let j = 0; j < cols && pts.length < n; j++) {
+        const p = along ? { x: b.x0 + W * (j + 0.5) / cols, y: b.y0 + H * (i + 0.5) / rowsN } : { x: b.x0 + W * (i + 0.5) / rowsN, y: b.y0 + H * (j + 0.5) / cols };
+        if (free(p)) pts.push(p);
+      }
+    }
+    const f1 = App.doc.floors[0].id;
+    const grp = App.doc.lines.filter(l => l.kind === 'power' && (l.floor || f1) === fid && /свет/i.test(l.label || ''));
+    for (const p of pts) {
+      Model.add('items', { key, x: Math.round(p.x), y: Math.round(p.y), w: def.w, d: def.d, h: def.h, rot: along ? 0 : 90, flip: false, floor: fid });
+      let best = null;
+      for (const l of grp) for (const q of l.pts) { const dd = G.dist(q, p); if (!best || dd < best.d) best = { d: dd, q, l }; }
+      if (best) Model.add('lines', { kind: 'power', depth: 0, section: best.l.section, label: best.l.label, note: 'Ответвление к добавленному светильнику', pts: [{ ...best.q }, { x: p.x, y: best.q.y }, { x: Math.round(p.x), y: Math.round(p.y) }], floor: fid });
+    }
+  },
+  addPitLamp(p, bld) {
+    const s = catItem(p.key), c = G.toWorld({ x: 0, y: -p.d / 2 + 10 }, p.x, p.y, p.rot || 0);
+    Model.add('items', { key: 'lamp36', x: Math.round(c.x), y: Math.round(c.y), w: 16, d: 10, h: p.key === 'inspPit' ? -60 : -80, rot: p.rot || 0, flip: false, floor: p.floor, label: `Светильник 36 В — ${p.label || s.name}` });
+    if (!App.doc.items.some(o => o.key === 'transformer36' && G.pointInPoly(o, Model.itemPts(bld)))) {
+      const t = G.toWorld({ x: -bld.w / 2 + 40, y: -bld.d / 2 + 20 }, bld.x, bld.y, bld.rot || 0);
+      Model.add('items', { key: 'transformer36', x: Math.round(t.x), y: Math.round(t.y), w: 20, d: 12, h: 150, rot: bld.rot || 0, flip: false, floor: bld.floor, label: 'Трансформатор 220/36 В для ямы и погреба' });
+    }
+  },
   /** Группы электрощита — внутренние кабельные линии (глубина 0) с автоматом; проверки по ПУЭ */
   electric(d, add, stats) {
     const groups = d.lines.filter(l => l.kind === 'power' && !(l.depth > 0) && (l.breaker || l.rcd));
@@ -231,7 +303,7 @@ const Analysis = {
     const SOCK = new Set(['socket', 'socket2', 'socketP', 'socketOut']);
     const rows = [];
     for (const l of groups) {
-      const sec = parseFloat(String(l.section || '').replace(',', '.').split('×').pop()), amp = parseFloat(String(l.breaker || '').replace(/^[A-Z]*/i, ''));
+      const sec = parseFloat(String(l.section || '').replace(',', '.').split('×').pop()), nums = String(l.breaker || '').match(/\d+(?:[.,]\d+)?/g), amp = nums ? parseFloat(nums[nums.length - 1].replace(',', '.')) : NaN;   // «3P C25» → 25
       const devs = d.items.filter(it => catItem(it.key).sym && l.pts.some(p => G.dist(it, p) < 5));   // точки, через которые проведена линия
       const socks = devs.filter(it => SOCK.has(catItem(it.key).shape));
       rows.push([l.label || 'Линия', `${l.breaker || '—'}${l.rcd ? ' + УЗО ' + l.rcd : ''} · ${l.section || ''}${devs.length ? ` · ${devs.length} точ.` : ''}`]);
