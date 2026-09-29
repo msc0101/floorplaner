@@ -509,7 +509,7 @@ const CATALOG = [
     { key: 'carportLean', name: 'Навес пристроенный (односкатный)', shape: 'canopyLean', w: 350, d: 600, h: 300, shadow: true, roof: true },
     { key: 'shed', name: 'Сарай / хозблок', shape: 'building', w: 300, d: 400, h: 280, shadow: true },
     { key: 'bathhouse', name: 'Баня', shape: 'building', w: 400, d: 500, h: 380, shadow: true },
-    { key: 'barrelSauna', name: 'Баня-бочка «квадро» 6 × 2,3 м (парная, моечная, комната отдыха)', kw: 'баня бочка квадро сауна парилка', shape: 'barrelSauna', w: 600, d: 230, h: 240, shadow: true },
+    { key: 'barrelSauna', name: 'Баня-бочка «квадро» 2,3 м в сечении, длина 4 или 6 м (парная, моечная, комната отдыха)', kw: 'баня бочка квадро сауна парилка', shape: 'barrelSauna', w: 600, d: 230, h: 240, shadow: true },
     { key: 'coop', name: 'Курятник / птичник', kw: 'птица куры утки гуси кролики крольчатник', shape: 'building', w: 300, d: 250, h: 250, shadow: true },
     { key: 'barn', name: 'Хлев / сарай для скота', kw: 'скот козы овцы свиньи коровы животные', shape: 'building', w: 500, d: 400, h: 300, shadow: true },
     { key: 'gazebo', name: 'Беседка', shape: 'gazebo', w: 300, d: 300, h: 300, shadow: true },
@@ -974,7 +974,7 @@ const Painters = (() => {
     line(P, [x1, -d / 2 + 6, x1, d / 2 - 6]); line(P, [x2, -d / 2 + 6, x2, d / 2 - 6]);
     for (const x of [-w / 2 + 40, 0, w / 2 - 40]) line(P, [x, -d / 2, x, -d / 2 + 5]);            // стяжки
     box(P, x1 - 50 * k, -18, 40 * k, 36, 0, false);                                                 // печь
-    line(P, [60 * k, d / 2, 130 * k, d / 2 + 18]);                                                  // дверь
+    line(P, [60 * k, d / 2, Math.min(60 * k + 72, w / 2 - 95), d / 2 + 18]);                        // дверь
     const fs = Math.min(d * 0.13, 13 * k + 4);
     text(P, 'Парная', (-w / 2 + x1) / 2 + 6, -d * 0.25, fs); text(P, 'Мойка', (x1 + x2) / 2, -d * 0.25, fs); text(P, 'Отдых', (x2 + w / 2) / 2, -d * 0.25, fs);
   };

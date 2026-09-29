@@ -2791,7 +2791,7 @@ const View3D = {
     for (const sx of [-1, 1]) for (let y = -a + 14; y < a - 6; y += 14) face([V(sx * (w / 2 + 0.3), y - 0.4, zb + 2), V(sx * (w / 2 + 0.3), y + 0.4, zb + 2), V(sx * (w / 2 + 0.3), y + 0.4, zb + H - 20), V(sx * (w / 2 + 0.3), y - 0.4, zb + H - 20)], woodD.map(x => x * 0.85), mid);
     for (const sy of [-1, 1]) box(...(() => { const q = G.toWorld({ x: 0, y: sy * (a + 0.5) }, it.x, it.y, rot); return [q.x, q.y]; })(), w, 2, rot, roofZ - 3, roofZ, C('#5b4636'));
     // стальные стяжки по сечению
-    for (const bxp of [-w / 2 + 40, -95 * k, 45 * k, w / 2 - 40]) for (let i = 0; i < prof.length; i++) {                // стяжки — мимо двери и окна
+    for (const bxp of [-w / 2 + 25, -95 * k, 45 * k, w / 2 - 18]) for (let i = 0; i < prof.length; i++) {                // стяжки — мимо двери и окна
       const s1 = 1 + 1.2 / a, [y0, z0] = prof[i], [y1, z1] = prof[(i + 1) % prof.length], zc = zb + H / 2;
       const P = (y, z) => [y * s1, zc + (z - zc) * s1];
       const [a0, b0] = P(y0, z0), [a1, b1] = P(y1, z1);
@@ -2804,13 +2804,13 @@ const View3D = {
       const q = G.toWorld({ x: 0, y: sy * (a - 35) }, it.x, it.y, rot); box(q.x, q.y, w - 20, 10, rot, e + 20, zb, woodD);
     }
     // дверь в комнату отдыха с козырьком и ступенью (сторона +y)
-    const dx0 = 60 * k, dx1 = 130 * k, yf = a + 0.6;
+    const dx0 = 60 * k, dx1 = Math.min(dx0 + 72, w / 2 - 95), yf = a + 0.6;                        // дверь 65–72 см, влезает и на короткую бочку
     face([V(dx0, yf, zb + 6), V(dx1, yf, zb + 6), V(dx1, yf, zb + 190), V(dx0, yf, zb + 190)], woodD, mid);
     for (const [x0, x1, z0, z1] of [[dx0 - 5, dx0, zb + 4, zb + 196], [dx1, dx1 + 5, zb + 4, zb + 196], [dx0 - 5, dx1 + 5, zb + 190, zb + 196]]) { const q = G.toWorld({ x: (x0 + x1) / 2, y: a + 1.5 }, it.x, it.y, rot); box(q.x, q.y, x1 - x0, 3, rot, z0, z1, C('#6b4a30')); }
     { const q = G.toWorld({ x: dx1 - 8, y: a + 3 }, it.x, it.y, rot); box(q.x, q.y, 3, 4, rot, zb + 85, zb + 115, dark); }             // ручка-скоба
     { const q = G.toWorld({ x: (dx0 + dx1) / 2, y: a + 25 }, it.x, it.y, rot); box(q.x, q.y, dx1 - dx0 + 30, 40, rot, e, zb - 2, woodD); }   // ступень
     { const c = G.toWorld({ x: (dx0 + dx1) / 2, y: a + 22 }, it.x, it.y, rot);
-      View3D.roof({ x: c.x, y: c.y, w: 60, d: dx1 - dx0 + 40, rot: rot + 90, type: 'gable', pitch: 30, base: zb + 205, mat: 'soft', floor: null }, shingle); }
+      View3D.roof({ x: c.x, y: c.y, w: 60, d: dx1 - dx0 + 40, rot: rot + 90, type: 'gable', pitch: 30, base: zb + 205, mat: 'soft', floor: null, open: true }, shingle); }
     // свет: бра над дверью и светильник в комнате отдыха (ночью горят, видно в окна)
     { const q = G.toWorld({ x: (dx0 + dx1) / 2, y: a + 4 }, it.x, it.y, rot); box(q.x, q.y, 14, 6, rot, zb + 196, zb + 204, View3D.GLOW); View3D.lights.push([q.x / 100, (zb + 185) / 100, q.y / 100, 3.2]); }
     { const q = G.toWorld({ x: 160 * k, y: 0 }, it.x, it.y, rot); box(q.x, q.y, 30, 30, rot, zb + H - 30, zb + H - 26, View3D.GLOW); View3D.lights.push([q.x / 100, (zb + H - 60) / 100, q.y / 100, 2.6]); }
@@ -2820,7 +2820,7 @@ const View3D = {
       face([P(x0 - 5, z0 - 5), P(x1 + 5, z0 - 5), P(x1 + 5, z1 + 5), P(x0 - 5, z1 + 5)], C('#6b4a30'), mid);
       face([P(x0, z0), P(x1, z0), P(x1, z1), P(x0, z1)].map(v => onEnd ? [v[0] + 0.001, v[1], v[2]] : v), [0.55, 0.68, 0.78], mid, true);   // стекло — ночью светится
     };
-    win(150 * k, 200 * k, zb + 130, zb + 170, false);
+    win(dx1 + 16, Math.min(dx1 + 66, w / 2 - 32), zb + 130, zb + 170, false);
     win(-35, 35, zb + 100, zb + 160, true);
     // топка печи снаружи (закладка дров с улицы) у парной
     const fx = -230 * k;
