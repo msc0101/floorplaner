@@ -9668,7 +9668,8 @@ const View3D = {
   barrelSauna(it, e) {
     const { face, box, cyl } = View3D._g, C = View3D.hex, rot = it.rot || 0, w = it.w, a = it.d / 2, H = it.h || 240;
     const zb = e + 32, R = Math.min(75, a * 0.62), Rb = 22, k = w / 600;
-    const V = (x, y, z) => { const q = G.toWorld({ x, y }, it.x, it.y, rot); return [q.x / 100, z / 100, q.y / 100]; };
+    const mx = it.flip ? -1 : 1, TW = (p, ...r) => G.toWorld({ x: p.x * mx, y: p.y }, ...r);            // «Зеркально» — отражение по длине бочки
+    const V = (x, y, z) => { const q = TW({ x, y }, it.x, it.y, rot); return [q.x / 100, z / 100, q.y / 100]; };
     const wood = C('#b98352'), woodD = C('#8f6038'), shingle = C('#3f6b50'), steel = C('#9aa1a8'), dark = C('#2b2c2e');
     // профиль сечения (y, z) по кругу: низ со скруглением Rb, верх — R
     const prof = [];
@@ -9683,7 +9684,7 @@ const View3D = {
     for (const sx of [-1, 1]) face(prof.map(([y, z]) => V(sx * w / 2, y, z)), woodD, mid);                      // торцы
     // доски торца и граница кровли на бортах
     for (const sx of [-1, 1]) for (let y = -a + 14; y < a - 6; y += 14) face([V(sx * (w / 2 + 0.3), y - 0.4, zb + 2), V(sx * (w / 2 + 0.3), y + 0.4, zb + 2), V(sx * (w / 2 + 0.3), y + 0.4, zb + H - 20), V(sx * (w / 2 + 0.3), y - 0.4, zb + H - 20)], woodD.map(x => x * 0.85), mid);
-    for (const sy of [-1, 1]) box(...(() => { const q = G.toWorld({ x: 0, y: sy * (a + 0.5) }, it.x, it.y, rot); return [q.x, q.y]; })(), w, 2, rot, roofZ - 3, roofZ, C('#5b4636'));
+    for (const sy of [-1, 1]) box(...(() => { const q = TW({ x: 0, y: sy * (a + 0.5) }, it.x, it.y, rot); return [q.x, q.y]; })(), w, 2, rot, roofZ - 3, roofZ, C('#5b4636'));
     // стальные стяжки по сечению
     for (const bxp of [-w / 2 + 25, -95 * k, 45 * k, w / 2 - 18]) for (let i = 0; i < prof.length; i++) {                // стяжки — мимо двери и окна
       const s1 = 1 + 1.2 / a, [y0, z0] = prof[i], [y1, z1] = prof[(i + 1) % prof.length], zc = zb + H / 2;
@@ -9694,20 +9695,20 @@ const View3D = {
     // основание: гравийная площадка, бетонные блоки, лаги
     box(it.x, it.y, w + 80, it.d + 80, rot, e, e + 2, C('#a8a49c'));
     for (const sy of [-1, 1]) {
-      for (let x = -w / 2 + 30; x <= w / 2 - 29; x += (w - 60) / 3) { const q = G.toWorld({ x, y: sy * (a - 35) }, it.x, it.y, rot); box(q.x, q.y, 40, 20, rot, e, e + 20, C('#9d9a93')); }
-      const q = G.toWorld({ x: 0, y: sy * (a - 35) }, it.x, it.y, rot); box(q.x, q.y, w - 20, 10, rot, e + 20, zb, woodD);
+      for (let x = -w / 2 + 30; x <= w / 2 - 29; x += (w - 60) / 3) { const q = TW({ x, y: sy * (a - 35) }, it.x, it.y, rot); box(q.x, q.y, 40, 20, rot, e, e + 20, C('#9d9a93')); }
+      const q = TW({ x: 0, y: sy * (a - 35) }, it.x, it.y, rot); box(q.x, q.y, w - 20, 10, rot, e + 20, zb, woodD);
     }
     // дверь в комнату отдыха с козырьком и ступенью (сторона +y)
     const dx0 = 60 * k, dx1 = Math.min(dx0 + 72, w / 2 - 95), yf = a + 0.6;                        // дверь 65–72 см, влезает и на короткую бочку
     face([V(dx0, yf, zb + 6), V(dx1, yf, zb + 6), V(dx1, yf, zb + 190), V(dx0, yf, zb + 190)], woodD, mid);
-    for (const [x0, x1, z0, z1] of [[dx0 - 5, dx0, zb + 4, zb + 196], [dx1, dx1 + 5, zb + 4, zb + 196], [dx0 - 5, dx1 + 5, zb + 190, zb + 196]]) { const q = G.toWorld({ x: (x0 + x1) / 2, y: a + 1.5 }, it.x, it.y, rot); box(q.x, q.y, x1 - x0, 3, rot, z0, z1, C('#6b4a30')); }
-    { const q = G.toWorld({ x: dx1 - 8, y: a + 3 }, it.x, it.y, rot); box(q.x, q.y, 3, 4, rot, zb + 85, zb + 115, dark); }             // ручка-скоба
-    { const q = G.toWorld({ x: (dx0 + dx1) / 2, y: a + 25 }, it.x, it.y, rot); box(q.x, q.y, dx1 - dx0 + 30, 40, rot, e, zb - 2, woodD); }   // ступень
-    { const c = G.toWorld({ x: (dx0 + dx1) / 2, y: a + 22 }, it.x, it.y, rot);
+    for (const [x0, x1, z0, z1] of [[dx0 - 5, dx0, zb + 4, zb + 196], [dx1, dx1 + 5, zb + 4, zb + 196], [dx0 - 5, dx1 + 5, zb + 190, zb + 196]]) { const q = TW({ x: (x0 + x1) / 2, y: a + 1.5 }, it.x, it.y, rot); box(q.x, q.y, x1 - x0, 3, rot, z0, z1, C('#6b4a30')); }
+    { const q = TW({ x: dx1 - 8, y: a + 3 }, it.x, it.y, rot); box(q.x, q.y, 3, 4, rot, zb + 85, zb + 115, dark); }             // ручка-скоба
+    { const q = TW({ x: (dx0 + dx1) / 2, y: a + 25 }, it.x, it.y, rot); box(q.x, q.y, dx1 - dx0 + 30, 40, rot, e, zb - 2, woodD); }   // ступень
+    { const c = TW({ x: (dx0 + dx1) / 2, y: a + 22 }, it.x, it.y, rot);
       View3D.roof({ x: c.x, y: c.y, w: 60, d: dx1 - dx0 + 40, rot: rot + 90, type: 'gable', pitch: 30, base: zb + 205, mat: 'soft', floor: null, open: true }, shingle); }
     // свет: бра над дверью и светильник в комнате отдыха (ночью горят, видно в окна)
-    { const q = G.toWorld({ x: (dx0 + dx1) / 2, y: a + 4 }, it.x, it.y, rot); box(q.x, q.y, 14, 6, rot, zb + 196, zb + 204, View3D.GLOW); View3D.lights.push([q.x / 100, (zb + 185) / 100, q.y / 100, 3.2]); }
-    { const q = G.toWorld({ x: 160 * k, y: 0 }, it.x, it.y, rot); box(q.x, q.y, 30, 30, rot, zb + H - 30, zb + H - 26, View3D.GLOW); View3D.lights.push([q.x / 100, (zb + H - 60) / 100, q.y / 100, 2.6]); }
+    { const q = TW({ x: (dx0 + dx1) / 2, y: a + 4 }, it.x, it.y, rot); box(q.x, q.y, 14, 6, rot, zb + 196, zb + 204, View3D.GLOW); View3D.lights.push([q.x / 100, (zb + 185) / 100, q.y / 100, 3.2]); }
+    { const q = TW({ x: 160 * k, y: 0 }, it.x, it.y, rot); box(q.x, q.y, 30, 30, rot, zb + H - 30, zb + H - 26, View3D.GLOW); View3D.lights.push([q.x / 100, (zb + H - 60) / 100, q.y / 100, 2.6]); }
     // окна: у двери и в торце комнаты отдыха
     const win = (x0, x1, z0, z1, onEnd) => {
       const P = (u, z) => onEnd ? V(w / 2 + 0.8, u, z) : V(u, a + 0.8, z);
@@ -9721,7 +9722,7 @@ const View3D = {
     face([V(fx - 22, a + 0.8, zb + 25), V(fx + 22, a + 0.8, zb + 25), V(fx + 22, a + 0.8, zb + 90), V(fx - 22, a + 0.8, zb + 90)], C('#8a8f94'), mid);
     face([V(fx - 15, a + 1.2, zb + 35), V(fx + 15, a + 1.2, zb + 35), V(fx + 15, a + 1.2, zb + 80), V(fx - 15, a + 1.2, zb + 80)], dark, mid);
     // труба-сэндвич над парной с зонтом
-    const cq = G.toWorld({ x: -170 * k, y: 0 }, it.x, it.y, rot);
+    const cq = TW({ x: -170 * k, y: 0 }, it.x, it.y, rot);
     cyl(cq.x, cq.y, 11, zb + H - 10, zb + H + 40, C('#c9ccd0'), 14);
     cyl(cq.x, cq.y, 8, zb + H + 40, zb + H + 140, C('#b4b8bd'), 14);
     View3D._g.cone(cq.x, cq.y, 18, 4, zb + H + 146, zb + H + 158, C('#9aa1a8'), 14);
