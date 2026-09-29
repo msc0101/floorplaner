@@ -110,6 +110,7 @@ const IO = {
     const layers = { ...App.doc.settings.layers, grid: !!o.grid, lower: false, ...(o.drawing ? { lower: false, checks: false, shadows: false, heat: false } : {}), ...(o.planOnly ? { site: false, siteobj: false, fence: false, roof: false } : {}) };
     try {
       if (o.noRoof) layers.roof = false;
+      if (o.found) layers.found = true;
       Render.draw({ ctx, w: cv.width, h: cv.height, dpr: 1, fs: o.fs || 1, scale, ox: cx - cv.width / 2 / scale, oy: cy - cv.height / 2 / scale, C: Theme.light, exporting: true, printGrid: !!o.grid, layers, sys: o.sysOnly || o.sys });
       // компас и масштабная линейка
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -221,11 +222,14 @@ const IO = {
     const boxW = PW - 20 - M - descW - 4, boxH = PH - 2 * M - tbH - 2, dpmm = o.paper === 'A2' ? 5 : 7;
     const std = [20, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 2000];
     const ids = Object.keys(SYSTEMS).filter(id => (o.sys || {})[id] !== false && (d.items.some(it => sysOf(it) === id) || d.lines.some(l => sysOfLine(l) === id)));
+    const FD = Struct.foundation();
+    if (FD) ids.unshift('found');                                           // первым — план фундамента
     const issues = (() => { try { return Analysis.run().issues; } catch (e) { return []; } })();
     const grp = { power: 'Электрика', lowvolt: 'Видеонаблюдение', vent: 'Вентиляция', gas: 'Газ' };
     const date = new Date().toLocaleDateString('ru-RU'), out = [];
     ids.forEach((id, i) => {
-      const S = SYSTEMS[id], lines = d.lines.filter(l => sysOfLine(l) === id), items = d.items.filter(it => sysOf(it) === id);
+      const S = id === 'found' ? { name: 'Фундамент и армирование стен', norms: 'СП 22.13330.2016 «Основания зданий и сооружений»; СП 63.13330.2018 «Бетонные и железобетонные конструкции»; СП 15.13330.2020 «Каменные и армокаменные конструкции»; СП 50-101-2004' } : SYSTEMS[id];
+      const lines = id === 'found' ? [] : d.lines.filter(l => sysOfLine(l) === id), items = id === 'found' ? [] : d.items.filter(it => sysOf(it) === id);
       let b = Drawing.regionFor(ground.id);
       for (const l of lines) b = G.bboxUnion(b, G.bbox(l.pts));
       for (const it of items) b = G.bboxUnion(b, G.bbox(Model.itemPts(it)));
@@ -233,7 +237,7 @@ const IO = {
       const need = Math.max((reg0.x1 - reg0.x0) * 10 / boxW, (reg0.y1 - reg0.y0) * 10 / boxH), N = std.find(x => x >= need) || Math.ceil(need);
       const cx = (reg0.x0 + reg0.x1) / 2, cy = (reg0.y0 + reg0.y1) / 2, reg = { x0: cx - boxW * N / 20, x1: cx + boxW * N / 20, y0: cy - boxH * N / 20, y1: cy + boxH * N / 20 };
       const only = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, k === id]));
-      const draw = () => IO.renderRegion(reg, boxW * dpmm, boxH * dpmm, { ...o, drawing: true, noRoof: true, sysOnly: only, fs: dpmm / 4 });
+      const draw = () => IO.renderRegion(reg, boxW * dpmm, boxH * dpmm, { ...o, drawing: true, noRoof: true, sysOnly: only, found: id === 'found', fs: dpmm / 4 });
       const { canvas } = Drawing.onFloor(ground.id, () => o.autoDims !== false ? Drawing.withAutoDims(ground.id, draw) : draw());
       const len = lines.reduce((s, l) => s + G.polyPerimeter(l.pts, false), 0);
       const kinds = [...new Set(lines.map(l => l.kind))];
@@ -251,13 +255,16 @@ const IO = {
         lines.length ? T(['Обозн.', 'Марка / Ø', 'Длина, м', 'Глуб., м', id === 'power' ? 'Автомат / УЗО' : ''], cut(lrows, id === 'power' ? 24 : 16)) : null,
         erows.length ? U.el('h4', {}, 'Оборудование') : null,
         erows.length ? T(['Наименование', 'Кол.'], cut(erows, 14)) : null,
+        id === 'found' ? T(['Параметр', 'Значение'], [['Тип', FOUND_TYPES[FD.type]], ['Грунт, вода', `${FD.soil.name}, УГВ ${(FD.gwl / 100).toFixed(1)} м`], ['Промерзание (норм. / расч.)', `${FD.dfn.toFixed(2)} / ${FD.df.toFixed(2)} м`], ['Глубина / ширина / высота', FD.type === 'pile' ? `сваи ${FD.piles} шт.` : `${FD.depth.toFixed(2)} / ${FD.width.toFixed(2)} / ${FD.H.toFixed(2)} м`], ['Нагрузка', `${FD.qn.toFixed(0)} кН/м; p = ${FD.p.toFixed(0)} ≤ R = ${FD.R.toFixed(0)} кПа`], ['Армирование', FD.bars], ['Бетон B20 W6 F150', `${FD.concrete.toFixed(1)} м³`], ['Арматура', `${FD.rebar.toFixed(0)} кг`], ['Подушка / XPS', `${(FD.sand || 0).toFixed(1)} м³ / ${FD.xps.toFixed(0)} м²`]]) : null,
+        id === 'found' ? U.el('h4', {}, 'Кладка и армирование стен') : null,
+        id === 'found' ? T(['Стена', 'Армирование'], Struct.masonry().filter(r => r.lenBear || r.rule.every).map(r => [`${r.name}, ${r.th} см, ${r.len.toFixed(1)} м`, (r.rule.every ? `1-й и каждый ${r.rule.every}-й ряд: ${r.rule.how}` : r.rule.how) + (r.ring ? '; армопояс 250 мм, 4 Ø12' : '') + (r.ops ? `; перемычки ${r.ops} шт.` : '')])) : null,
         U.el('h4', {}, 'Требования'),
-        U.el('ul', { style: { margin: '0', paddingLeft: '4mm' } }, (SYSTEM_RULES[id] || []).map(r => U.el('li', {}, r))),
+        U.el('ul', { style: { margin: '0', paddingLeft: '4mm' } }, (id === 'found' ? ['Подошва — на уплотнённую песчаную подушку 200 мм, гидроизоляция боковых граней и горизонтальная отсечка под кладку', 'Защитный слой бетона 40 мм, нахлёст стержней 50 d, углы — Г-образными элементами', 'Отмостка утеплённая, дренаж при высоком уровне грунтовых вод', 'Бетонирование без перерывов; распалубка ≥ 7 сут, кладка — после 70 % прочности'] : (SYSTEM_RULES[id] || [])).map(r => U.el('li', {}, r))),
         grp[id] ? U.el('div', { style: { marginTop: '1.5mm' } }, iss.length ? `Замечания анализа: ${iss.length} — ${iss.slice(0, 3).map(x => x.text).join('; ')}` : 'Замечаний анализа нет.') : null,
         U.el('div', { class: 'norm' }, '§ ' + S.norms));
       const tb = U.el('table', { class: 'tblock' },
         U.el('tr', {}, U.el('td', { colspan: 3, class: 'tb-proj' }, d.name || 'Проект')),
-        U.el('tr', {}, U.el('td', { rowspan: 2, class: 'tb-sheet' }, 'План сетей: ' + S.name.toLowerCase(), U.el('div', { class: 'tb-note' }, ground.name + ', участок')), U.el('td', { class: 'tb-h' }, 'Масштаб'), U.el('td', { class: 'tb-h' }, 'Лист')),
+        U.el('tr', {}, U.el('td', { rowspan: 2, class: 'tb-sheet' }, (id === 'found' ? 'План фундамента' : 'План сетей: ' + S.name.toLowerCase()), U.el('div', { class: 'tb-note' }, ground.name + ', участок')), U.el('td', { class: 'tb-h' }, 'Масштаб'), U.el('td', { class: 'tb-h' }, 'Лист')),
         U.el('tr', {}, U.el('td', {}, '1:' + N), U.el('td', {}, `С-${i + 1} / ${ids.length}`)),
         U.el('tr', {}, U.el('td', { colspan: 3, class: 'tb-date' }, `Floorplaner · ${date}`)));
       out.push(U.el('div', { class: 'sheet drawing', style: { width: PW + 'mm', height: PH + 'mm' } },

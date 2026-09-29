@@ -201,7 +201,8 @@ const UI = {
         if (o.kind === 'fence') return { title: 'Забор', lines: [(FENCE_MATERIALS[o.mat] || {}).name || '', `Длина ${L(Model.wallLen(o))}, высота ${L(o.h)}`, ...tail] };
         const M = WALL_MATERIALS[o.mat];
         const R = o.kind === 'ext' ? wallR(o) : null;
-        return { title: 'Стена: ' + WALL_KINDS[o.kind].name.toLowerCase(), lines: [M ? M.name : '', `Длина ${L(Model.wallLen(o))} · толщина ${Math.round(o.th)} см${o.ins ? ` (утепл. ${Math.round(o.ins)} см)` : ''} · высота ${L(o.h)}`, R ? `R = ${R.toFixed(2)} м²·°C/Вт` : '', ...tail].filter(Boolean), hint: 'Тяните — сдвиг поперёк, за конец — длина' };
+        const RF = WALL_REINF[o.mat];
+        return { title: 'Стена: ' + WALL_KINDS[o.kind].name.toLowerCase(), lines: [M ? M.name : '', `Длина ${L(Model.wallLen(o))} · толщина ${Math.round(o.th)} см${o.ins ? ` (утепл. ${Math.round(o.ins)} см)` : ''} · высота ${L(o.h)}`, R ? `R = ${R.toFixed(2)} м²·°C/Вт` : '', RF ? (RF.every ? `Армирование: 1-й и каждый ${RF.every}-й ряд${RF.ring ? ', армопояс под крышу' : ''}` : 'Армирование: ' + RF.how.split(':')[0]) : '', ...tail].filter(Boolean), norms: RF ? RF.src : '', hint: 'Тяните — сдвиг поперёк, за конец — длина' };
       }
       case 'openings': {
         const T = OPENING_TYPES[o.type], win = T.cat === 'window';
@@ -266,6 +267,7 @@ const UI = {
     try { p.classList.toggle('collapsed', localStorage.getItem('fp:p3d') === '1'); } catch (e) { /* нет хранилища */ }
     p.append(head,
       chk('Этажи выше текущего', 'upper'), chk('Крыша', 'roof'), chk('Мебель и предметы', 'items'), chk('Участок', 'site'),
+      chk('Инженерные сети (как слои на плане)', 'nets'), chk('Прозрачная земля: подземные сети и фундамент', 'xray'),
       F.check('Свет от солнца (дата/время — «Участок»)', o.sun, (v) => { o.sun = v; View3D.redraw(); }),
       F.check('Тени', o.shadows, (v) => { o.shadows = v; View3D.redraw(); }),
       U.el('div', { class: 'fbtns' },
@@ -314,14 +316,17 @@ const UI = {
     if (!ids.length) { bar.hidden = true; return; }
     bar.hidden = false;
     const set = (fn) => { fn(); App.redraw(); UI.renderSysbar(); App.saveSoon(); };
-    const chip = (label, on, color, title, fn) => U.el('button', { type: 'button', class: 'sys-chip' + (on ? ' on' : ''), title, onclick: () => set(fn) }, color ? U.el('i', { style: { background: color } }) : null, label);
+    const chip = (label, on, color, title, fn, solo) => U.el('button', { type: 'button', class: 'sys-chip' + (on ? ' on' : ''), title: title + (solo ? ' · двойной клик — только этот слой' : ''), onclick: () => set(fn), ondblclick: solo ? () => set(solo) : null }, color ? U.el('i', { style: { background: color } }) : null, label);
+    const soloSys = (id) => () => { st.sys = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, k === id])); lay.roof = false; lay.found = false; lay.masonry = false; };
     const setSys = (id, v) => { st.sys = { ...(st.sys || {}), [id]: v }; };
     bar.append(U.el('span', { class: 'sys-title' }, 'Слои:'),
-      ...ids.map(id => chip(SYSTEMS[id].short, sys[id] !== false, SYSTEMS[id].color, `${SYSTEMS[id].name}: ${cnt[id]} объектов и трасс. Нормы: ${SYSTEMS[id].norms}`, () => setSys(id, sys[id] === false))),
+      ...ids.map(id => chip(SYSTEMS[id].short, sys[id] !== false, SYSTEMS[id].color, `${SYSTEMS[id].name}: ${cnt[id]} объектов и трасс. Нормы: ${SYSTEMS[id].norms}`, () => setSys(id, sys[id] === false), soloSys(id))),
       chip('Крыша', lay.roof !== false, '#8f6b5a', 'Крыши дома и построек', () => { lay.roof = lay.roof === false; }),
       chip('Размеры', lay.dims !== false, '#555', 'Размеры и надписи', () => { lay.dims = lay.dims === false; }),
+      chip('Фундамент', !!lay.found, '#6b5b45', 'Контур фундамента под несущими стенами (авторасчёт — «Проект» → «Конструкции»)', () => { lay.found = !lay.found; }),
+      chip('Кладка', !!lay.masonry, '#b45309', 'Материал стен, армирование рядов и перемычки над проёмами (по СП 15.13330, СП 339.13330)', () => { lay.masonry = !lay.masonry; }),
       U.el('span', { class: 'sys-sep' }),
-      chip('Чистый план', false, null, 'Только планировка: стены, окна, двери, мебель и сантехприборы — без сетей, крыши и отметок', () => { st.sys = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, false])); lay.roof = false; lay.checks = false; }),
+      chip('Чистый план', false, null, 'Только планировка: стены, окна, двери, мебель и сантехприборы — без сетей, крыши и отметок', () => { st.sys = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, false])); lay.roof = false; lay.checks = false; lay.found = false; lay.masonry = false; }),
       chip('Всё', false, null, 'Показать все системы и крышу', () => { st.sys = {}; lay.roof = true; lay.dims = true; lay.checks = true; }));
   },
   renderFloorbar() {
@@ -662,6 +667,38 @@ const UI = {
       s.plotArea ? F.info('Участок', `${(s.plotArea / 1e6).toFixed(2)} сот.`) : null,
       F.btns([['Все площади →', () => UI.showTab('summary')]])));
     body.append(UI.notesList());
+  },
+  /** Конструкции: грунт → авторасчёт фундамента; кладка и армирование стен по материалам */
+  structSection() {
+    const o = Struct.opt(), Fd = Struct.foundation(), mm = (v) => U.fmtLen(v * 100);
+    const set = (k, v) => { Struct.set(k, v); Model.commit(); };
+    const body = [
+      F.select('Грунт основания', o.soil, Object.entries(SOILS).map(([k, v]) => [k, v.name]), (v) => set('soil', v)),
+      F.num('Грунтовые воды (от поверхности)', o.gwl, (v) => set('gwl', U.clamp(v, 0, 2000)), { min: 0, step: 10 }),
+      F.select('Тип фундамента', o.type, Object.entries(FOUND_TYPES).map(([k, v]) => [k, v]), (v) => set('type', v)),
+      F.num('Цоколь над землёй', o.plinth, (v) => set('plinth', U.clamp(v, 10, 150)), { min: 10, max: 150 }),
+    ];
+    if (Fd) body.push(
+      F.info('Подобран', FOUND_TYPES[Fd.type] + (o.type === 'auto' ? ' (авто)' : '')),
+      Fd.type !== 'pile' ? F.info('Глубина заложения', `${mm(Fd.depth)}${Fd.soil.heave ? ` (промерзание ${mm(Fd.dfn)} × 0,6 = ${mm(Fd.df)})` : ' (грунт непучинистый)'}`) : F.info('Сваи', `${Fd.piles} шт., шаг 2–2,5 м`),
+      Fd.type !== 'slab' && Fd.type !== 'pile' ? F.info('Ширина подошвы', mm(Fd.width)) : null,
+      F.info('Нагрузка на 1 м ленты', `${Fd.qn.toFixed(0)} кН/м (стены ${Fd.Gw.toFixed(0)}, крыша со снегом ${Fd.Groof.toFixed(0)}, перекрытия ${Fd.Gceil.toFixed(0)} кН)`),
+      F.info('Давление / сопротивление грунта', `${Fd.p.toFixed(0)} / ${Fd.R.toFixed(0)} кПа ${Fd.p <= Fd.R ? '✓' : '✗'}`),
+      F.info('Армирование', Fd.bars),
+      F.info('Бетон B20 W6 F150', `${Fd.concrete.toFixed(1)} м³`),
+      F.info('Арматура', `${Fd.rebar.toFixed(0)} кг`),
+      Fd.sand ? F.info('Песчаная подушка', `${Fd.sand.toFixed(1)} м³`) : null,
+      F.info('Утеплитель XPS', `${Fd.xps.toFixed(0)} м²`),
+      F.btns([[App.doc.settings.layers.found ? 'Скрыть контур на плане' : 'Показать контур на плане', () => { App.doc.settings.layers.found = !App.doc.settings.layers.found; App.redraw(); UI.refresh(); }]]),
+      F.note('Считается само по стенам, крыше, снеговому району и промерзанию города. Пучинистые грунты (суглинок, глина, супесь) — ниже промерзания; близкие грунтовые воды — МЗЛФ или утеплённая плита; торф — сваи. Уточните грунт по изысканиям (СП 47.13330) — хотя бы по соседям или шурфу.'));
+    const rows = Struct.masonry().filter(r => r.lenBear || r.rule.every);
+    return F.section('Конструкции: фундамент и стены', ...body,
+      rows.length ? U.el('div', { class: 'mas' }, U.el('b', {}, 'Кладка и армирование стен'), ...rows.map(r => U.el('div', { class: 'mas-row' },
+        U.el('div', {}, U.el('b', {}, `${r.name}, ${r.th} см`), ` — ${(r.len).toFixed(1)} м, ${r.courses} рядов`),
+        U.el('div', {}, r.rule.every ? `Армировать 1-й и каждый ${r.rule.every}-й ряд (${r.reinfRows} рядов): ${r.rule.how}. Арматура ≈ ${r.rebar.toFixed(0)} кг.` : r.rule.how),
+        r.ring ? U.el('div', {}, `Армопояс под крышу/перекрытие 250 мм, 4 Ø12 А500: бетон ${r.ring.vol.toFixed(1)} м³, арматура ${r.ring.rebar.toFixed(0)} кг.`) : null,
+        r.ops ? U.el('div', {}, `Перемычки: ${r.ops} шт., ${r.opLen.toFixed(1)} м (проём + опирание 2 × 25 см).`) : null,
+        U.el('small', {}, '§ ' + r.rule.src)))) : null);
   },
   /** «Шаги проекта»: что уже сделано и что дальше — с кнопкой нужного инструмента */
   stepsCard() {
@@ -1319,6 +1356,7 @@ const UI = {
       F.check('Открывание окон (дуги)', s.showSwing !== false, (v) => { s.showSwing = v; App.redraw(); App.saveSoon(); }),
       F.check('Штриховка материалов стен (при приближении)', s.wallHatch !== false, (v) => { s.wallHatch = v; App.redraw(); App.saveSoon(); }),
       F.check('Подсказки при наведении на объекты', s.hoverTips !== false, (v) => { s.hoverTips = v; if (!v) UI.hideTip(); App.saveSoon(); }),
+      F.check('Примечания на плане полностью (иначе — номер, текст при наведении)', !!s.notesFull, (v) => { s.notesFull = v || undefined; App.redraw(); App.saveSoon(); }),
       F.check('Автопроверка норм при рисовании (уведомления о нарушениях)', s.liveChecks !== false, (v) => { s.liveChecks = v; App.saveSoon(); })));
     const used = [...new Set(App.doc.walls.filter(w => w.kind !== 'fence').map(w => w.mat))].filter(k => WALL_MATERIALS[k]);
     const usedF = [...new Set(App.doc.walls.filter(w => w.kind === 'fence').map(w => w.mat))].filter(k => FENCE_MATERIALS[k]);
@@ -1686,6 +1724,7 @@ const UI = {
       F.num('Глубина промерзания', Climate.frost(), (v) => { s.frost = U.clamp(v, 0, 400); Model.commit(); }, { min: 0, max: 400 }),
       U.isNum(s.frost) ? F.btns([[`По городу (${U.fmtLen(Climate.get().frost)})`, () => { delete s.frost; Model.commit(); }]]) : F.note(`По климату: ${Climate.get().city}${Climate.get().exact ? '' : ' (ближайший город из списка)'}.`),
       F.note('Нормативная глубина промерзания (СП 22.13330, СП 131.13330): Москва и область — 1,1–1,5 м (глина — меньше, песок — больше), Санкт-Петербург — 1,2–1,5, Екатеринбург — 1,6–2, Новосибирск — 2,2–2,4 м. По ней проверяется глубина водопровода: низ трубы на 0,5 м ниже.')));
+    body.append(UI.structSection());
     body.append(F.section('Стены по типам', tbl,
       F.check('Применять к уже нарисованным стенам', s.wallDefaultsLive !== false, (v) => { s.wallDefaultsLive = v; App.saveSoon(); }),
       F.btns([['Применить сейчас ко всем стенам', () => { for (const w of d.walls) { const dd = d.defaults.wall[w.kind]; w.th = dd.th + (w.ins || 0); w.h = dd.h; w.mat = dd.mat; } Model.commit(); UI.toast('Материал, толщина и высота стен обновлены (Ctrl+Z — отменить)'); }]]),

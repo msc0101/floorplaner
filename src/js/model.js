@@ -7,7 +7,7 @@ const DOC_VERSION = 1;
 const COLLECTIONS = ['areas', 'roads', 'walls', 'openings', 'items', 'roofs', 'lines', 'dims', 'texts', 'roomTags', 'notes'];
 
 /** Настройки вида — не часть «правки», undo/redo их не трогает */
-const VIEW_SETTINGS = ['hoverTips', 'liveChecks', 'layers', 'sys', 'sun', 'showWallDims', 'showItemDims', 'showGuides', 'showSwing', 'wallHatch', 'showChecks', 'showChecksOk', 'roofFill', 'wallDefaultsLive'];
+const VIEW_SETTINGS = ['hoverTips', 'liveChecks', 'notesFull', 'layers', 'sys', 'sun', 'showWallDims', 'showItemDims', 'showGuides', 'showSwing', 'wallHatch', 'showChecks', 'showChecksOk', 'roofFill', 'wallDefaultsLive'];
 
 const Model = {
   newDoc() {
@@ -20,7 +20,7 @@ const Model = {
       settings: {
         units: 'm', grid: 10, gridAngle: 0, gridOrigin: { x: 0, y: 0 }, snap: true, showWallDims: true, showItemDims: false, showChecks: true,
         areaMode: 'floor',
-        layers: Object.fromEntries(LAYERS.map(l => [l.id, !['heat', 'shadows'].includes(l.id)])),
+        layers: Object.fromEntries(LAYERS.map(l => [l.id, !['heat', 'shadows', 'found', 'masonry'].includes(l.id)])),
       },
       defaults: {
         wall: U.clone(Object.fromEntries(Object.entries(WALL_KINDS).map(([k, v]) => [k, { th: v.th, h: v.h, mat: v.mat }]))),

@@ -17,7 +17,7 @@ const PRICE_DEFAULTS = {
   'roof:metaltile': 1500, 'roof:profile': 1200, 'roof:seam': 2800, 'roof:soft': 2200, 'roof:ceramic': 3800,
   'roof:ondulin': 1000, 'roof:polycarb': 1100, 'roof:slate': 900, 'roof:membrane': 2200, 'roof:frame': 2500,
   // фундамент, перекрытия, полы
-  'found:strip': 14000, 'slab:floor': 4500, 'floor:screed': 1200,
+  'found:strip': 14000, 'found:concrete': 14000, 'found:rebar': 110, 'found:sand': 1500, 'found:xps': 700, 'found:pile': 9000, 'wall:rebar': 110, 'wall:ring': 16000, 'slab:floor': 4500, 'floor:screed': 1200,
   // окна и двери
   'win:m2': 11000, 'door:int': 15000, 'door:ext': 45000, 'door:gate': 110000, 'door:slide': 25000,
   // сети (за м)
@@ -35,7 +35,7 @@ const PRICE_DEFAULTS = {
   'item:showerWalk': 35000, 'item:toilet': 18000, 'item:toiletWall': 38000, 'item:bidet': 20000, 'item:sink': 9000, 'item:vanity': 22000,
   'item:kitchenI': 180000, 'item:kitchenL': 260000, 'item:panel': 35000, 'item:meter': 25000, 'item:pole': 45000, 'item:lightPole': 25000,
   'item:socket': 1500, 'item:socket2': 2000, 'item:socketPower': 4000, 'item:switch': 1500, 'item:switch2': 1800, 'item:lamp': 5000,
-  'item:spot': 1500, 'item:wallLamp': 4000, 'item:socketOut': 3500, 'item:cctvCam': 9000, 'item:nvr': 45000,
+  'item:spot': 1500, 'item:wallLamp': 4000, 'item:socketOut': 3500, 'item:cctvCam': 9000, 'item:nvr': 45000, 'item:router': 25000, 'item:lanSocket': 1200, 'item:wifiAp': 9000,
   'item:downspout': 6500, 'item:stormInlet': 4500, 'item:drainChannel': 3500, 'item:manifoldWF': 45000,
   'item:stairs': 150000, 'item:stairsL': 220000,
   'item:garage1': 900000, 'item:garage2': 1500000, 'item:carport': 180000, 'item:carport2': 300000, 'item:carportLean': 160000,
@@ -65,7 +65,18 @@ const Estimate = {
     // фундамент и перекрытия
     const fd = App.floorData || [];
     const perim = fd.length ? fd[0].outlines.reduce((s, o) => s + G.polyPerimeter(o.outer), 0) / 100 : 0;
-    add('Фундамент, перекрытия, полы', 'found:strip', 'Фундамент ленточный (по периметру наружных стен)', 'м.п.', perim);
+    // фундамент — по авторасчёту (тип, объёмы, арматура); без стен — по периметру
+    const Fd = Struct.foundation();
+    if (Fd) {
+      add('Фундамент, перекрытия, полы', 'found:concrete', `Фундамент: ${FOUND_TYPES[Fd.type].toLowerCase()} — бетон B20 W6 F150 с работой`, 'м³', Fd.concrete);
+      add('Фундамент, перекрытия, полы', 'found:rebar', 'Арматура фундамента А500/А240', 'кг', Fd.rebar);
+      if (Fd.sand) add('Фундамент, перекрытия, полы', 'found:sand', 'Песчаная подушка с трамбованием', 'м³', Fd.sand);
+      add('Фундамент, перекрытия, полы', 'found:xps', 'Утепление фундамента XPS 50–100 мм', 'м²', Fd.xps);
+      if (Fd.piles) add('Фундамент, перекрытия, полы', 'found:pile', 'Сваи с монтажом', 'шт.', Fd.piles);
+      const ms = Struct.masonry();
+      add('Стены и перегородки', 'wall:rebar', 'Армирование кладки (штробы, сетка)', 'кг', ms.reduce((a, r) => a + r.rebar, 0));
+      add('Стены и перегородки', 'wall:ring', 'Армопояс монолитный с арматурой', 'м³', ms.reduce((a, r) => a + (r.ring ? r.ring.vol : 0), 0));
+    } else add('Фундамент, перекрытия, полы', 'found:strip', 'Фундамент ленточный (по периметру наружных стен)', 'м.п.', perim);
     const slabs = fd.slice(1).reduce((s, x) => s + x.outlines.reduce((a, o) => a + o.area, 0), 0) / 1e4;
     add('Фундамент, перекрытия, полы', 'slab:floor', 'Межэтажные перекрытия', 'м²', slabs);
     add('Фундамент, перекрытия, полы', 'floor:screed', 'Стяжка / черновой пол (площадь помещений)', 'м²', fd.reduce((s, x) => s + x.rooms.reduce((a, r) => a + r.areaFloor, 0), 0) / 1e4);

@@ -121,6 +121,9 @@ const Render = {
     for (const it of items) if (isGround(it)) Render.item(env, it);
     lay('WALLS');
     if (L.walls) Render.walls(env);
+    lay('FOUNDATION');
+    if (L.found && Model.floorIdx(App.floor) === 0) Struct.draw(env);   // поверх стен — пунктиром, лента шире стены на 5–10 см
+    if (L.masonry) Struct.drawMasonry(env);
     lay('ITEMS');
     for (const it of items) if (!isGround(it) && !isShell(it) && !isCanopy(it) && !catItem(it.key).sym) Render.item(env, it);
     for (const it of items) if (isShell(it)) Render.item(env, it, '_label');
@@ -958,6 +961,18 @@ const Render = {
         ctx.fillStyle = color; ctx.beginPath(); ctx.arc(sa.x, sa.y, 3.5, 0, Math.PI * 2); ctx.fill();
       }
       const sel = App.sel.has(n.id);
+      // компактно — только номер (текст — в подсказке при наведении и в списке примечаний / ведомости при печати);
+      // полностью — у выделенного и наведённого или если включено «Примечания на плане полностью»
+      if (!sel && App.hover !== n.id && !App.doc.settings.notesFull) {
+        const cr = { x0: sp.x - 10, y0: sp.y - 10, x1: sp.x + 10, y1: sp.y + 10 };
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(sp.x, sp.y, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.font = '600 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(i + 1), sp.x, sp.y + 0.5);
+        rects.push({ id: n.id, r: cr });
+        env.reserved && env.reserved.push({ x0: cr.x0 * f, y0: cr.y0 * f, x1: cr.x1 * f, y1: cr.y1 * f });
+        return;
+      }
       ctx.fillStyle = env.exporting ? '#fffbe8' : C.noteBg;
       ctx.strokeStyle = sel && !env.exporting ? C.accent : color; ctx.lineWidth = sel ? 2 : 1.2;
       Painters.rr(ctx, r.x0, r.y0, W, H, 6); ctx.fill(); ctx.stroke();

@@ -273,6 +273,9 @@ button.mini:disabled { opacity: .35; }
 .sys-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--muted); font-size: 11.5px; opacity: .6; }
 .sys-chip.on { opacity: 1; color: var(--text); background: var(--surface); }
 .sys-chip i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.mas { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; font-size: 12px; }
+.mas-row { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); display: flex; flex-direction: column; gap: 2px; }
+.mas-row small { color: var(--muted-2); }
 .steps { display: flex; flex-direction: column; gap: 2px; }
 .step { display: flex; gap: 8px; align-items: flex-start; text-align: left; background: none; border: 1px solid transparent; border-radius: 8px; padding: 5px 6px; color: var(--text); }
 .step:hover { background: var(--surface-2); border-color: var(--border); }
@@ -1252,6 +1255,8 @@ const LAYERS = [
   { id: 'dims', name: 'Размеры и надписи' },
   { id: 'notes', name: 'Примечания' },
   { id: 'checks', name: 'Проверка отступов' },
+  { id: 'found', name: 'Фундамент (контур под стенами)' },
+  { id: 'masonry', name: 'Кладка: армирование и перемычки' },
   { id: 'shadows', name: 'Тени (солнце)' },
   { id: 'heat', name: 'Карта инсоляции' },
 ];
@@ -1290,7 +1295,7 @@ const SYSTEMS = {
     norms: 'СП 60.13330.2020 разд. 7; длина трассы и перепад высот — по паспорту кондиционера' },
   power:     { name: 'Электрика', short: 'Электрика', color: '#d21f3c', lines: ['power', 'overhead', 'ground'], keys: ['generator', 'groundRod'],
     norms: 'ПУЭ 7-е изд., гл. 7.1 (жилые здания), 1.7 (заземление), 2.4 (ВЛ); СП 256.1325800.2016 «Электроустановки жилых и общественных зданий»' },
-  lowvolt:   { name: 'Слаботочка и видеонаблюдение', short: 'Видео, сеть', color: '#7c3aed', lines: ['lowvolt'], keys: ['cctvCam', 'nvr'],
+  lowvolt:   { name: 'Интернет, слаботочка и видеонаблюдение', short: 'Интернет, видео', color: '#7c3aed', lines: ['lowvolt'], keys: ['cctvCam', 'nvr', 'router', 'lanSocket', 'wifiAp'],
     norms: 'СП 134.13330.2022 «Системы электросвязи зданий»; ГОСТ Р 51558-2014 (системы охранные телевизионные)' },
   gas:       { name: 'Газоснабжение', short: 'Газ', color: '#d89b00', lines: ['gas', 'gasAir'], keys: [],
     norms: 'СП 62.13330.2011 «Газораспределительные системы»; СП 402.1325800.2018 «Здания жилые. Правила проектирования систем газопотребления»' },
@@ -1327,6 +1332,8 @@ const ITEM_NORMS = {
   meter: 'ПУЭ 1.5.27–1.5.29: счётчик на высоте 0,8–1,7 м, доступ для сетевой компании',
   radiator: 'СП 60.13330 п. 6.4.4: под окнами, длина ≥ 50 % ширины окна; от пола 6–12 см, от стены ≥ 2,5 см',
   socketOut: 'ПУЭ 7.1.83: наружные розетки — через УЗО 30 мА, степень защиты ≥ IP44',
+  lan: 'СП 134.13330.2022: кабель UTP cat.6 звездой от щита к каждой розетке, длина ≤ 90 м; в одной трубе с силовыми — нельзя (≥ 0,25 м или перегородка)',
+  wifi: 'Одна точка на 60–80 м² без толстых стен; питание по PoE, кабель от коммутатора',
   cctv: 'ГОСТ Р 51558-2014: обнаружение человека — ≥ 10 % высоты кадра, распознавание — ≥ 50 %',
   downspout: 'СП 17.13330.2017 п. 9.1–9.7: водосток — одна труба на 10 м карниза, отвод воды от фундамента',
   faucetOut: 'СП 30.13330 п. 5.4.4: поливочные краны по периметру здания — через 60–70 м, незамерзающие',
@@ -1622,6 +1629,9 @@ const CATALOG = [
     { key: 'facadeLight', name: 'Светильник фасадный (уличный)', kw: 'освещение фасад крыльцо улица бра', shape: 'facadeLight', w: 16, d: 14, h: 210, sym: 22 },
     { key: 'socketOut', name: 'Розетка уличная IP44 с крышкой', kw: 'розетка улица фасад садовая техника ip44 влагозащищённая', shape: 'socketOut', w: 10, d: 8, h: 80, sym: 24 },
     { key: 'cctvCam', name: 'Камера видеонаблюдения уличная', kw: 'видеонаблюдение камера cctv охрана ip poe', shape: 'cctv', w: 10, d: 22, h: 280, sym: 26, fov: 90, range: 1500 },
+    { key: 'router', name: 'Слаботочный щит: оптический терминал (ONT), роутер, коммутатор', kw: 'интернет роутер ont оптика wi-fi щит слаботочка сеть', shape: 'labelbox', w: 40, d: 12, h: 150, label: 'ONT', sym: 28 },
+    { key: 'lanSocket', name: 'Розетка RJ45 (интернет)', kw: 'интернет розетка rj45 lan сеть кабель', shape: 'lan', w: 8, d: 4, h: 30, sym: 20 },
+    { key: 'wifiAp', name: 'Точка доступа Wi-Fi (потолочная, PoE)', kw: 'интернет wi-fi вайфай точка доступа роутер mesh', shape: 'wifi', w: 18, d: 18, h: 265, sym: 24 },
     { key: 'nvr', name: 'Видеорегистратор (NVR) + ИБП в настенном шкафу', kw: 'видеонаблюдение регистратор nvr ибп шкаф сеть', shape: 'nvr', w: 40, d: 25, h: 45 },
     { key: 'groundRod', name: 'Контур заземления', shape: 'ground', w: 100, d: 100, h: 0 },
     { key: 'generator', name: 'Генератор', shape: 'labelbox', w: 70, d: 55, h: 55, label: 'ГЕН' },
@@ -2460,6 +2470,13 @@ const Painters = (() => {
     box(P, -w / 2, -d / 2, w, d * 0.75, 1);
     box(P, -w * 0.35, -d / 2 + d * 0.75, w * 0.7, d * 0.25, 0);
   };
+  // розетка RJ45: квадрат с «гнездом»; точка Wi-Fi: круг с дугами сигнала
+  S.lan = (P, w, d) => { const s = Math.max(w, 12) * 0.5; box(P, -s, -s * 0.6, s * 2, s * 1.4, 1); thin(P); box(P, -s * 0.45, -s * 0.2, s * 0.9, s * 0.7, 0, false); text(P, 'RJ', 0, s * 1.4, s * 0.9, { bold: true }); };
+  S.wifi = (P, w, d) => {
+    const r = Math.min(w, d) / 2, c = P.ctx;
+    circle(P, 0, 0, r); thin(P); P.ctx.fillStyle = P.C.ink; circle(P, 0, r * 0.35, r * 0.12);
+    for (const k of [0.45, 0.72]) { c.beginPath(); c.arc(0, r * 0.35, r * k, -Math.PI * 0.8, -Math.PI * 0.2); c.stroke(); }
+  };
   S.nvr = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 1); thin(P);
     line(P, [-w / 2, d / 2 - 4, w / 2, d / 2 - 4]);
@@ -2988,7 +3005,7 @@ const DOC_VERSION = 1;
 const COLLECTIONS = ['areas', 'roads', 'walls', 'openings', 'items', 'roofs', 'lines', 'dims', 'texts', 'roomTags', 'notes'];
 
 /** Настройки вида — не часть «правки», undo/redo их не трогает */
-const VIEW_SETTINGS = ['hoverTips', 'liveChecks', 'layers', 'sys', 'sun', 'showWallDims', 'showItemDims', 'showGuides', 'showSwing', 'wallHatch', 'showChecks', 'showChecksOk', 'roofFill', 'wallDefaultsLive'];
+const VIEW_SETTINGS = ['hoverTips', 'liveChecks', 'notesFull', 'layers', 'sys', 'sun', 'showWallDims', 'showItemDims', 'showGuides', 'showSwing', 'wallHatch', 'showChecks', 'showChecksOk', 'roofFill', 'wallDefaultsLive'];
 
 const Model = {
   newDoc() {
@@ -3001,7 +3018,7 @@ const Model = {
       settings: {
         units: 'm', grid: 10, gridAngle: 0, gridOrigin: { x: 0, y: 0 }, snap: true, showWallDims: true, showItemDims: false, showChecks: true,
         areaMode: 'floor',
-        layers: Object.fromEntries(LAYERS.map(l => [l.id, !['heat', 'shadows'].includes(l.id)])),
+        layers: Object.fromEntries(LAYERS.map(l => [l.id, !['heat', 'shadows', 'found', 'masonry'].includes(l.id)])),
       },
       defaults: {
         wall: U.clone(Object.fromEntries(Object.entries(WALL_KINDS).map(([k, v]) => [k, { th: v.th, h: v.h, mat: v.mat }]))),
@@ -5068,6 +5085,194 @@ const Checks = {
   },
 };
 
+/* ---- js/struct.js ---- */
+'use strict';
+/* ==========================================================================
+   Конструкции: автоматический расчёт фундамента (нагрузки → ширина подошвы,
+   глубина заложения по промерзанию и пучинистости грунта, тип, армирование,
+   объёмы) и кладки стен с армированием по материалу. Упрощённо, по СП 22.13330,
+   СП 20.13330, СП 63.13330, СП 15.13330, СП 339.13330 — для эскиза и сметы;
+   рабочий проект фундамента — по инженерно-геологическим изысканиям.
+   ========================================================================== */
+
+/* Грунты основания: R0 — расчётное сопротивление, кПа (СП 22.13330 прил. Б, ориентировочно); heave — пучинистый */
+const SOILS = {
+  sand:      { name: 'Песок средней крупности, крупный', R0: 400, heave: false },
+  sandFine:  { name: 'Песок мелкий, пылеватый', R0: 300, heave: true },
+  sandyLoam: { name: 'Супесь', R0: 250, heave: true },
+  loam:      { name: 'Суглинок', R0: 220, heave: true },
+  clay:      { name: 'Глина', R0: 250, heave: true },
+  peat:      { name: 'Торф, насыпной, ил (слабый)', R0: 50, heave: true, weak: true },
+};
+const FOUND_TYPES = { auto: 'Подобрать автоматически', strip: 'Ленточный монолитный', mzlf: 'Мелкозаглублённый утеплённый (МЗЛФ)', slab: 'Утеплённая плита (УШП)', pile: 'Свайно-винтовой / буронабивной с ростверком' };
+/* Плотность кладки, кН/м³ (с раствором и влажностью) */
+const WALL_GAMMA = { aerated: 6, foam: 7, ceramic: 8.5, brick: 18, silicate: 19, concrete: 25, claybl: 12, cinder: 14, arbolit: 7, timber: 5.5, frame: 2, sip: 1.5, gkl: 1.5, pgp: 12, stone: 22 };
+/* Кладка: сколько рядов между армированными, чем армировать, нужен ли армопояс */
+const WALL_REINF = {
+  aerated:  { every: 4, how: '2 стержня Ø8 А500 в штробах (стена ≥ 30 см — две штробы); первый ряд — на выравнивающий раствор по гидроизоляции', ring: true, src: 'СП 339.13330.2017; СТО НААГ 3.1-2013' },
+  foam:     { every: 4, how: '2 стержня Ø8 А500 в штробах; первый ряд — по гидроизоляции', ring: true, src: 'СП 339.13330.2017' },
+  arbolit:  { every: 4, how: 'кладочная сетка или 2 стержня Ø8 в швах', ring: true, src: 'ГОСТ 19222-2019; рекомендации производителей' },
+  ceramic:  { every: 5, how: 'кладочная сетка из композита или Вр-I Ø4 в швах, обязательно — у углов и под окнами', ring: true, src: 'СП 15.13330.2020 п. 9.x; рекомендации производителей' },
+  brick:    { every: 5, how: 'кладочная сетка Вр-I Ø4 ячейка 50×50 через 5 рядов (у углов и простенков)', ring: false, src: 'СП 15.13330.2020 п. 9.33' },
+  silicate: { every: 5, how: 'кладочная сетка Вр-I Ø4 через 5 рядов', ring: false, src: 'СП 15.13330.2020' },
+  claybl:   { every: 3, how: 'кладочная сетка или 2 стержня Ø6–8 через 3 ряда', ring: true, src: 'СП 15.13330.2020' },
+  cinder:   { every: 3, how: 'кладочная сетка через 3 ряда', ring: true, src: 'СП 15.13330.2020' },
+  stone:    { every: 4, how: 'кладочная сетка через 4 ряда, перевязка', ring: true, src: 'СП 15.13330.2020' },
+  concrete: { every: 0, how: 'рабочее армирование монолита по расчёту (две сетки Ø10–12 шаг 200)', ring: false, src: 'СП 63.13330.2018' },
+  timber:   { every: 0, how: 'не армируется: нагели через 1–1,5 м, межвенцовый утеплитель, запас на усадку над проёмами', ring: false, src: 'СП 64.13330.2017' },
+  frame:    { every: 0, how: 'не армируется: жёсткость — раскосы или ОСП, крепёж по СП 64', ring: false, src: 'СП 64.13330.2017; СП 31-105-2002' },
+  sip:      { every: 0, how: 'не армируется: соединение панелей брусом, герметизация стыков', ring: false, src: 'СП 31-105-2002' },
+};
+const REBAR_KG = { 6: 0.222, 8: 0.395, 10: 0.617, 12: 0.888, 14: 1.21 };
+
+const Struct = {
+  opt() {
+    const s = App.doc.settings;
+    return Object.assign({ soil: 'loam', gwl: 300, type: 'auto', plinth: 40 }, s.found || {});
+  },
+  set(k, v) { App.doc.settings.found = { ...(App.doc.settings.found || {}), [k]: v }; },
+  /** Несущие стены этажа: наружные и внутренние несущие (перегородки — на стяжке) */
+  bearing(fid) { return App.doc.walls.filter(w => (w.floor === fid) && (w.kind === 'ext' || w.kind === 'int')); },
+  /** Расчёт фундамента дома: нагрузки, ширина, глубина, тип, армирование, объёмы */
+  foundation() {
+    const d = App.doc, o = Struct.opt(), f1 = d.floors[0], cl = Climate.get(), S = SOILS[o.soil] || SOILS.loam;
+    const walls = Struct.bearing(f1.id);
+    if (!walls.length) return null;
+    const Lext = walls.filter(w => w.kind === 'ext').reduce((a, w) => a + Model.wallLen(w), 0) / 100, Lint = walls.filter(w => w.kind === 'int').reduce((a, w) => a + Model.wallLen(w), 0) / 100, L = Lext + Lint;
+    const fd = (App.floorData || [])[0], area = fd ? fd.outlines.reduce((a, x) => a + x.area, 0) / 1e4 : 0;
+    // нагрузки, кН: стены всех этажей над основанием, крыша со снегом, перекрытия
+    let Gw = 0;
+    for (const w of d.walls) if (w.kind === 'ext' || w.kind === 'int') Gw += (WALL_GAMMA[w.mat] || 10) * (w.th / 100) * (w.h / 100) * Model.wallLen(w) / 100;
+    const roofA = d.roofs.reduce((a, r) => a + Roof.params(r).area / 1e4, 0) || area * 1.25;
+    const roofDead = d.roofs.some(r => ['ceramic', 'slate'].includes(r.mat)) ? 0.8 : 0.5;
+    const pitch = d.roofs.length ? Math.max(...d.roofs.map(r => r.type === 'flat' ? 0 : r.pitch || 0)) : 30;
+    const mu = U.clamp((60 - pitch) / 30, 0, 1), snow = 0.7 * cl.snowKpa * mu;
+    const Groof = roofA * (roofDead + snow);
+    const Gceil = area * d.floors.length * (1.5 + 1.5);                     // перекрытия (балки, утеплитель, пол) + полезная 1,5 кПа
+    const qn = (Gw + Groof + Gceil) / Math.max(L, 1);                       // кН/м по несущим стенам (без веса фундамента)
+    const q = qn * 1.2;                                                     // с коэффициентом надёжности по нагрузке
+    // глубина: пучинистые грунты — не меньше расчётного промерзания (дом отапливаемый, пол по грунту — kh 0,6)
+    const dfn = Climate.frost() / 100, df = +(0.6 * dfn).toFixed(2);
+    const high = o.gwl / 100 < df + 2;                                      // вода близко — пучение сильнее
+    let type = o.type !== 'auto' ? o.type : S.weak ? 'pile' : S.heave && o.gwl < 150 ? 'slab' : S.heave && o.gwl < df * 100 + 50 ? 'mzlf' : 'strip';
+    let depth = type === 'strip' ? (S.heave ? Math.max(df, 0.5) : 0.5) : type === 'mzlf' ? 0.5 : type === 'slab' ? 0.35 : 0;
+    if (U.isNum(o.depth)) depth = o.depth / 100;
+    // ширина подошвы: q / (R − γ·d); не меньше стены + 10 см и не меньше 30 см
+    const thMax = Math.max(...walls.filter(w => w.kind === 'ext').map(w => w.th)) / 100;
+    const H = depth + o.plinth / 100;                                        // высота ленты с цоколем
+    const R = S.R0 * (type === 'mzlf' ? 0.9 : 1);
+    let b = q / Math.max(30, R - 20 * H);
+    b = Math.max(b, thMax + 0.1, 0.3);
+    b = Math.ceil(b * 20) / 20;
+    if (U.isNum(o.width)) b = o.width / 100;
+    const p = (q + 24 * b * H) / b;                                          // давление под подошвой, кПа
+    // объёмы и армирование (ленты)
+    const out = { soil: S, soilKey: o.soil, gwl: o.gwl, type, depth, width: b, H, qn, q, p, R, df, dfn, L, Lext, Lint, area, Gw, Groof, Gceil, snow, high, plinth: o.plinth };
+    if (type === 'strip' || type === 'mzlf') {
+      out.concrete = L * b * H;
+      const n = b <= 0.4 ? 2 : 3;                                            // стержней в ряду
+      out.bars = `2 ряда по ${n} стержня Ø12 А500 (низ и верх), хомуты Ø8 А240 шаг 300`;
+      out.rebar = (L * 2 * n * 1.1) * REBAR_KG[12] + (L / 0.3) * (2 * (b + H) - 0.2) * REBAR_KG[8];
+      out.sand = L * (b + 0.4) * 0.2;
+      out.xps = type === 'mzlf' ? L * (H + 1.2) : L * H;                     // утепление боковой грани (+ юбка у МЗЛФ)
+    } else if (type === 'slab') {
+      const A = area + Lext * 0.6;
+      out.concrete = A * 0.1 + Lext * 0.3 * 0.2 + Lint * 0.3 * 0.2;         // плита 100 мм + рёбра 300×200
+      out.bars = 'плита — сетка Ø8 шаг 200; рёбра — 4 Ø12 А500, хомуты Ø8 шаг 300';
+      out.rebar = A * 2 * 5 * REBAR_KG[8] + L * 4 * 1.1 * REBAR_KG[12];
+      out.sand = A * 0.3; out.xps = A + Lext * 1.2;
+    } else {
+      const piles = Math.ceil(L / 2.5) + 4;
+      out.piles = piles; out.concrete = L * 0.4 * 0.4;                       // ростверк 400×400
+      out.bars = `ростверк — 4 Ø12 А500, хомуты Ø8 шаг 300; сваи Ø108–133 длиной ${Math.max(2.5, dfn + 1).toFixed(1)} м через 2–2,5 м`;
+      out.rebar = L * 4 * 1.1 * REBAR_KG[12] + (L / 0.3) * 1.4 * REBAR_KG[8];
+      out.sand = 0; out.xps = L * 0.5;
+    }
+    return out;
+  },
+  /** Кладка и армирование: по каждой паре «материал, толщина» наружных и несущих стен */
+  masonry() {
+    const d = App.doc, rows = new Map();
+    for (const w of d.walls) {
+      if (w.kind === 'fence') continue;
+      const R = WALL_REINF[w.mat] || { every: 0, how: '', ring: false, src: '' }, M = WALL_MATERIALS[w.mat] || {};
+      const k = w.mat + ':' + w.th, L = Model.wallLen(w) / 100;
+      const r = rows.get(k) || rows.set(k, { mat: w.mat, name: M.name || w.mat, th: w.th, len: 0, lenBear: 0, h: 0, rule: R, ops: 0, opLen: 0 }).get(k);
+      r.len += L; r.h = Math.max(r.h, w.h / 100);
+      if (w.kind === 'ext' || w.kind === 'int') r.lenBear += L;
+      for (const o of d.openings) if (o.wall === w.id) { r.ops++; r.opLen += (o.w + 50) / 100; }   // перемычка: проём + 2 × 25 см опирания
+    }
+    for (const r of rows.values()) {
+      const bh = (WALL_MATERIALS[r.mat] || {}).block ? WALL_MATERIALS[r.mat].block[1] / 100 : (r.mat === 'brick' || r.mat === 'silicate') ? 0.077 : 0.25;
+      r.courses = Math.round(r.h / bh);
+      r.reinfRows = r.rule.every ? 1 + Math.floor((r.courses - 1) / r.rule.every) : 0;
+      const bars = r.th >= 30 ? 4 : 2;                                          // две штробы по 2 стержня у толстых стен
+      r.rebar = r.rule.every ? r.len * r.reinfRows * bars * 1.05 * REBAR_KG[8] : 0;
+      r.ring = r.rule.ring && r.lenBear ? { vol: r.lenBear * (r.th / 100) * 0.25, rebar: r.lenBear * 4 * 1.1 * REBAR_KG[12] } : null;
+    }
+    return [...rows.values()];
+  },
+  /** Замечания для «Анализа» (и автопроверки) */
+  issues(add, m) {
+    const F = Struct.foundation();
+    if (!F) return;
+    const o = Struct.opt(), fix = (k, v) => () => Struct.set(k, v);
+    if (F.p > F.R * 1.001) add('bad', 'Фундамент', `давление под подошвой ${F.p.toFixed(0)} кПа больше расчётного сопротивления грунта ${F.R.toFixed(0)} кПа — расширьте подошву`, 'СП 22.13330.2016 п. 5.6', null, null, U.isNum(o.width) ? fix('width', undefined) : null);
+    if (F.soil.heave && (F.type === 'strip') && F.depth < F.df - 0.005) add('bad', 'Фундамент', `глубина заложения ${m(F.depth * 100)} меньше расчётного промерзания ${m(F.df * 100)} на пучинистом грунте — фундамент будет выпирать`, 'СП 22.13330.2016 п. 5.5.3, табл. 5.3', null, null, fix('depth', undefined));
+    if (F.soil.heave && F.type === 'strip' && F.high) add('warn', 'Фундамент', `грунтовые воды на ${m(o.gwl)} — ближе промерзания + 2 м: для ленты нужны дренаж и утепление отмостки, либо МЗЛФ / УШП`, 'СП 22.13330.2016 п. 5.5.4; СП 104.13330', null, null, fix('type', 'mzlf'));
+    if (F.soil.weak && F.type !== 'pile') add('bad', 'Фундамент', 'слабый грунт (торф, насыпной, ил) — нужен свайный фундамент до плотного слоя или замена грунта', 'СП 22.13330.2016 п. 6.4; СП 24.13330', null, null, fix('type', 'pile'));
+    if (!App.doc.settings.found) add('info', 'Фундамент', `грунт не указан — считаем «${F.soil.name.toLowerCase()}», уровень грунтовых вод ${m(o.gwl)}. Уточните на вкладке «Проект» → «Конструкции» (по изысканиям или соседям)`, 'СП 47.13330 (изыскания)');
+    // ячеистые блоки: опирание перемычек и армопояс под крышу
+    for (const w of App.doc.walls) {
+      const R = WALL_REINF[w.mat];
+      if (!R || !R.ring || w.kind !== 'ext') continue;
+      for (const op of App.doc.openings.filter(x => x.wall === w.id && x.w > 150)) add('info', 'Конструкции', `${OPENING_TYPES[op.type].name} ${m(op.w)} в стене «${(WALL_MATERIALS[w.mat] || {}).name}»: перемычка — из U-блоков с армированием 2–4 Ø12 или готовая, опирание ≥ 25 см; ряд под окном — армировать с заходом 0,9 м в стороны`, R.src, G.mid(w.a, w.b), op.id);
+    }
+  },
+  /** Слой «Кладка»: по стенам — материал и армирование, над проёмами несущих стен — перемычки с опиранием 25 см */
+  drawMasonry(env) {
+    const { ctx, px } = env, col = '#b45309';
+    ctx.save();
+    for (const w of App.V.walls) {
+      if (w.kind === 'fence') continue;
+      const R = WALL_REINF[w.mat], M = WALL_MATERIALS[w.mat] || {}, L = Model.wallLen(w);
+      if (L < 60) continue;
+      const u = G.unit(G.sub(w.b, w.a)), n = G.perp(u), ang = Math.atan2(u.y, u.x), up = ang > Math.PI / 2 || ang < -Math.PI / 2 ? ang + Math.PI : ang;
+      const txt = `${(M.name || w.mat).split(' (')[0]} ${Math.round(w.th)} см` + (R ? (R.every ? ` · армир. 1-й и каждый ${R.every}-й ряд` : '') + (R.ring && (w.kind === 'ext' || w.kind === 'int') ? ' · армопояс' : '') : '');
+      Render.label(env, txt, G.add(G.mid(w.a, w.b), G.mul(n, w.th / 2 + 14 * px)), up, { size: 9.5, color: col, bg: true, pad: 1.5, prio: 4 });
+      if (w.kind !== 'ext' && w.kind !== 'int') continue;
+      for (const o of App.V.openings.filter(x => x.wall === w.id)) {
+        const s0 = Math.max(0, o.pos - o.w / 2 - 25), s1 = Math.min(L, o.pos + o.w / 2 + 25);
+        const A = G.add(G.add(w.a, G.mul(u, s0)), G.mul(n, w.th / 2 - 4)), B = G.add(G.add(w.a, G.mul(u, s1)), G.mul(n, w.th / 2 - 4));
+        ctx.strokeStyle = col; ctx.lineWidth = 3 * px; ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+        for (const E of [A, B]) { ctx.beginPath(); ctx.moveTo(E.x - n.x * 8, E.y - n.y * 8); ctx.lineTo(E.x + n.x * 2, E.y + n.y * 2); ctx.stroke(); }
+      }
+    }
+    ctx.restore();
+  },
+  /** Контур фундамента на плане: ленты под несущими стенами (пунктир), для УШП — плита */
+  draw(env) {
+    const F = Struct.foundation();
+    if (!F) return;
+    const { ctx, px } = env, col = '#6b5b45';
+    ctx.save();
+    ctx.strokeStyle = col; ctx.lineWidth = 1.8 * px; ctx.setLineDash([10 * px, 5 * px]);
+    ctx.fillStyle = 'rgba(107, 91, 69, 0.05)';
+    if (F.type === 'slab' && (App.floorData || [])[0]) {
+      for (const ol of App.floorData[0].outlines) { const pts = G.offsetPoly(ol.outer, 30); Render.polyPath(ctx, pts, true); ctx.fill(); ctx.stroke(); }
+    } else {
+      const bw = F.type === 'pile' ? 40 : F.width * 100;
+      for (const w of Struct.bearing(App.doc.floors[0].id)) {
+        const u = G.unit(G.sub(w.b, w.a)), n = G.mul(G.perp(u), bw / 2), a = G.sub(w.a, G.mul(u, bw / 2)), b = G.add(w.b, G.mul(u, bw / 2));
+        const pts = [G.add(a, n), G.add(b, n), G.sub(b, n), G.sub(a, n)];
+        Render.polyPath(ctx, pts, true); ctx.fill(); ctx.stroke();
+        if (F.type === 'pile') { const Lw = G.dist(w.a, w.b), k = Math.max(1, Math.round(Lw / 250)); ctx.setLineDash([]); for (let i = 0; i <= k; i++) { const c = G.add(w.a, G.mul(u, Lw * i / k)); ctx.beginPath(); ctx.arc(c.x, c.y, 8, 0, Math.PI * 2); ctx.stroke(); } ctx.setLineDash([10 * px, 5 * px]); }
+      }
+    }
+    ctx.restore();
+  },
+};
+
 /* ---- js/render.js ---- */
 'use strict';
 /* ==========================================================================
@@ -5192,6 +5397,9 @@ const Render = {
     for (const it of items) if (isGround(it)) Render.item(env, it);
     lay('WALLS');
     if (L.walls) Render.walls(env);
+    lay('FOUNDATION');
+    if (L.found && Model.floorIdx(App.floor) === 0) Struct.draw(env);   // поверх стен — пунктиром, лента шире стены на 5–10 см
+    if (L.masonry) Struct.drawMasonry(env);
     lay('ITEMS');
     for (const it of items) if (!isGround(it) && !isShell(it) && !isCanopy(it) && !catItem(it.key).sym) Render.item(env, it);
     for (const it of items) if (isShell(it)) Render.item(env, it, '_label');
@@ -6029,6 +6237,18 @@ const Render = {
         ctx.fillStyle = color; ctx.beginPath(); ctx.arc(sa.x, sa.y, 3.5, 0, Math.PI * 2); ctx.fill();
       }
       const sel = App.sel.has(n.id);
+      // компактно — только номер (текст — в подсказке при наведении и в списке примечаний / ведомости при печати);
+      // полностью — у выделенного и наведённого или если включено «Примечания на плане полностью»
+      if (!sel && App.hover !== n.id && !App.doc.settings.notesFull) {
+        const cr = { x0: sp.x - 10, y0: sp.y - 10, x1: sp.x + 10, y1: sp.y + 10 };
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(sp.x, sp.y, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.font = '600 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(i + 1), sp.x, sp.y + 0.5);
+        rects.push({ id: n.id, r: cr });
+        env.reserved && env.reserved.push({ x0: cr.x0 * f, y0: cr.y0 * f, x1: cr.x1 * f, y1: cr.y1 * f });
+        return;
+      }
       ctx.fillStyle = env.exporting ? '#fffbe8' : C.noteBg;
       ctx.strokeStyle = sel && !env.exporting ? C.accent : color; ctx.lineWidth = sel ? 2 : 1.2;
       Painters.rr(ctx, r.x0, r.y0, W, H, 6); ctx.fill(); ctx.stroke();
@@ -6330,7 +6550,7 @@ const View3D = {
   active: false, gl: null, canvas: null, prog: null, dirty: true,
   mesh: null, glass: null,
   cam: { yaw: -0.75, pitch: 0.5, dist: 40, tx: 0, ty: 1, tz: 0 },
-  opts: { upper: true, roof: true, items: true, site: true, sun: true, shadows: true },
+  opts: { upper: true, roof: true, items: true, site: true, sun: true, shadows: true, nets: true, xray: false },
 
   hex(c) {
     const m = /^#?([0-9a-f]{6})$/i.exec(c || '');
@@ -6485,7 +6705,9 @@ const View3D = {
       const grass = View3D.hex('#8fb56d');
       // цвет задаётся в вершинах и плавно интерполируется — без «шахматки»
       const gcol = (x, y) => { const k = 0.95 + View3D.noise(Math.round(x / step) * 0.37, Math.round(y / step) * 0.53) * 0.08; return grass.map(c => c * k); };
-      const gv = (x, y) => { const v = V3({ x, y }, 0), c = gcol(x, y); P.push(...v); N.push(0, 1, 0); Cc.push(...c); };
+      // «прозрачная земля» — газон в полупрозрачный слой: видны подземные сети и фундамент
+      const gP = View3D.opts.xray ? GP : P, gN = View3D.opts.xray ? GN : N, gC = View3D.opts.xray ? GC : Cc;
+      const gv = (x, y) => { const v = V3({ x, y }, 0), c = gcol(x, y); gP.push(...v); gN.push(0, 1, 0); gC.push(...c); };
       // открытые ямы на участке — вырез в газоне (клетки у ямы дробятся на 10 см), покрытиях и полу построек
       const holes = View3D.pitHoles();
       const quad = (x, y, s) => { gv(x, y); gv(x + s, y); gv(x + s, y + s); gv(x, y); gv(x + s, y + s); gv(x, y + s); };
@@ -6502,7 +6724,7 @@ const View3D = {
         const colr = { plot: '#a9cc8a', lawn: '#86c25f', garden: '#8a6a45', paving: '#b8b8bc', road: '#8e9096', water: '#4f93d6', flower: '#d99bb8', zone: '#b8c0e6', protect: '#e5b1b1', asphalt: '#4d5057', concrete: '#b9b8b2', gravel: '#b7ab93' }[a.kind] || '#a9cc8a';
         // покрытия — вровень с землёй, без бордюров
         const hgt = { plot: 0.6, garden: 6, paving: 3, road: 2, water: 1.5, asphalt: 2, concrete: 3, gravel: 2.5 }[a.kind] ?? 1.5;
-        prism(a.pts, 0, hgt, View3D.hex(colr), { noSides: a.kind === 'plot' || a.kind === 'lawn', holes });
+        prism(a.pts, 0, hgt, View3D.hex(colr), { noSides: a.kind === 'plot' || a.kind === 'lawn', holes, glass: View3D.opts.xray });
       }
       for (const r of d.roads) {
         const k = ROAD_KINDS[r.kind];
@@ -6655,6 +6877,10 @@ const View3D = {
         if (def.shape === 'rug') continue;
         View3D.item(it, def, e + View3D.deckZ(it), top => top);
       }
+      // инженерные сети (как включены слои на плане), фундамент и кладка
+      View3D.nets3d(f, e);
+      if (first) View3D.found3d(e);
+      if (App.doc.settings.layers.masonry) View3D.masonry3d(f, e);
       // надземный газопровод: жёлтая труба на высоте, стойки на участке (у стен — кронштейны)
       for (const l of App.V.lines) {
         if (l.kind !== 'gasAir') continue;
@@ -6735,6 +6961,53 @@ const View3D = {
     else if (!(ROOF_MATERIALS[r.mat] || {}).glass) prism(G.rectPts(r.x, r.y, r.w, r.d, r.rot || 0), r.base - 15, r.base, View3D.hex('#efece6'), { noTop: true, bottom: true });
     View3D.gutters(r);
     if (r.snowGuard && r.type !== 'flat') View3D.snowGuards(r);
+  },
+  /** Трассы в 3D: подземные — на своей глубине (видны при «прозрачной земле»), в доме — трубы у пола, тёплый пол в стяжке,
+   *  проводка и слаботочка — под потолком со спусками к приборам, фреон — под потолком */
+  nets3d(f, e) {
+    if (!View3D.opts.nets) return;
+    const { wire, cyl } = View3D._g, f1 = App.doc.floors[0].id, items = App.doc.items.filter(it => (it.floor || f1) === f.id && catItem(it.key).sym);
+    for (const l of App.doc.lines) {
+      if ((l.floor || f1) !== f.id || l.kind === 'overhead' || l.kind === 'gasAir' || !Render.sysOn({}, sysOfLine(l)) || l.pts.length < 2) continue;
+      const k = LINE_KINDS[l.kind], col = View3D.hex(l.color || k.color), dep = l.depth || 0;
+      if (dep > 0 && !View3D.opts.xray) continue;                               // под землёй — только с прозрачной землёй
+      const top = e + (f.h || 300) - 30;
+      const z = dep > 0 ? e - dep : l.kind === 'warmfloor' ? e + 3.5 : ['power', 'lowvolt', 'ground'].includes(l.kind) ? top : l.kind === 'freon' ? top - 10 : e + 8;
+      const r = l.kind === 'warmfloor' ? 0.9 : l.dia >= 50 ? l.dia / 20 : ['power', 'lowvolt'].includes(l.kind) ? 0.8 : Math.max(1, (l.dia || 16) / 20);
+      for (let i = 1; i < l.pts.length; i++) wire([l.pts[i - 1].x, l.pts[i - 1].y, z], [l.pts[i].x, l.pts[i].y, z], r, col);
+      for (const p of l.pts.slice(1, -1)) cyl(p.x, p.y, r * 1.2, z - r, z + r, col, 6);
+      if (dep === 0 && ['power', 'lowvolt'].includes(l.kind)) for (const p of l.pts) {       // спуски к розеткам, выключателям, щиту
+        const it = items.find(o => G.dist(o, p) < 5);
+        if (it && !/lamp|spot|wifi/.test(catItem(it.key).shape)) wire([p.x, p.y, z], [p.x, p.y, e + (it.h || 30)], r, col);
+      }
+    }
+  },
+  /** Фундамент в 3D — под землёй (виден при «прозрачной земле» или при включённом слое «Фундамент») */
+  found3d(e) {
+    if (!View3D.opts.xray && !App.doc.settings.layers.found) return;
+    const F = Struct.foundation();
+    if (!F) return;
+    const { box, prism, cyl } = View3D._g, con = [0.62, 0.62, 0.6];
+    if (F.type === 'slab') { for (const ol of (App.floorData || [])[0]?.outlines || []) prism(G.offsetPoly(ol.outer, 30), e - F.depth * 100, e - 1, con); return; }
+    const bw = F.type === 'pile' ? 40 : F.width * 100, h0 = F.type === 'pile' ? 40 : F.depth * 100;
+    for (const w of Struct.bearing(App.doc.floors[0].id)) {
+      const L = Model.wallLen(w), m = G.mid(w.a, w.b), ang = U.deg(Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x));
+      box(m.x, m.y, L + bw, bw, ang, e - h0, e - 1, con);
+      if (F.type === 'pile') { const u = G.unit(G.sub(w.b, w.a)), k = Math.max(1, Math.round(L / 250)); for (let i = 0; i <= k; i++) { const c = G.add(w.a, G.mul(u, L * i / k)); cyl(c.x, c.y, 6, e - Math.max(250, F.dfn * 100 + 100), e - h0, [0.45, 0.46, 0.48], 10); } }
+    }
+  },
+  /** Кладка в 3D: армопояс поверх несущих стен из блоков и перемычки над проёмами (бетон) */
+  masonry3d(f, e) {
+    const { box } = View3D._g, con = [0.7, 0.7, 0.68];
+    for (const w of App.doc.walls) {
+      if ((w.floor || App.doc.floors[0].id) !== f.id || !['ext', 'int'].includes(w.kind)) continue;
+      const R = WALL_REINF[w.mat], L = Model.wallLen(w), u = G.unit(G.sub(w.b, w.a)), ang = U.deg(Math.atan2(u.y, u.x)), m = G.mid(w.a, w.b);
+      if (R && R.ring) box(m.x, m.y, L, w.th + 1, ang, e + w.h - 25, e + w.h + 0.5, con);
+      for (const o of App.doc.openings.filter(x => x.wall === w.id)) {
+        const top = e + (o.sill || 0) + (o.h || 210), c = G.add(w.a, G.mul(u, o.pos));
+        box(c.x, c.y, o.w + 50, w.th + 1, ang, top, top + 20, con.map(x => x * 0.92));
+      }
+    }
   },
   /** Трубчатые снегозадержатели в ~60 см от карниза по скатам */
   snowGuards(r) {
@@ -7199,6 +7472,14 @@ const View3D = {
       for (let x = -W + 2; x < W - 2; x += 5) bx(x, -D + 3, x + 2, D - 3, e + 1.2, e + 2, cast);
       return true;
     }
+    // --- точка Wi-Fi: белый диск на потолке с индикатором ---
+    if (sh === 'wifi') {
+      const ceil = View3D.ceilZ(it, e);
+      cy(0, 0, W, ceil - 4, ceil, [0.97, 0.97, 0.96], 20);
+      cy(0, 0, 1.2, ceil - 4.3, ceil - 4, [0.2, 0.6, 1], 8);
+      return true;
+    }
+    if (sh === 'lan') { const z = e + (H || 30); bx(-4, -D, 4, -D + 2.5, z - 4, z + 4, [0.97, 0.97, 0.96]); bx(-1.6, -D + 2.5, 1.6, -D + 2.7, z - 1.5, z + 1, [0.3, 0.3, 0.32]); return true; }
     // --- уличная розетка IP44: корпус на стене, откидная крышка ---
     if (sh === 'socketOut') {
       const z = e + (H || 80), grey = [0.34, 0.36, 0.38];
@@ -10670,7 +10951,8 @@ const UI = {
         if (o.kind === 'fence') return { title: 'Забор', lines: [(FENCE_MATERIALS[o.mat] || {}).name || '', `Длина ${L(Model.wallLen(o))}, высота ${L(o.h)}`, ...tail] };
         const M = WALL_MATERIALS[o.mat];
         const R = o.kind === 'ext' ? wallR(o) : null;
-        return { title: 'Стена: ' + WALL_KINDS[o.kind].name.toLowerCase(), lines: [M ? M.name : '', `Длина ${L(Model.wallLen(o))} · толщина ${Math.round(o.th)} см${o.ins ? ` (утепл. ${Math.round(o.ins)} см)` : ''} · высота ${L(o.h)}`, R ? `R = ${R.toFixed(2)} м²·°C/Вт` : '', ...tail].filter(Boolean), hint: 'Тяните — сдвиг поперёк, за конец — длина' };
+        const RF = WALL_REINF[o.mat];
+        return { title: 'Стена: ' + WALL_KINDS[o.kind].name.toLowerCase(), lines: [M ? M.name : '', `Длина ${L(Model.wallLen(o))} · толщина ${Math.round(o.th)} см${o.ins ? ` (утепл. ${Math.round(o.ins)} см)` : ''} · высота ${L(o.h)}`, R ? `R = ${R.toFixed(2)} м²·°C/Вт` : '', RF ? (RF.every ? `Армирование: 1-й и каждый ${RF.every}-й ряд${RF.ring ? ', армопояс под крышу' : ''}` : 'Армирование: ' + RF.how.split(':')[0]) : '', ...tail].filter(Boolean), norms: RF ? RF.src : '', hint: 'Тяните — сдвиг поперёк, за конец — длина' };
       }
       case 'openings': {
         const T = OPENING_TYPES[o.type], win = T.cat === 'window';
@@ -10735,6 +11017,7 @@ const UI = {
     try { p.classList.toggle('collapsed', localStorage.getItem('fp:p3d') === '1'); } catch (e) { /* нет хранилища */ }
     p.append(head,
       chk('Этажи выше текущего', 'upper'), chk('Крыша', 'roof'), chk('Мебель и предметы', 'items'), chk('Участок', 'site'),
+      chk('Инженерные сети (как слои на плане)', 'nets'), chk('Прозрачная земля: подземные сети и фундамент', 'xray'),
       F.check('Свет от солнца (дата/время — «Участок»)', o.sun, (v) => { o.sun = v; View3D.redraw(); }),
       F.check('Тени', o.shadows, (v) => { o.shadows = v; View3D.redraw(); }),
       U.el('div', { class: 'fbtns' },
@@ -10783,14 +11066,17 @@ const UI = {
     if (!ids.length) { bar.hidden = true; return; }
     bar.hidden = false;
     const set = (fn) => { fn(); App.redraw(); UI.renderSysbar(); App.saveSoon(); };
-    const chip = (label, on, color, title, fn) => U.el('button', { type: 'button', class: 'sys-chip' + (on ? ' on' : ''), title, onclick: () => set(fn) }, color ? U.el('i', { style: { background: color } }) : null, label);
+    const chip = (label, on, color, title, fn, solo) => U.el('button', { type: 'button', class: 'sys-chip' + (on ? ' on' : ''), title: title + (solo ? ' · двойной клик — только этот слой' : ''), onclick: () => set(fn), ondblclick: solo ? () => set(solo) : null }, color ? U.el('i', { style: { background: color } }) : null, label);
+    const soloSys = (id) => () => { st.sys = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, k === id])); lay.roof = false; lay.found = false; lay.masonry = false; };
     const setSys = (id, v) => { st.sys = { ...(st.sys || {}), [id]: v }; };
     bar.append(U.el('span', { class: 'sys-title' }, 'Слои:'),
-      ...ids.map(id => chip(SYSTEMS[id].short, sys[id] !== false, SYSTEMS[id].color, `${SYSTEMS[id].name}: ${cnt[id]} объектов и трасс. Нормы: ${SYSTEMS[id].norms}`, () => setSys(id, sys[id] === false))),
+      ...ids.map(id => chip(SYSTEMS[id].short, sys[id] !== false, SYSTEMS[id].color, `${SYSTEMS[id].name}: ${cnt[id]} объектов и трасс. Нормы: ${SYSTEMS[id].norms}`, () => setSys(id, sys[id] === false), soloSys(id))),
       chip('Крыша', lay.roof !== false, '#8f6b5a', 'Крыши дома и построек', () => { lay.roof = lay.roof === false; }),
       chip('Размеры', lay.dims !== false, '#555', 'Размеры и надписи', () => { lay.dims = lay.dims === false; }),
+      chip('Фундамент', !!lay.found, '#6b5b45', 'Контур фундамента под несущими стенами (авторасчёт — «Проект» → «Конструкции»)', () => { lay.found = !lay.found; }),
+      chip('Кладка', !!lay.masonry, '#b45309', 'Материал стен, армирование рядов и перемычки над проёмами (по СП 15.13330, СП 339.13330)', () => { lay.masonry = !lay.masonry; }),
       U.el('span', { class: 'sys-sep' }),
-      chip('Чистый план', false, null, 'Только планировка: стены, окна, двери, мебель и сантехприборы — без сетей, крыши и отметок', () => { st.sys = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, false])); lay.roof = false; lay.checks = false; }),
+      chip('Чистый план', false, null, 'Только планировка: стены, окна, двери, мебель и сантехприборы — без сетей, крыши и отметок', () => { st.sys = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, false])); lay.roof = false; lay.checks = false; lay.found = false; lay.masonry = false; }),
       chip('Всё', false, null, 'Показать все системы и крышу', () => { st.sys = {}; lay.roof = true; lay.dims = true; lay.checks = true; }));
   },
   renderFloorbar() {
@@ -11131,6 +11417,38 @@ const UI = {
       s.plotArea ? F.info('Участок', `${(s.plotArea / 1e6).toFixed(2)} сот.`) : null,
       F.btns([['Все площади →', () => UI.showTab('summary')]])));
     body.append(UI.notesList());
+  },
+  /** Конструкции: грунт → авторасчёт фундамента; кладка и армирование стен по материалам */
+  structSection() {
+    const o = Struct.opt(), Fd = Struct.foundation(), mm = (v) => U.fmtLen(v * 100);
+    const set = (k, v) => { Struct.set(k, v); Model.commit(); };
+    const body = [
+      F.select('Грунт основания', o.soil, Object.entries(SOILS).map(([k, v]) => [k, v.name]), (v) => set('soil', v)),
+      F.num('Грунтовые воды (от поверхности)', o.gwl, (v) => set('gwl', U.clamp(v, 0, 2000)), { min: 0, step: 10 }),
+      F.select('Тип фундамента', o.type, Object.entries(FOUND_TYPES).map(([k, v]) => [k, v]), (v) => set('type', v)),
+      F.num('Цоколь над землёй', o.plinth, (v) => set('plinth', U.clamp(v, 10, 150)), { min: 10, max: 150 }),
+    ];
+    if (Fd) body.push(
+      F.info('Подобран', FOUND_TYPES[Fd.type] + (o.type === 'auto' ? ' (авто)' : '')),
+      Fd.type !== 'pile' ? F.info('Глубина заложения', `${mm(Fd.depth)}${Fd.soil.heave ? ` (промерзание ${mm(Fd.dfn)} × 0,6 = ${mm(Fd.df)})` : ' (грунт непучинистый)'}`) : F.info('Сваи', `${Fd.piles} шт., шаг 2–2,5 м`),
+      Fd.type !== 'slab' && Fd.type !== 'pile' ? F.info('Ширина подошвы', mm(Fd.width)) : null,
+      F.info('Нагрузка на 1 м ленты', `${Fd.qn.toFixed(0)} кН/м (стены ${Fd.Gw.toFixed(0)}, крыша со снегом ${Fd.Groof.toFixed(0)}, перекрытия ${Fd.Gceil.toFixed(0)} кН)`),
+      F.info('Давление / сопротивление грунта', `${Fd.p.toFixed(0)} / ${Fd.R.toFixed(0)} кПа ${Fd.p <= Fd.R ? '✓' : '✗'}`),
+      F.info('Армирование', Fd.bars),
+      F.info('Бетон B20 W6 F150', `${Fd.concrete.toFixed(1)} м³`),
+      F.info('Арматура', `${Fd.rebar.toFixed(0)} кг`),
+      Fd.sand ? F.info('Песчаная подушка', `${Fd.sand.toFixed(1)} м³`) : null,
+      F.info('Утеплитель XPS', `${Fd.xps.toFixed(0)} м²`),
+      F.btns([[App.doc.settings.layers.found ? 'Скрыть контур на плане' : 'Показать контур на плане', () => { App.doc.settings.layers.found = !App.doc.settings.layers.found; App.redraw(); UI.refresh(); }]]),
+      F.note('Считается само по стенам, крыше, снеговому району и промерзанию города. Пучинистые грунты (суглинок, глина, супесь) — ниже промерзания; близкие грунтовые воды — МЗЛФ или утеплённая плита; торф — сваи. Уточните грунт по изысканиям (СП 47.13330) — хотя бы по соседям или шурфу.'));
+    const rows = Struct.masonry().filter(r => r.lenBear || r.rule.every);
+    return F.section('Конструкции: фундамент и стены', ...body,
+      rows.length ? U.el('div', { class: 'mas' }, U.el('b', {}, 'Кладка и армирование стен'), ...rows.map(r => U.el('div', { class: 'mas-row' },
+        U.el('div', {}, U.el('b', {}, `${r.name}, ${r.th} см`), ` — ${(r.len).toFixed(1)} м, ${r.courses} рядов`),
+        U.el('div', {}, r.rule.every ? `Армировать 1-й и каждый ${r.rule.every}-й ряд (${r.reinfRows} рядов): ${r.rule.how}. Арматура ≈ ${r.rebar.toFixed(0)} кг.` : r.rule.how),
+        r.ring ? U.el('div', {}, `Армопояс под крышу/перекрытие 250 мм, 4 Ø12 А500: бетон ${r.ring.vol.toFixed(1)} м³, арматура ${r.ring.rebar.toFixed(0)} кг.`) : null,
+        r.ops ? U.el('div', {}, `Перемычки: ${r.ops} шт., ${r.opLen.toFixed(1)} м (проём + опирание 2 × 25 см).`) : null,
+        U.el('small', {}, '§ ' + r.rule.src)))) : null);
   },
   /** «Шаги проекта»: что уже сделано и что дальше — с кнопкой нужного инструмента */
   stepsCard() {
@@ -11788,6 +12106,7 @@ const UI = {
       F.check('Открывание окон (дуги)', s.showSwing !== false, (v) => { s.showSwing = v; App.redraw(); App.saveSoon(); }),
       F.check('Штриховка материалов стен (при приближении)', s.wallHatch !== false, (v) => { s.wallHatch = v; App.redraw(); App.saveSoon(); }),
       F.check('Подсказки при наведении на объекты', s.hoverTips !== false, (v) => { s.hoverTips = v; if (!v) UI.hideTip(); App.saveSoon(); }),
+      F.check('Примечания на плане полностью (иначе — номер, текст при наведении)', !!s.notesFull, (v) => { s.notesFull = v || undefined; App.redraw(); App.saveSoon(); }),
       F.check('Автопроверка норм при рисовании (уведомления о нарушениях)', s.liveChecks !== false, (v) => { s.liveChecks = v; App.saveSoon(); })));
     const used = [...new Set(App.doc.walls.filter(w => w.kind !== 'fence').map(w => w.mat))].filter(k => WALL_MATERIALS[k]);
     const usedF = [...new Set(App.doc.walls.filter(w => w.kind === 'fence').map(w => w.mat))].filter(k => FENCE_MATERIALS[k]);
@@ -12155,6 +12474,7 @@ const UI = {
       F.num('Глубина промерзания', Climate.frost(), (v) => { s.frost = U.clamp(v, 0, 400); Model.commit(); }, { min: 0, max: 400 }),
       U.isNum(s.frost) ? F.btns([[`По городу (${U.fmtLen(Climate.get().frost)})`, () => { delete s.frost; Model.commit(); }]]) : F.note(`По климату: ${Climate.get().city}${Climate.get().exact ? '' : ' (ближайший город из списка)'}.`),
       F.note('Нормативная глубина промерзания (СП 22.13330, СП 131.13330): Москва и область — 1,1–1,5 м (глина — меньше, песок — больше), Санкт-Петербург — 1,2–1,5, Екатеринбург — 1,6–2, Новосибирск — 2,2–2,4 м. По ней проверяется глубина водопровода: низ трубы на 0,5 м ниже.')));
+    body.append(UI.structSection());
     body.append(F.section('Стены по типам', tbl,
       F.check('Применять к уже нарисованным стенам', s.wallDefaultsLive !== false, (v) => { s.wallDefaultsLive = v; App.saveSoon(); }),
       F.btns([['Применить сейчас ко всем стенам', () => { for (const w of d.walls) { const dd = d.defaults.wall[w.kind]; w.th = dd.th + (w.ins || 0); w.h = dd.h; w.mat = dd.mat; } Model.commit(); UI.toast('Материал, толщина и высота стен обновлены (Ctrl+Z — отменить)'); }]]),
@@ -12975,7 +13295,7 @@ const PRICE_DEFAULTS = {
   'roof:metaltile': 1500, 'roof:profile': 1200, 'roof:seam': 2800, 'roof:soft': 2200, 'roof:ceramic': 3800,
   'roof:ondulin': 1000, 'roof:polycarb': 1100, 'roof:slate': 900, 'roof:membrane': 2200, 'roof:frame': 2500,
   // фундамент, перекрытия, полы
-  'found:strip': 14000, 'slab:floor': 4500, 'floor:screed': 1200,
+  'found:strip': 14000, 'found:concrete': 14000, 'found:rebar': 110, 'found:sand': 1500, 'found:xps': 700, 'found:pile': 9000, 'wall:rebar': 110, 'wall:ring': 16000, 'slab:floor': 4500, 'floor:screed': 1200,
   // окна и двери
   'win:m2': 11000, 'door:int': 15000, 'door:ext': 45000, 'door:gate': 110000, 'door:slide': 25000,
   // сети (за м)
@@ -12993,7 +13313,7 @@ const PRICE_DEFAULTS = {
   'item:showerWalk': 35000, 'item:toilet': 18000, 'item:toiletWall': 38000, 'item:bidet': 20000, 'item:sink': 9000, 'item:vanity': 22000,
   'item:kitchenI': 180000, 'item:kitchenL': 260000, 'item:panel': 35000, 'item:meter': 25000, 'item:pole': 45000, 'item:lightPole': 25000,
   'item:socket': 1500, 'item:socket2': 2000, 'item:socketPower': 4000, 'item:switch': 1500, 'item:switch2': 1800, 'item:lamp': 5000,
-  'item:spot': 1500, 'item:wallLamp': 4000, 'item:socketOut': 3500, 'item:cctvCam': 9000, 'item:nvr': 45000,
+  'item:spot': 1500, 'item:wallLamp': 4000, 'item:socketOut': 3500, 'item:cctvCam': 9000, 'item:nvr': 45000, 'item:router': 25000, 'item:lanSocket': 1200, 'item:wifiAp': 9000,
   'item:downspout': 6500, 'item:stormInlet': 4500, 'item:drainChannel': 3500, 'item:manifoldWF': 45000,
   'item:stairs': 150000, 'item:stairsL': 220000,
   'item:garage1': 900000, 'item:garage2': 1500000, 'item:carport': 180000, 'item:carport2': 300000, 'item:carportLean': 160000,
@@ -13023,7 +13343,18 @@ const Estimate = {
     // фундамент и перекрытия
     const fd = App.floorData || [];
     const perim = fd.length ? fd[0].outlines.reduce((s, o) => s + G.polyPerimeter(o.outer), 0) / 100 : 0;
-    add('Фундамент, перекрытия, полы', 'found:strip', 'Фундамент ленточный (по периметру наружных стен)', 'м.п.', perim);
+    // фундамент — по авторасчёту (тип, объёмы, арматура); без стен — по периметру
+    const Fd = Struct.foundation();
+    if (Fd) {
+      add('Фундамент, перекрытия, полы', 'found:concrete', `Фундамент: ${FOUND_TYPES[Fd.type].toLowerCase()} — бетон B20 W6 F150 с работой`, 'м³', Fd.concrete);
+      add('Фундамент, перекрытия, полы', 'found:rebar', 'Арматура фундамента А500/А240', 'кг', Fd.rebar);
+      if (Fd.sand) add('Фундамент, перекрытия, полы', 'found:sand', 'Песчаная подушка с трамбованием', 'м³', Fd.sand);
+      add('Фундамент, перекрытия, полы', 'found:xps', 'Утепление фундамента XPS 50–100 мм', 'м²', Fd.xps);
+      if (Fd.piles) add('Фундамент, перекрытия, полы', 'found:pile', 'Сваи с монтажом', 'шт.', Fd.piles);
+      const ms = Struct.masonry();
+      add('Стены и перегородки', 'wall:rebar', 'Армирование кладки (штробы, сетка)', 'кг', ms.reduce((a, r) => a + r.rebar, 0));
+      add('Стены и перегородки', 'wall:ring', 'Армопояс монолитный с арматурой', 'м³', ms.reduce((a, r) => a + (r.ring ? r.ring.vol : 0), 0));
+    } else add('Фундамент, перекрытия, полы', 'found:strip', 'Фундамент ленточный (по периметру наружных стен)', 'м.п.', perim);
     const slabs = fd.slice(1).reduce((s, x) => s + x.outlines.reduce((a, o) => a + o.area, 0), 0) / 1e4;
     add('Фундамент, перекрытия, полы', 'slab:floor', 'Межэтажные перекрытия', 'м²', slabs);
     add('Фундамент, перекрытия, полы', 'floor:screed', 'Стяжка / черновой пол (площадь помещений)', 'м²', fd.reduce((s, x) => s + x.rooms.reduce((a, r) => a + r.areaFloor, 0), 0) / 1e4);
@@ -13270,8 +13601,11 @@ const Analysis = {
       if (hs.length && Math.max(...hs) < 250) add('bad', 'Помещения', `${f.name}: высота стен ${m(Math.max(...hs))} — жилым помещениям нужно не меньше 2,5 м`, 'СП 55.13330.2016 п. 6.2');
     }
 
-    // ---------------- конструкции: уклон кровли, простенки у углов, пролёты, снегозадержание ----------------
+    // ---------------- конструкции: уклон кровли, простенки у углов, пролёты, снегозадержание, фундамент ----------------
     Analysis.structure(d, fd, add, m);
+    Struct.issues(add, m);
+    { const F = Struct.foundation(), at = stats.findIndex(x => /Смета/.test(x.title));
+      if (F) stats.splice(at < 0 ? stats.length : at, 0, { title: 'Фундамент (авторасчёт)', rows: [['Тип', FOUND_TYPES[F.type]], ['Грунт / вода', `${F.soil.name.toLowerCase()} / ${m(F.gwl)}`], ['Глубина / ширина', F.type === 'pile' ? `сваи ${F.piles} шт.` : `${m(F.depth * 100)} / ${m(F.width * 100)}`], ['Нагрузка / давление', `${F.qn.toFixed(0)} кН/м / ${F.p.toFixed(0)} из ${F.R.toFixed(0)} кПа`], ['Бетон B20 / арматура', `${F.concrete.toFixed(1)} м³ / ${F.rebar.toFixed(0)} кг`]] }); }
 
     // ---------------- вентиляция, дымоходы, печи ----------------
     Analysis.vent(d, fd, add, stats, m);
@@ -13743,6 +14077,7 @@ const IO = {
     const layers = { ...App.doc.settings.layers, grid: !!o.grid, lower: false, ...(o.drawing ? { lower: false, checks: false, shadows: false, heat: false } : {}), ...(o.planOnly ? { site: false, siteobj: false, fence: false, roof: false } : {}) };
     try {
       if (o.noRoof) layers.roof = false;
+      if (o.found) layers.found = true;
       Render.draw({ ctx, w: cv.width, h: cv.height, dpr: 1, fs: o.fs || 1, scale, ox: cx - cv.width / 2 / scale, oy: cy - cv.height / 2 / scale, C: Theme.light, exporting: true, printGrid: !!o.grid, layers, sys: o.sysOnly || o.sys });
       // компас и масштабная линейка
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -13854,11 +14189,14 @@ const IO = {
     const boxW = PW - 20 - M - descW - 4, boxH = PH - 2 * M - tbH - 2, dpmm = o.paper === 'A2' ? 5 : 7;
     const std = [20, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 2000];
     const ids = Object.keys(SYSTEMS).filter(id => (o.sys || {})[id] !== false && (d.items.some(it => sysOf(it) === id) || d.lines.some(l => sysOfLine(l) === id)));
+    const FD = Struct.foundation();
+    if (FD) ids.unshift('found');                                           // первым — план фундамента
     const issues = (() => { try { return Analysis.run().issues; } catch (e) { return []; } })();
     const grp = { power: 'Электрика', lowvolt: 'Видеонаблюдение', vent: 'Вентиляция', gas: 'Газ' };
     const date = new Date().toLocaleDateString('ru-RU'), out = [];
     ids.forEach((id, i) => {
-      const S = SYSTEMS[id], lines = d.lines.filter(l => sysOfLine(l) === id), items = d.items.filter(it => sysOf(it) === id);
+      const S = id === 'found' ? { name: 'Фундамент и армирование стен', norms: 'СП 22.13330.2016 «Основания зданий и сооружений»; СП 63.13330.2018 «Бетонные и железобетонные конструкции»; СП 15.13330.2020 «Каменные и армокаменные конструкции»; СП 50-101-2004' } : SYSTEMS[id];
+      const lines = id === 'found' ? [] : d.lines.filter(l => sysOfLine(l) === id), items = id === 'found' ? [] : d.items.filter(it => sysOf(it) === id);
       let b = Drawing.regionFor(ground.id);
       for (const l of lines) b = G.bboxUnion(b, G.bbox(l.pts));
       for (const it of items) b = G.bboxUnion(b, G.bbox(Model.itemPts(it)));
@@ -13866,7 +14204,7 @@ const IO = {
       const need = Math.max((reg0.x1 - reg0.x0) * 10 / boxW, (reg0.y1 - reg0.y0) * 10 / boxH), N = std.find(x => x >= need) || Math.ceil(need);
       const cx = (reg0.x0 + reg0.x1) / 2, cy = (reg0.y0 + reg0.y1) / 2, reg = { x0: cx - boxW * N / 20, x1: cx + boxW * N / 20, y0: cy - boxH * N / 20, y1: cy + boxH * N / 20 };
       const only = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, k === id]));
-      const draw = () => IO.renderRegion(reg, boxW * dpmm, boxH * dpmm, { ...o, drawing: true, noRoof: true, sysOnly: only, fs: dpmm / 4 });
+      const draw = () => IO.renderRegion(reg, boxW * dpmm, boxH * dpmm, { ...o, drawing: true, noRoof: true, sysOnly: only, found: id === 'found', fs: dpmm / 4 });
       const { canvas } = Drawing.onFloor(ground.id, () => o.autoDims !== false ? Drawing.withAutoDims(ground.id, draw) : draw());
       const len = lines.reduce((s, l) => s + G.polyPerimeter(l.pts, false), 0);
       const kinds = [...new Set(lines.map(l => l.kind))];
@@ -13884,13 +14222,16 @@ const IO = {
         lines.length ? T(['Обозн.', 'Марка / Ø', 'Длина, м', 'Глуб., м', id === 'power' ? 'Автомат / УЗО' : ''], cut(lrows, id === 'power' ? 24 : 16)) : null,
         erows.length ? U.el('h4', {}, 'Оборудование') : null,
         erows.length ? T(['Наименование', 'Кол.'], cut(erows, 14)) : null,
+        id === 'found' ? T(['Параметр', 'Значение'], [['Тип', FOUND_TYPES[FD.type]], ['Грунт, вода', `${FD.soil.name}, УГВ ${(FD.gwl / 100).toFixed(1)} м`], ['Промерзание (норм. / расч.)', `${FD.dfn.toFixed(2)} / ${FD.df.toFixed(2)} м`], ['Глубина / ширина / высота', FD.type === 'pile' ? `сваи ${FD.piles} шт.` : `${FD.depth.toFixed(2)} / ${FD.width.toFixed(2)} / ${FD.H.toFixed(2)} м`], ['Нагрузка', `${FD.qn.toFixed(0)} кН/м; p = ${FD.p.toFixed(0)} ≤ R = ${FD.R.toFixed(0)} кПа`], ['Армирование', FD.bars], ['Бетон B20 W6 F150', `${FD.concrete.toFixed(1)} м³`], ['Арматура', `${FD.rebar.toFixed(0)} кг`], ['Подушка / XPS', `${(FD.sand || 0).toFixed(1)} м³ / ${FD.xps.toFixed(0)} м²`]]) : null,
+        id === 'found' ? U.el('h4', {}, 'Кладка и армирование стен') : null,
+        id === 'found' ? T(['Стена', 'Армирование'], Struct.masonry().filter(r => r.lenBear || r.rule.every).map(r => [`${r.name}, ${r.th} см, ${r.len.toFixed(1)} м`, (r.rule.every ? `1-й и каждый ${r.rule.every}-й ряд: ${r.rule.how}` : r.rule.how) + (r.ring ? '; армопояс 250 мм, 4 Ø12' : '') + (r.ops ? `; перемычки ${r.ops} шт.` : '')])) : null,
         U.el('h4', {}, 'Требования'),
-        U.el('ul', { style: { margin: '0', paddingLeft: '4mm' } }, (SYSTEM_RULES[id] || []).map(r => U.el('li', {}, r))),
+        U.el('ul', { style: { margin: '0', paddingLeft: '4mm' } }, (id === 'found' ? ['Подошва — на уплотнённую песчаную подушку 200 мм, гидроизоляция боковых граней и горизонтальная отсечка под кладку', 'Защитный слой бетона 40 мм, нахлёст стержней 50 d, углы — Г-образными элементами', 'Отмостка утеплённая, дренаж при высоком уровне грунтовых вод', 'Бетонирование без перерывов; распалубка ≥ 7 сут, кладка — после 70 % прочности'] : (SYSTEM_RULES[id] || [])).map(r => U.el('li', {}, r))),
         grp[id] ? U.el('div', { style: { marginTop: '1.5mm' } }, iss.length ? `Замечания анализа: ${iss.length} — ${iss.slice(0, 3).map(x => x.text).join('; ')}` : 'Замечаний анализа нет.') : null,
         U.el('div', { class: 'norm' }, '§ ' + S.norms));
       const tb = U.el('table', { class: 'tblock' },
         U.el('tr', {}, U.el('td', { colspan: 3, class: 'tb-proj' }, d.name || 'Проект')),
-        U.el('tr', {}, U.el('td', { rowspan: 2, class: 'tb-sheet' }, 'План сетей: ' + S.name.toLowerCase(), U.el('div', { class: 'tb-note' }, ground.name + ', участок')), U.el('td', { class: 'tb-h' }, 'Масштаб'), U.el('td', { class: 'tb-h' }, 'Лист')),
+        U.el('tr', {}, U.el('td', { rowspan: 2, class: 'tb-sheet' }, (id === 'found' ? 'План фундамента' : 'План сетей: ' + S.name.toLowerCase()), U.el('div', { class: 'tb-note' }, ground.name + ', участок')), U.el('td', { class: 'tb-h' }, 'Масштаб'), U.el('td', { class: 'tb-h' }, 'Лист')),
         U.el('tr', {}, U.el('td', {}, '1:' + N), U.el('td', {}, `С-${i + 1} / ${ids.length}`)),
         U.el('tr', {}, U.el('td', { colspan: 3, class: 'tb-date' }, `Floorplaner · ${date}`)));
       out.push(U.el('div', { class: 'sheet drawing', style: { width: PW + 'mm', height: PH + 'mm' } },

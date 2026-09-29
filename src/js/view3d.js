@@ -67,7 +67,7 @@ const View3D = {
   active: false, gl: null, canvas: null, prog: null, dirty: true,
   mesh: null, glass: null,
   cam: { yaw: -0.75, pitch: 0.5, dist: 40, tx: 0, ty: 1, tz: 0 },
-  opts: { upper: true, roof: true, items: true, site: true, sun: true, shadows: true },
+  opts: { upper: true, roof: true, items: true, site: true, sun: true, shadows: true, nets: true, xray: false },
 
   hex(c) {
     const m = /^#?([0-9a-f]{6})$/i.exec(c || '');
@@ -222,7 +222,9 @@ const View3D = {
       const grass = View3D.hex('#8fb56d');
       // цвет задаётся в вершинах и плавно интерполируется — без «шахматки»
       const gcol = (x, y) => { const k = 0.95 + View3D.noise(Math.round(x / step) * 0.37, Math.round(y / step) * 0.53) * 0.08; return grass.map(c => c * k); };
-      const gv = (x, y) => { const v = V3({ x, y }, 0), c = gcol(x, y); P.push(...v); N.push(0, 1, 0); Cc.push(...c); };
+      // «прозрачная земля» — газон в полупрозрачный слой: видны подземные сети и фундамент
+      const gP = View3D.opts.xray ? GP : P, gN = View3D.opts.xray ? GN : N, gC = View3D.opts.xray ? GC : Cc;
+      const gv = (x, y) => { const v = V3({ x, y }, 0), c = gcol(x, y); gP.push(...v); gN.push(0, 1, 0); gC.push(...c); };
       // открытые ямы на участке — вырез в газоне (клетки у ямы дробятся на 10 см), покрытиях и полу построек
       const holes = View3D.pitHoles();
       const quad = (x, y, s) => { gv(x, y); gv(x + s, y); gv(x + s, y + s); gv(x, y); gv(x + s, y + s); gv(x, y + s); };
@@ -239,7 +241,7 @@ const View3D = {
         const colr = { plot: '#a9cc8a', lawn: '#86c25f', garden: '#8a6a45', paving: '#b8b8bc', road: '#8e9096', water: '#4f93d6', flower: '#d99bb8', zone: '#b8c0e6', protect: '#e5b1b1', asphalt: '#4d5057', concrete: '#b9b8b2', gravel: '#b7ab93' }[a.kind] || '#a9cc8a';
         // покрытия — вровень с землёй, без бордюров
         const hgt = { plot: 0.6, garden: 6, paving: 3, road: 2, water: 1.5, asphalt: 2, concrete: 3, gravel: 2.5 }[a.kind] ?? 1.5;
-        prism(a.pts, 0, hgt, View3D.hex(colr), { noSides: a.kind === 'plot' || a.kind === 'lawn', holes });
+        prism(a.pts, 0, hgt, View3D.hex(colr), { noSides: a.kind === 'plot' || a.kind === 'lawn', holes, glass: View3D.opts.xray });
       }
       for (const r of d.roads) {
         const k = ROAD_KINDS[r.kind];
@@ -392,6 +394,10 @@ const View3D = {
         if (def.shape === 'rug') continue;
         View3D.item(it, def, e + View3D.deckZ(it), top => top);
       }
+      // инженерные сети (как включены слои на плане), фундамент и кладка
+      View3D.nets3d(f, e);
+      if (first) View3D.found3d(e);
+      if (App.doc.settings.layers.masonry) View3D.masonry3d(f, e);
       // надземный газопровод: жёлтая труба на высоте, стойки на участке (у стен — кронштейны)
       for (const l of App.V.lines) {
         if (l.kind !== 'gasAir') continue;
@@ -472,6 +478,53 @@ const View3D = {
     else if (!(ROOF_MATERIALS[r.mat] || {}).glass) prism(G.rectPts(r.x, r.y, r.w, r.d, r.rot || 0), r.base - 15, r.base, View3D.hex('#efece6'), { noTop: true, bottom: true });
     View3D.gutters(r);
     if (r.snowGuard && r.type !== 'flat') View3D.snowGuards(r);
+  },
+  /** Трассы в 3D: подземные — на своей глубине (видны при «прозрачной земле»), в доме — трубы у пола, тёплый пол в стяжке,
+   *  проводка и слаботочка — под потолком со спусками к приборам, фреон — под потолком */
+  nets3d(f, e) {
+    if (!View3D.opts.nets) return;
+    const { wire, cyl } = View3D._g, f1 = App.doc.floors[0].id, items = App.doc.items.filter(it => (it.floor || f1) === f.id && catItem(it.key).sym);
+    for (const l of App.doc.lines) {
+      if ((l.floor || f1) !== f.id || l.kind === 'overhead' || l.kind === 'gasAir' || !Render.sysOn({}, sysOfLine(l)) || l.pts.length < 2) continue;
+      const k = LINE_KINDS[l.kind], col = View3D.hex(l.color || k.color), dep = l.depth || 0;
+      if (dep > 0 && !View3D.opts.xray) continue;                               // под землёй — только с прозрачной землёй
+      const top = e + (f.h || 300) - 30;
+      const z = dep > 0 ? e - dep : l.kind === 'warmfloor' ? e + 3.5 : ['power', 'lowvolt', 'ground'].includes(l.kind) ? top : l.kind === 'freon' ? top - 10 : e + 8;
+      const r = l.kind === 'warmfloor' ? 0.9 : l.dia >= 50 ? l.dia / 20 : ['power', 'lowvolt'].includes(l.kind) ? 0.8 : Math.max(1, (l.dia || 16) / 20);
+      for (let i = 1; i < l.pts.length; i++) wire([l.pts[i - 1].x, l.pts[i - 1].y, z], [l.pts[i].x, l.pts[i].y, z], r, col);
+      for (const p of l.pts.slice(1, -1)) cyl(p.x, p.y, r * 1.2, z - r, z + r, col, 6);
+      if (dep === 0 && ['power', 'lowvolt'].includes(l.kind)) for (const p of l.pts) {       // спуски к розеткам, выключателям, щиту
+        const it = items.find(o => G.dist(o, p) < 5);
+        if (it && !/lamp|spot|wifi/.test(catItem(it.key).shape)) wire([p.x, p.y, z], [p.x, p.y, e + (it.h || 30)], r, col);
+      }
+    }
+  },
+  /** Фундамент в 3D — под землёй (виден при «прозрачной земле» или при включённом слое «Фундамент») */
+  found3d(e) {
+    if (!View3D.opts.xray && !App.doc.settings.layers.found) return;
+    const F = Struct.foundation();
+    if (!F) return;
+    const { box, prism, cyl } = View3D._g, con = [0.62, 0.62, 0.6];
+    if (F.type === 'slab') { for (const ol of (App.floorData || [])[0]?.outlines || []) prism(G.offsetPoly(ol.outer, 30), e - F.depth * 100, e - 1, con); return; }
+    const bw = F.type === 'pile' ? 40 : F.width * 100, h0 = F.type === 'pile' ? 40 : F.depth * 100;
+    for (const w of Struct.bearing(App.doc.floors[0].id)) {
+      const L = Model.wallLen(w), m = G.mid(w.a, w.b), ang = U.deg(Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x));
+      box(m.x, m.y, L + bw, bw, ang, e - h0, e - 1, con);
+      if (F.type === 'pile') { const u = G.unit(G.sub(w.b, w.a)), k = Math.max(1, Math.round(L / 250)); for (let i = 0; i <= k; i++) { const c = G.add(w.a, G.mul(u, L * i / k)); cyl(c.x, c.y, 6, e - Math.max(250, F.dfn * 100 + 100), e - h0, [0.45, 0.46, 0.48], 10); } }
+    }
+  },
+  /** Кладка в 3D: армопояс поверх несущих стен из блоков и перемычки над проёмами (бетон) */
+  masonry3d(f, e) {
+    const { box } = View3D._g, con = [0.7, 0.7, 0.68];
+    for (const w of App.doc.walls) {
+      if ((w.floor || App.doc.floors[0].id) !== f.id || !['ext', 'int'].includes(w.kind)) continue;
+      const R = WALL_REINF[w.mat], L = Model.wallLen(w), u = G.unit(G.sub(w.b, w.a)), ang = U.deg(Math.atan2(u.y, u.x)), m = G.mid(w.a, w.b);
+      if (R && R.ring) box(m.x, m.y, L, w.th + 1, ang, e + w.h - 25, e + w.h + 0.5, con);
+      for (const o of App.doc.openings.filter(x => x.wall === w.id)) {
+        const top = e + (o.sill || 0) + (o.h || 210), c = G.add(w.a, G.mul(u, o.pos));
+        box(c.x, c.y, o.w + 50, w.th + 1, ang, top, top + 20, con.map(x => x * 0.92));
+      }
+    }
   },
   /** Трубчатые снегозадержатели в ~60 см от карниза по скатам */
   snowGuards(r) {
@@ -936,6 +989,14 @@ const View3D = {
       for (let x = -W + 2; x < W - 2; x += 5) bx(x, -D + 3, x + 2, D - 3, e + 1.2, e + 2, cast);
       return true;
     }
+    // --- точка Wi-Fi: белый диск на потолке с индикатором ---
+    if (sh === 'wifi') {
+      const ceil = View3D.ceilZ(it, e);
+      cy(0, 0, W, ceil - 4, ceil, [0.97, 0.97, 0.96], 20);
+      cy(0, 0, 1.2, ceil - 4.3, ceil - 4, [0.2, 0.6, 1], 8);
+      return true;
+    }
+    if (sh === 'lan') { const z = e + (H || 30); bx(-4, -D, 4, -D + 2.5, z - 4, z + 4, [0.97, 0.97, 0.96]); bx(-1.6, -D + 2.5, 1.6, -D + 2.7, z - 1.5, z + 1, [0.3, 0.3, 0.32]); return true; }
     // --- уличная розетка IP44: корпус на стене, откидная крышка ---
     if (sh === 'socketOut') {
       const z = e + (H || 80), grey = [0.34, 0.36, 0.38];

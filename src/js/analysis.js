@@ -91,8 +91,11 @@ const Analysis = {
       if (hs.length && Math.max(...hs) < 250) add('bad', 'Помещения', `${f.name}: высота стен ${m(Math.max(...hs))} — жилым помещениям нужно не меньше 2,5 м`, 'СП 55.13330.2016 п. 6.2');
     }
 
-    // ---------------- конструкции: уклон кровли, простенки у углов, пролёты, снегозадержание ----------------
+    // ---------------- конструкции: уклон кровли, простенки у углов, пролёты, снегозадержание, фундамент ----------------
     Analysis.structure(d, fd, add, m);
+    Struct.issues(add, m);
+    { const F = Struct.foundation(), at = stats.findIndex(x => /Смета/.test(x.title));
+      if (F) stats.splice(at < 0 ? stats.length : at, 0, { title: 'Фундамент (авторасчёт)', rows: [['Тип', FOUND_TYPES[F.type]], ['Грунт / вода', `${F.soil.name.toLowerCase()} / ${m(F.gwl)}`], ['Глубина / ширина', F.type === 'pile' ? `сваи ${F.piles} шт.` : `${m(F.depth * 100)} / ${m(F.width * 100)}`], ['Нагрузка / давление', `${F.qn.toFixed(0)} кН/м / ${F.p.toFixed(0)} из ${F.R.toFixed(0)} кПа`], ['Бетон B20 / арматура', `${F.concrete.toFixed(1)} м³ / ${F.rebar.toFixed(0)} кг`]] }); }
 
     // ---------------- вентиляция, дымоходы, печи ----------------
     Analysis.vent(d, fd, add, stats, m);

@@ -219,6 +219,9 @@ button.mini:disabled { opacity: .35; }
 .sys-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--muted); font-size: 11.5px; opacity: .6; }
 .sys-chip.on { opacity: 1; color: var(--text); background: var(--surface); }
 .sys-chip i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.mas { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; font-size: 12px; }
+.mas-row { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); display: flex; flex-direction: column; gap: 2px; }
+.mas-row small { color: var(--muted-2); }
 .steps { display: flex; flex-direction: column; gap: 2px; }
 .step { display: flex; gap: 8px; align-items: flex-start; text-align: left; background: none; border: 1px solid transparent; border-radius: 8px; padding: 5px 6px; color: var(--text); }
 .step:hover { background: var(--surface-2); border-color: var(--border); }
