@@ -641,7 +641,10 @@ function porchGeom(it, w, d) {
   for (const k of o.railSides) {
     const S = PORCH_SIDES[k], a = S.a(w, d), b = S.b(w, d), L = G.dist(a, b), u = G.unit(G.sub(b, a));
     const inn = G.mul(S.out, -1);
-    const parts = gaps[k] ? [[0, gaps[k][0]], [gaps[k][1], L]] : [[0, L]];
+    let parts = gaps[k] ? [[0, gaps[k][0]], [gaps[k][1], L]] : [[0, L]];
+    // railSpan: ограждение / остекление только на части стороны (например, до угла соседней постройки)
+    const sp = (it.railSpan || {})[k];
+    if (sp) parts = parts.map(([t0, t1]) => [Math.max(t0, sp[0]), Math.min(t1, sp[1])]).filter(([t0, t1]) => t1 > t0);
     for (const [t0, t1] of parts) if (t1 - t0 > 5) segs.push({ side: k, a: G.add(a, G.mul(u, t0)), b: G.add(a, G.mul(u, t1)), n: inn });
   }
   // двери — в проходах к ступеням на сторонах с ограждением/стенами

@@ -112,9 +112,20 @@ const Checks = {
       outs.forEach((o, i) => res.push({ id: 'outline' + i, name: 'Дом', poly: o }));
       // выступающие больше чем на 50 см части дома — от них: свес крыши, крыльцо, веранда (СП 53 п. 6.7, примечание)
       const beyond = (poly) => outs.length && poly.some(q => !outs.some(o => G.pointInPoly(q, o)) && Math.min(...outs.map(o => Checks.dist({ pt: q }, { poly: o }).d)) > 51);
+      // свес — только те участки кромки крыши, что выступают за стены больше чем на 50 см (у фасада со свесом 35 см — от стены)
+      const far = (q) => !outs.some(o => G.pointInPoly(q, o)) && Math.min(...outs.map(o => Checks.dist({ pt: q }, { poly: o }).d)) > 51;
       for (const r of App.doc.roofs) {
-        const poly = G.rectPts(r.x, r.y, r.w, r.d, r.rot || 0);
-        if (beyond(poly)) res.push({ id: r.id, name: 'Дом (свес крыши)', poly });
+        const poly = G.rectPts(r.x, r.y, r.w, r.d, r.rot || 0), segs = [];
+        for (let i = 0; i < poly.length; i++) {
+          const a = poly[i], b = poly[(i + 1) % poly.length], n = Math.max(2, Math.ceil(G.dist(a, b) / 20));
+          let run = null;
+          for (let k = 0; k <= n; k++) {
+            const q = G.add(a, G.mul(G.sub(b, a), k / n)), ok = outs.length && far(q);
+            if (ok && !run) run = [q, q]; else if (ok) run[1] = q;
+            if ((!ok || k === n) && run) { segs.push(run); run = null; }
+          }
+        }
+        if (segs.length) res.push({ id: r.id, name: 'Дом (свес крыши)', segs });
       }
       for (const it of App.doc.items) {
         if (it.floor !== ground || catItem(it.key).shape !== 'veranda' || it.checkAs === 'none') continue;
@@ -150,10 +161,10 @@ const Checks = {
   },
   /** Мин. расстояние и ближайшие точки между фигурами (контур или точка) */
   dist(A, B) {
-    const segs = (o) => { if (o.pt) return [[o.pt, o.pt]]; const p = o.poly || o.seg; if (o.seg) return [o.seg]; return p.map((q, i) => [q, p[(i + 1) % p.length]]); };
+    const segs = (o) => { if (o.pt) return [[o.pt, o.pt]]; if (o.segs) return o.segs; const p = o.poly || o.seg; if (o.seg) return [o.seg]; return p.map((q, i) => [q, p[(i + 1) % p.length]]); };
     // внутри контура — расстояние 0
     const inside = (o, q) => o.poly && G.pointInPoly(q, o.poly);
-    const repA = A.pt || (A.poly && A.poly[0]) || (A.seg && A.seg[0]), repB = B.pt || (B.poly && B.poly[0]) || (B.seg && B.seg[0]);
+    const repA = A.pt || (A.poly && A.poly[0]) || (A.seg && A.seg[0]) || (A.segs && A.segs[0][0]), repB = B.pt || (B.poly && B.poly[0]) || (B.seg && B.seg[0]) || (B.segs && B.segs[0][0]);
     if ((repB && inside(A, repB)) || (repA && inside(B, repA))) return { d: 0, pa: repA, pb: repB };
     let best = { d: Infinity };
     for (const [a1, a2] of segs(A)) for (const [b1, b2] of segs(B)) {
@@ -179,7 +190,7 @@ const Checks = {
         for (const A of As) {
           if (r.except && (A.groups || []).includes(r.except)) continue;
           // отступ — от границ своего участка (объекты на соседних участках не проверяем)
-          const rep = A.pt || G.polyCentroid(A.poly);
+          const rep = A.pt || (A.poly ? G.polyCentroid(A.poly) : G.mid(...A.segs[0]));
           const own = plots.filter(pl => G.pointInPoly(rep, pl.pts));
           let best = null;
           for (const pl of own) pl.pts.forEach((p, i) => {

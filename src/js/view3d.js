@@ -586,13 +586,14 @@ const View3D = {
       // концы: стояк к другой трассе той же системы, к прибору на поверхности или к полу дома; в колодец — без стояка
       for (const ei of [0, l.pts.length - 1]) {
         const p = l.pts[ei], z = zs[ei];
-        let z2 = null;
+        let z2 = null, joined = false;
         for (const B of shown) {
           if (B === l || sysOfLine(B) !== sysOfLine(l)) continue;
           const zb = zAt(B, p);
+          if (zb != null) joined = true;                                         // врезка в трассу на той же глубине — стояк не нужен
           if (zb != null && Math.abs(zb - z) > 2 && (z2 == null || Math.abs(zb - z) > Math.abs(z2 - z))) z2 = zb;
         }
-        if (z2 == null && dep > 0) {
+        if (z2 == null && dep > 0 && !joined) {
           const well = App.doc.items.some(it => (it.floor || f1) === f.id && WELLS.has(catItem(it.key).shape) && G.dist(it, p) <= Math.max(it.w, it.d) / 2 + 12);
           if (!well) z2 = e + (l.kind === 'water' || l.kind === 'hotwater' ? 8 : 0);
         }
@@ -1556,7 +1557,7 @@ const View3D = {
       bx(-2, 3, 2, 15, top - 28, top - 23, gr); bx(-2, 12, 2, 16, top - 36, top - 23, gr);                        // излив вниз
       bx(-2.5, 12, 2.5, 17, top - 38, top - 36, brass);                                                             // насадка под шланг
       bx(-0.8, 15, 0.8, 19, top - 48, top - 46, iron); bx(-0.8, 18, 0.8, 19, top - 48, top - 42, iron);           // крюк для ведра
-      if (View3D.opts.xray) { cy(0, 0, 2.5, e - 190, e, [0.3, 0.45, 0.8], 10); cy(0, 0, 5, e - 200, e - 185, brass, 10); }   // стояк и спускной клапан
+      // стояк под землёй рисует сама трасса воды (от её глубины до колонки)
       return true;
     }
     // --- уличные светильники: столбик и фасадный ---
@@ -2594,6 +2595,18 @@ const View3D = {
         seg(s, 8, eave - 12, eave, frame);
       }
     }
+    // над карнизом на боковых сторонах крыша поднимается — треугольник до ската закрыт по всей стороне, и над дверями тоже
+    if (rg && (o.encl === 'glazed' || o.encl === 'closed')) for (const k of o.railSides) {
+      const S = PORCH_SIDES[k], sp = (it.railSpan || {})[k], a0 = S.a(w, d), b0 = S.b(w, d), L2 = G.dist(a0, b0), u = G.unit(G.sub(b0, a0));
+      const sa = G.add(a0, G.mul(u, sp ? sp[0] : 0)), sb = G.add(a0, G.mul(u, sp ? Math.min(sp[1], L2) : L2)), closed = o.encl === 'closed';
+      const za = rg.roofZ(sa) - 1.5, zb2 = rg.roofZ(sb) - 1.5;
+      if (Math.max(za, zb2) <= eave + 2) continue;
+      const { face } = View3D._g, W3 = (p0, z) => { const q = L(p0.x, p0.y); return [q.x / 100, z / 100, q.y / 100]; };
+      const refp = W3(G.add(G.mid(sa, sb), G.mul(S.out, -200)), eave);
+      face([W3(sa, eave), W3(sb, eave), W3(sb, Math.max(eave, zb2)), W3(sa, Math.max(eave, za))], closed ? wall : glass, refp, !closed);
+      const A = L(sa.x, sa.y), B = L(sb.x, sb.y);
+      View3D.beam3([A.x, A.y, Math.max(eave, za) - 3], [B.x, B.y, Math.max(eave, zb2) - 3], 6, 6, closed ? wall : frame);   // обвязка по скату
+    }
     // двери в проходах к ступеням
     if (o.encl === 'glazed' || o.encl === 'closed') for (const f of g.doors) {
       const sd = { a: f.a, b: f.b, n: G.mul(f.out, -1) }, closed = o.encl === 'closed';
@@ -2778,7 +2791,7 @@ const View3D = {
     for (const sx of [-1, 1]) for (let y = -a + 14; y < a - 6; y += 14) face([V(sx * (w / 2 + 0.3), y - 0.4, zb + 2), V(sx * (w / 2 + 0.3), y + 0.4, zb + 2), V(sx * (w / 2 + 0.3), y + 0.4, zb + H - 20), V(sx * (w / 2 + 0.3), y - 0.4, zb + H - 20)], woodD.map(x => x * 0.85), mid);
     for (const sy of [-1, 1]) box(...(() => { const q = G.toWorld({ x: 0, y: sy * (a + 0.5) }, it.x, it.y, rot); return [q.x, q.y]; })(), w, 2, rot, roofZ - 3, roofZ, C('#5b4636'));
     // стальные стяжки по сечению
-    for (const bxp of [-w / 2 + 40, -w / 2 + w * 0.36, w / 2 - w * 0.36, w / 2 - 40]) for (let i = 0; i < prof.length; i++) {
+    for (const bxp of [-w / 2 + 40, -95 * k, 45 * k, w / 2 - 40]) for (let i = 0; i < prof.length; i++) {                // стяжки — мимо двери и окна
       const s1 = 1 + 1.2 / a, [y0, z0] = prof[i], [y1, z1] = prof[(i + 1) % prof.length], zc = zb + H / 2;
       const P = (y, z) => [y * s1, zc + (z - zc) * s1];
       const [a0, b0] = P(y0, z0), [a1, b1] = P(y1, z1);
@@ -2798,11 +2811,14 @@ const View3D = {
     { const q = G.toWorld({ x: (dx0 + dx1) / 2, y: a + 25 }, it.x, it.y, rot); box(q.x, q.y, dx1 - dx0 + 30, 40, rot, e, zb - 2, woodD); }   // ступень
     { const c = G.toWorld({ x: (dx0 + dx1) / 2, y: a + 22 }, it.x, it.y, rot);
       View3D.roof({ x: c.x, y: c.y, w: 60, d: dx1 - dx0 + 40, rot: rot + 90, type: 'gable', pitch: 30, base: zb + 205, mat: 'soft', floor: null }, shingle); }
+    // свет: бра над дверью и светильник в комнате отдыха (ночью горят, видно в окна)
+    { const q = G.toWorld({ x: (dx0 + dx1) / 2, y: a + 4 }, it.x, it.y, rot); box(q.x, q.y, 14, 6, rot, zb + 196, zb + 204, View3D.GLOW); View3D.lights.push([q.x / 100, (zb + 185) / 100, q.y / 100, 3.2]); }
+    { const q = G.toWorld({ x: 160 * k, y: 0 }, it.x, it.y, rot); box(q.x, q.y, 30, 30, rot, zb + H - 30, zb + H - 26, View3D.GLOW); View3D.lights.push([q.x / 100, (zb + H - 60) / 100, q.y / 100, 2.6]); }
     // окна: у двери и в торце комнаты отдыха
     const win = (x0, x1, z0, z1, onEnd) => {
       const P = (u, z) => onEnd ? V(w / 2 + 0.8, u, z) : V(u, a + 0.8, z);
       face([P(x0 - 5, z0 - 5), P(x1 + 5, z0 - 5), P(x1 + 5, z1 + 5), P(x0 - 5, z1 + 5)], C('#6b4a30'), mid);
-      face([P(x0, z0), P(x1, z0), P(x1, z1), P(x0, z1)].map(v => onEnd ? [v[0] + 0.001, v[1], v[2]] : v), [0.55, 0.68, 0.78], mid);
+      face([P(x0, z0), P(x1, z0), P(x1, z1), P(x0, z1)].map(v => onEnd ? [v[0] + 0.001, v[1], v[2]] : v), [0.55, 0.68, 0.78], mid, true);   // стекло — ночью светится
     };
     win(150 * k, 200 * k, zb + 130, zb + 170, false);
     win(-35, 35, zb + 100, zb + 160, true);
