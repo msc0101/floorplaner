@@ -92,7 +92,7 @@ const Finish = {
           out.floor[F.floor] = (out.floor[F.floor] || 0) + A;
           out.walls[F.walls] = (out.walls[F.walls] || 0) + W;
           out.ceil[F.ceil] = (out.ceil[F.ceil] || 0) + A;
-          out.rooms.push({ name: r.name, A, W, F, floorName: fd.floor.name });
+          out.rooms.push({ no: fd.rooms.indexOf(r) + 1, name: r.name, A, W, F, floorName: fd.floor.name });   // № — как в экспликации и на плане
         }
       });
     }
@@ -145,10 +145,10 @@ const Finish = {
   /* ------------------------------- лист ------------------------------- */
   panel() {
     const Q = Finish.quantities(), o = Finish.opt();
-    const rows = Q.rooms.map(r => [r.name, `${(FIN_FLOORS[r.F.floor] || {}).short || r.F.floor} — ${r.A.toFixed(1)}`, `${(FIN_WALLS[r.F.walls] || {}).short || r.F.walls} — ${r.W.toFixed(1)}`, `${(FIN_CEIL[r.F.ceil] || {}).short} — ${r.A.toFixed(1)}`]);
+    const rows = Q.rooms.map(r => [String(r.no), r.name, `${(FIN_FLOORS[r.F.floor] || {}).short || r.F.floor} — ${r.A.toFixed(1)}`, `${(FIN_WALLS[r.F.walls] || {}).short || r.F.walls} — ${r.W.toFixed(1)}`, `${(FIN_CEIL[r.F.ceil] || {}).short} — ${r.A.toFixed(1)}`]);
     const sum = (m, T) => Object.entries(m).map(([k, v]) => [(T[k] || {}).name || k, `${v.toFixed(1)} м²`]);
     return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Ведомость отделки'),
-      Sheets.T(['Помещение', 'Пол, м²', 'Стены, м²', 'Потолок, м²'], rows),
+      Sheets.T(['№', 'Помещение', 'Пол, м²', 'Стены, м²', 'Потолок, м²'], rows),
       U.el('h4', {}, 'Материалы'), Sheets.T(null, [...sum(Q.floor, FIN_FLOORS), ...sum(Q.walls, FIN_WALLS), ...sum(Q.ceil, FIN_CEIL),
         o.facade !== 'none' ? [`Фасад: ${FIN_FACADE[o.facade].name}, ${(FIN_BRICK_COLORS[o.brick] || [])[0] || ''}`, `${Q.facade.toFixed(0)} м², ≈ ${Q.bricks} шт.`] : null,
         ['Двери межкомнатные: массив / шпон, тон «орех средний»', `${Q.doors} шт.`], ['Окна ПВХ: снаружи антрацит (ламинация), внутри белые', `${Q.windows} шт.`]].filter(Boolean)),

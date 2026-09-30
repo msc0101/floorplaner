@@ -1105,6 +1105,7 @@ const View3D = {
     if (KITCHEN_SHAPES.has(sh)) { View3D.kitchen(it, def, e); return; }
     if (sh === 'islandCab') { View3D.islandCab(it, e); return; }
     if (sh === 'woodRack') { View3D.woodRack(it, e); return; }
+    if (['garageRack', 'workbench', 'tireRack', 'wallShelf', 'ceilRack'].includes(sh)) { View3D.storage(it, def, e); return; }
     if (sh === 'barrelSauna') { View3D.barrelSauna(it, e); return; }
     if (sh === 'deck') { box(it.x, it.y, it.w, it.d, rot, e, e + 25, C('#a8805a')); for (let x = -it.w / 2 + 7; x < it.w / 2; x += 14) { const q = G.toWorld({ x, y: 0 }, it.x, it.y, rot); box(q.x, q.y, 1, it.d, rot, e + 25, e + 25.3, C('#8c6848')); } return; }
     if (sh === 'parking') { box(it.x, it.y, it.w, it.d, rot, e, e + 3, C('#a9abb0')); return; }
@@ -2833,6 +2834,70 @@ const View3D = {
     cyl(cq.x, cq.y, 8, zb + H + 40, zb + H + 140, C('#b4b8bd'), 14);
     View3D._g.cone(cq.x, cq.y, 18, 4, zb + H + 146, zb + H + 158, C('#9aa1a8'), 14);
     for (let z = zb + H + 140; z < zb + H + 147; z += 3) cyl(cq.x, cq.y, 1.5, z, z + 1, C('#9aa1a8'), 6);
+  },
+  /** Хранение в гараже: металлический стеллаж с коробами, верстак с тисками и перфопанелью, стеллаж для шин,
+   *  навесная полка на кронштейнах, потолочная антресоль на подвесах (над капотом) */
+  storage(it, def, e) {
+    const { box } = View3D._g, C = View3D.hex, rot = it.rot || 0, w = it.w, d = it.d, sh = def.shape;
+    const H = it.h || def.h || 100, z0 = e + (it.z0 ?? def.z0 ?? 0);
+    const steel = C('#4a5058'), zinc = C('#b9bec4'), wood = C('#b98a5a');
+    const bx = (x0, y0, x1, y1, a, b, col) => { const q = G.toWorld({ x: (x0 + x1) / 2, y: (y0 + y1) / 2 }, it.x, it.y, rot); box(q.x, q.y, Math.abs(x1 - x0), Math.abs(y1 - y0), rot, a, b, col); };
+    const posts = (za, zb, col, t = 3) => { for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) bx(sx * w / 2 - (sx > 0 ? t : 0), sy * d / 2 - (sy > 0 ? t : 0), sx * w / 2 + (sx < 0 ? t : 0), sy * d / 2 + (sy < 0 ? t : 0), za, zb, col); };
+    const boxes = [C('#2f6db5'), C('#c9483b'), C('#e0a526'), C('#3c8d5a'), C('#7d7f84')];
+    if (sh === 'garageRack') {
+      posts(e, e + H, steel);
+      const n = 5;
+      for (let i = 0; i < n; i++) {
+        const z = e + 8 + i * (H - 14) / (n - 1);
+        bx(-w / 2, -d / 2, w / 2, d / 2, z, z + 2, zinc);
+        if (i === n - 1) continue;
+        // короба и коробки на полках — разной высоты, не до края
+        let x = -w / 2 + 5, k = i;
+        while (x < w / 2 - 25) { const bw = 30 + (k * 7) % 14, bh = 18 + (k * 5) % 12; bx(x, -d / 2 + 5, Math.min(x + bw, w / 2 - 4), d / 2 - 6, z + 2, z + 2 + Math.min(bh, (H - 14) / (n - 1) - 6), boxes[k % boxes.length]); x += bw + 4; k++; }
+      }
+      return;
+    }
+    if (sh === 'workbench') {
+      posts(e, e + H - 4, steel, 4);
+      bx(-w / 2, -d / 2, w / 2, d / 2, e + H - 4, e + H, wood);                                             // столешница бук 40 мм
+      bx(-w / 2 + 2, -d / 2 + 2, w / 2 - 2, d / 2 - 2, e + 12, e + 14, steel);                              // нижняя полка
+      bx(-w / 2 + 6, -d / 2 + 8, -w / 2 + 46, d / 2 - 4, e + 16, e + H - 6, C('#5d646c'));                  // тумба с ящиками
+      for (let z = e + 24; z < e + H - 10; z += 16) bx(-w / 2 + 16, d / 2 - 4.5, -w / 2 + 36, d / 2 - 3.5, z, z + 1.5, zinc);   // ручки
+      bx(w / 2 - 28, d / 2 - 16, w / 2 - 8, d / 2 - 2, e + H, e + H + 12, C('#2a5caa'));                     // тиски
+      const pg = it.pegH ?? 100;                                                                              // под окном — низкая панель до подоконника
+      bx(-w / 2, -d / 2, w / 2, -d / 2 + 2, e + H, e + H + pg, C('#8e949b'));                                // перфопанель
+      for (let x = -w / 2 + 15; x < w / 2 - 10; x += 22) bx(x, -d / 2 + 2, x + 3, -d / 2 + 8, e + H + pg * 0.25, e + H + pg * 0.75, C('#c0392b'));   // инструмент на крючках
+      bx(-w / 2 + 10, -d / 2 + 2, w / 2 - 10, -d / 2 + 6, e + H + pg - 5, e + H + pg - 3, C('#fff6d6'));    // подсветка
+      View3D.lights.push([G.toWorld({ x: 0, y: 0 }, it.x, it.y, rot).x / 100, (e + H + 60) / 100, G.toWorld({ x: 0, y: 0 }, it.x, it.y, rot).y / 100, 1.2]);
+      return;
+    }
+    if (sh === 'tireRack') {
+      posts(e, e + H, steel);
+      for (const z of [e + 10, e + H * 0.55]) {
+        bx(-w / 2, -d / 2 + 5, w / 2, -d / 2 + 8, z, z + 3, steel); bx(-w / 2, d / 2 - 8, w / 2, d / 2 - 5, z, z + 3, steel);
+        // колёса стоя, комплект из 4 — как книги на полке (ось вдоль стеллажа)
+        const r = Math.min(31, (H * 0.45 - 6) / 2), tw = Math.min(21, (w - 10) / 4 - 2);
+        for (let i = 0; i < 4; i++) {
+          const x0 = -w / 2 + 5 + i * (tw + 2), a = G.toWorld({ x: x0, y: 0 }, it.x, it.y, rot), b = G.toWorld({ x: x0 + tw, y: 0 }, it.x, it.y, rot);
+          View3D._g.wire([a.x, a.y, z + 3 + r], [b.x, b.y, z + 3 + r], r, C('#26282b'));
+          const m = G.toWorld({ x: x0 + tw / 2, y: 0 }, it.x, it.y, rot); View3D._g.wire([a.x + (m.x - a.x) * 0.9, a.y + (m.y - a.y) * 0.9, z + 3 + r], [m.x, m.y, z + 3 + r], r * 0.6, C('#9aa0a6'));   // диск
+        }
+      }
+      return;
+    }
+    if (sh === 'wallShelf') {
+      bx(-w / 2, -d / 2, w / 2, d / 2, z0, z0 + 2.5, wood);
+      for (const x of [-w / 2 + 12, w / 2 - 15]) { bx(x, -d / 2, x + 3, -d / 2 + 3, z0 - 22, z0, steel); bx(x, -d / 2, x + 3, d / 2 - 4, z0 - 3, z0, steel); }
+      let x = -w / 2 + 6, k = 1;
+      while (x < w / 2 - 18) { const bw = 22 + (k * 9) % 12; bx(x, -d / 2 + 3, Math.min(x + bw, w / 2 - 3), d / 2 - 3, z0 + 2.5, z0 + 2.5 + 14 + (k * 7) % 12, boxes[k % boxes.length]); x += bw + 3; k++; }
+      return;
+    }
+    // потолочная антресоль: рама на подвесах до перекрытия, сетчатый настил, короба
+    const top = z0 + H;
+    bx(-w / 2, -d / 2, w / 2, d / 2, z0, z0 + 3, zinc);
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) bx(sx * w / 2 - (sx > 0 ? 3 : 0), sy * d / 2 - (sy > 0 ? 3 : 0), sx * w / 2 + (sx < 0 ? 3 : 0), sy * d / 2 + (sy < 0 ? 3 : 0), z0, top + 12, steel);
+    let x = -w / 2 + 6, k = 2;
+    while (x < w / 2 - 30) { const bw = 36 + (k * 11) % 18; bx(x, -d / 2 + 5, Math.min(x + bw, w / 2 - 5), d / 2 - 5, z0 + 3, z0 + 3 + 24 + (k * 5) % 12, boxes[k % boxes.length]); x += bw + 5; k++; }
   },
   /** Дровница: стальной каркас с полками, поленья торцами наружу */
   woodRack(it, e) {

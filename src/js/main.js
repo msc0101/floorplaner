@@ -503,6 +503,7 @@ const App = {
     if (mod) {
       if (code === 'KeyZ' && !e.shiftKey) { e.preventDefault(); App.undo(); return; }
       if ((code === 'KeyZ' && e.shiftKey) || code === 'KeyY') { e.preventDefault(); App.redo(); return; }
+      if (code === 'KeyS' && e.altKey && !e.shiftKey) { e.preventDefault(); Estimate.shown = true; Estimate.open(); return; }   // смета — только по горячей клавише
       if (code === 'KeyS') { e.preventDefault(); IO.saveJSON(); return; }
       if (code === 'KeyO') { e.preventDefault(); $('fileJson').click(); return; }
       if (code === 'KeyP') { e.preventDefault(); $('dlgPrint').showModal(); return; }

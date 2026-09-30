@@ -1,56 +1,61 @@
 'use strict';
 /* ==========================================================================
    Смета: объёмы считаются по проекту автоматически, цены — редактируемые
-   (по умолчанию — ориентировочные для средней полосы России, «материал + работа»).
+   (по умолчанию — нижняя граница рынка средней полосы России, 2026, «материал + работа»;
+   открывается только горячей клавишей Ctrl+Alt+S — в интерфейсе раздела не видно).
    ========================================================================== */
 
 const PRICE_DEFAULTS = {
   // стены (за м³, каркас/СИП/ГКЛ/ПГП — за м²)
-  'wall:aerated': 9500, 'wall:foam': 8500, 'wall:ceramic': 13000, 'wall:brick': 16000, 'wall:silicate': 13000,
-  'wall:concrete': 18000, 'wall:claybl': 8500, 'wall:cinder': 7000, 'wall:arbolit': 9500, 'wall:timber': 30000,
-  'wall:frame': 5500, 'wall:sip': 4500, 'wall:gkl': 1800, 'wall:pgp': 1700, 'wall:stone': 16000,
-  'wall:insulation': 9000,
+  'wall:aerated': 7100, 'wall:foam': 6400, 'wall:ceramic': 9800, 'wall:brick': 12000, 'wall:silicate': 9800,
+  'wall:concrete': 14000, 'wall:claybl': 7300, 'wall:cinder': 5200, 'wall:arbolit': 7100, 'wall:timber': 22000,
+  'wall:frame': 4100, 'wall:sip': 3400, 'wall:gkl': 1350, 'wall:pgp': 1300, 'wall:stone': 12000,
+  'wall:insulation': 6800,
   // заборы (за м)
-  'fence:profile': 3000, 'fence:euro': 3500, 'fence:picket': 2500, 'fence:wood': 3000, 'fence:mesh': 1300,
-  'fence:forged': 7500, 'fence:brickF': 18000, 'fence:concreteF': 4500,
+  'fence:profile': 2200, 'fence:euro': 2600, 'fence:picket': 1900, 'fence:wood': 2200, 'fence:mesh': 1000,
+  'fence:forged': 5600, 'fence:brickF': 14000, 'fence:concreteF': 3400,
   // кровля (за м²)
-  'roof:metaltile': 1500, 'roof:profile': 1200, 'roof:seam': 2800, 'roof:soft': 2200, 'roof:ceramic': 3800,
-  'roof:ondulin': 1000, 'roof:polycarb': 1100, 'roof:slate': 900, 'roof:membrane': 2200, 'roof:frame': 2500,
+  'roof:metaltile': 1100, 'roof:profile': 900, 'roof:seam': 2100, 'roof:soft': 1650, 'roof:ceramic': 2800,
+  'roof:ondulin': 750, 'roof:polycarb': 800, 'roof:slate': 700, 'roof:membrane': 1650, 'roof:frame': 1900,
   // фундамент, перекрытия, полы
-  'found:strip': 14000, 'found:concrete': 14000, 'found:rebar': 110, 'found:sand': 1500, 'found:xps': 700, 'found:pile': 9000, 'wall:rebar': 110, 'wall:ring': 16000, 'slab:floor': 4500, 'floor:screed': 1200,
+  'found:strip': 10000, 'found:concrete': 10000, 'found:rebar': 85, 'found:sand': 1100, 'found:xps': 500, 'found:pile': 6800, 'wall:rebar': 85, 'wall:ring': 12000, 'slab:floor': 3400, 'floor:screed': 900,
   // чистовая отделка (за м² с работой)
-  'fin:porcelain': 3800, 'fin:carpet': 1600, 'fin:tile': 2600, 'fin:laminate': 1900, 'fin:topping': 900, 'fin:paint': 950, 'fin:walltile': 3200,
-  'fin:stretch': 1100, 'fin:gkl': 1600, 'fin:brick': 4800,
+  'fin:porcelain': 2800, 'fin:carpet': 1200, 'fin:tile': 1950, 'fin:laminate': 1400, 'fin:topping': 700, 'fin:paint': 700, 'fin:walltile': 2400,
+  'fin:stretch': 800, 'fin:gkl': 1200, 'fin:brick': 3600,
   // окна и двери
-  'win:m2': 11000, 'door:int': 15000, 'door:ext': 45000, 'door:gate': 110000, 'door:slide': 25000,
+  'win:m2': 8200, 'door:int': 11000, 'door:ext': 34000, 'door:gate': 82000, 'door:slide': 19000,
   // сети (за м)
-  'net:water': 1100, 'net:hotwater': 900, 'net:sewer': 1600, 'net:drain': 1400, 'net:heating': 1800, 'net:warmfloor': 250,
-  'net:gas': 3500, 'net:gasAir': 2800, 'net:power': 1300, 'net:overhead': 900, 'net:lowvolt': 250, 'net:ground': 700,
+  'net:water': 800, 'net:hotwater': 700, 'net:sewer': 1200, 'net:drain': 1050, 'net:heating': 1350, 'net:warmfloor': 190,
+  'net:gas': 2600, 'net:gasAir': 2100, 'net:power': 1000, 'net:overhead': 700, 'net:lowvolt': 190, 'net:ground': 500,
   // оборудование и постройки (за шт.)
-  'item:septic2': 140000, 'item:septic3': 190000, 'item:septicRing': 90000, 'item:cesspool': 70000, 'item:well': 110000,
-  'item:borehole': 220000, 'item:manhole': 25000, 'item:drainWell': 30000, 'item:filterField': 60000, 'item:gasholder': 450000,
-  'item:pumpStation': 30000, 'item:filter': 60000, 'item:gasBoilerWall': 80000, 'item:boilerFloor': 120000, 'item:elBoiler': 40000,
-  'item:indirect': 55000, 'item:radiator': 9000, 'item:radiatorLong': 14000, 'item:towel': 12000, 'item:manifold': 25000,
-  'item:boiler50': 18000, 'item:boiler80': 22000, 'item:boilerFlat': 25000,
-  'item:stoveRus': 350000, 'item:stoveBrick': 180000, 'item:stoveKitchen': 220000, 'item:fireplace': 180000, 'item:fireplaceCorner': 160000,
-  'item:stoveMetal': 45000, 'item:saunaStove': 70000, 'item:chimney': 60000,
-  'item:bath170': 35000, 'item:bath150': 30000, 'item:bath180': 45000, 'item:bathCorner': 55000, 'item:shower90': 45000, 'item:shower80': 20000,
-  'item:showerWalk': 35000, 'item:toilet': 18000, 'item:toiletWall': 38000, 'item:bidet': 20000, 'item:sink': 9000, 'item:vanity': 22000,
-  'item:kitchenI': 180000, 'item:kitchenL': 260000, 'item:panel': 35000, 'item:meter': 25000, 'item:pole': 45000, 'item:lightPole': 25000,
-  'item:socket': 1500, 'item:socket2': 2000, 'item:socketPower': 4000, 'item:switch': 1500, 'item:switch2': 1800, 'item:lamp': 5000,
-  'item:spot': 1500, 'item:wallLamp': 4000, 'item:socketOut': 3500, 'item:cctvCam': 9000, 'item:nvr': 45000, 'item:router': 25000, 'item:lanSocket': 1200, 'item:wifiAp': 9000,
-  'item:downspout': 6500, 'item:stormInlet': 4500, 'item:drainChannel': 3500, 'item:manifoldWF': 45000,
-  'item:stairs': 150000, 'item:stairsL': 220000,
-  'item:garage1': 900000, 'item:garage2': 1500000, 'item:carport': 180000, 'item:carport2': 300000, 'item:carportLean': 160000,
-  'item:canopy': 200000, 'item:shed': 250000, 'item:bathhouse': 1200000, 'item:gazebo': 250000, 'item:greenhouse': 70000,
-  'item:woodshed': 60000, 'item:outhouse': 60000, 'item:showerOut': 40000, 'item:pool': 900000, 'item:terrace': 350000,
+  'item:septic2': 105000, 'item:septic3': 140000, 'item:septicRing': 70000, 'item:cesspool': 52000, 'item:well': 82000,
+  'item:borehole': 165000, 'item:manhole': 19000, 'item:drainWell': 22000, 'item:filterField': 45000, 'item:gasholder': 340000,
+  'item:pumpStation': 22000, 'item:filter': 45000, 'item:gasBoilerWall': 60000, 'item:boilerFloor': 90000, 'item:elBoiler': 30000,
+  'item:indirect': 41000, 'item:radiator': 6800, 'item:radiatorLong': 10000, 'item:towel': 9000, 'item:manifold': 19000,
+  'item:boiler50': 14000, 'item:boiler80': 16000, 'item:boilerFlat': 19000,
+  'item:stoveRus': 260000, 'item:stoveBrick': 135000, 'item:stoveKitchen': 165000, 'item:fireplace': 135000, 'item:fireplaceCorner': 120000,
+  'item:stoveMetal': 34000, 'item:saunaStove': 52000, 'item:chimney': 45000,
+  'item:bath170': 26000, 'item:bath150': 22000, 'item:bath180': 34000, 'item:bathCorner': 41000, 'item:shower90': 34000, 'item:shower80': 15000,
+  'item:showerWalk': 26000, 'item:toilet': 14000, 'item:toiletWall': 28000, 'item:bidet': 15000, 'item:sink': 6800, 'item:vanity': 16000,
+  'item:kitchenI': 135000, 'item:kitchenL': 195000, 'item:panel': 26000, 'item:meter': 19000, 'item:pole': 34000, 'item:lightPole': 19000,
+  'item:socket': 1100, 'item:socket2': 1500, 'item:socketPower': 3000, 'item:switch': 1100, 'item:switch2': 1350, 'item:lamp': 3800,
+  'item:spot': 1100, 'item:wallLamp': 3000, 'item:socketOut': 2600, 'item:cctvCam': 6800, 'item:nvr': 34000, 'item:router': 19000, 'item:lanSocket': 900, 'item:wifiAp': 6800,
+  'item:downspout': 4900, 'item:stormInlet': 3400, 'item:drainChannel': 2600, 'item:manifoldWF': 34000,
+  'item:stairs': 110000, 'item:stairsL': 165000,
+  'item:garage1': 675000, 'item:garage2': 1125000, 'item:carport': 135000, 'item:carport2': 225000, 'item:carportLean': 120000,
+  'item:canopy': 150000, 'item:shed': 190000, 'item:bathhouse': 900000, 'item:gazebo': 190000, 'item:greenhouse': 52000,
+  'item:woodshed': 45000, 'item:outhouse': 45000, 'item:showerOut': 30000, 'item:pool': 675000, 'item:terrace': 260000,
   // благоустройство участка (за м²)
-  'site:blind': 2200, 'site:asphalt': 1500, 'site:concrete': 2500, 'site:paving': 2200, 'site:gravel': 600, 'site:lawn': 350,
-  'item:cellar': 350000, 'item:cellarHouse': 450000, 'item:podpol': 90000, 'item:inspPit': 120000, 'item:pitOpen': 40000,
-  'item:gate': 120000, 'item:wicket': 25000, 'item:bbq': 40000,
+  'site:blind': 1650, 'site:asphalt': 1100, 'site:concrete': 1900, 'site:paving': 1650, 'site:gravel': 450, 'site:lawn': 250,
+  'item:cellar': 260000, 'item:cellarHouse': 340000, 'item:podpol': 68000, 'item:inspPit': 90000, 'item:pitOpen': 30000,
+  // хранение в гараже (за шт.)
+  'item:garageRack': 6000, 'item:workbench': 15000, 'item:tireRack': 4000, 'item:wallShelf': 1500, 'item:ceilRack': 7000,
+  'item:gate': 90000, 'item:wicket': 19000, 'item:bbq': 30000,
 };
 
 const Estimate = {
+  /** Открывали ли смету в этом сеансе (раздел скрыт; до этого — нигде в интерфейсе не показывается) */
+  shown: false,
   price(key) {
     const p = (App.doc.settings.prices || {})[key];
     return U.isNum(p) ? p : (PRICE_DEFAULTS[key] ?? 0);
@@ -149,7 +154,9 @@ const Estimate = {
     }
     // свои строки
     for (const c of d.estimateCustom || []) rows.push({ group: 'Прочее', key: c.id, custom: c, name: c.name, unit: c.unit, qtyAuto: c.qty, qty: c.qty, price: c.price, sum: c.qty * c.price, off: false });
-    return rows;
+    // строки одного раздела — подряд (раздел упоминается в нескольких местах расчёта), порядок разделов — по первому появлению
+    const order = [...new Set(rows.map(r => r.group))];
+    return rows.map((r, i) => ({ r, i })).sort((a, b) => order.indexOf(a.r.group) - order.indexOf(b.r.group) || a.i - b.i).map(x => x.r);
   },
   totals(rows) {
     const sub = rows.reduce((s, r) => s + r.sum, 0);
@@ -195,7 +202,7 @@ const Estimate = {
         U.el('div', {}, U.el('span', {}, 'Итого по позициям'), U.el('b', {}, Estimate.money(T.sub))),
         U.el('div', {}, U.el('span', {}, 'Непредвиденные расходы, %'), res, U.el('b', {}, Estimate.money(T.reserve))),
         U.el('div', { class: 'big' }, U.el('span', {}, 'Всего'), U.el('b', {}, Estimate.money(T.total)))),
-      U.el('p', { class: 'note' }, 'Цены ориентировочные (материал + работа, средняя полоса России) — замените на свои. Объёмы берутся из проекта и пересчитываются при изменениях; изменённый вручную объём можно вернуть кнопкой ↺. Цены и правки сохраняются в проекте.'));
+      U.el('p', { class: 'note' }, 'Цены — по нижней границе рынка (материал + работа, средняя полоса России, 2026) — замените на свои. Объёмы берутся из проекта и пересчитываются при изменениях; изменённый вручную объём можно вернуть кнопкой ↺. Цены и правки сохраняются в проекте.'));
   },
   addCustom() {
     App.doc.estimateCustom = App.doc.estimateCustom || [];
@@ -232,7 +239,7 @@ const Estimate = {
       U.el('div', { class: 'sheet report', style: { width: '210mm', minHeight: '297mm', padding: '12mm' } },
         U.el('div', { class: 'sheet-head' }, U.el('b', {}, 'Смета: ' + (App.doc.name || '')), U.el('span', {}, new Date().toLocaleDateString('ru-RU'))),
         U.el('div', { class: 'rep' }, tb),
-        U.el('p', {}, 'Цены ориентировочные; объёмы рассчитаны по проекту Floorplaner.')));
+        U.el('p', {}, 'Цены — нижняя граница рынка; объёмы рассчитаны по проекту Floorplaner.')));
     document.body.classList.add('printing');
     $('dlgEstimate').close();
     const done = () => { document.body.classList.remove('printing'); area.textContent = ''; window.removeEventListener('afterprint', done); };

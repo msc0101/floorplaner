@@ -112,7 +112,12 @@ const Render = {
     if (L.finish && typeof Finish !== 'undefined') Finish.draw(env);
     if (L.shadows && !ctx.isVector) Render.shadows(env);
     lay('ITEMS');
-    const items = App.V.items.filter(it => L[catItem(it.key).layer] !== false && Render.sysOn(env, sysOf(it)) && (!env.itemFilter || env.itemFilter(it)));
+    // прибор другой системы, к которому подходит показанная трасса (наружный блок, электрокотёл под кабелем), — тоже на лист,
+    // иначе кабель обрывается в пустоте
+    const shownL = env.noLines ? [] : App.V.lines.filter(l => L[LINE_KINDS[l.kind].layer] !== false && Render.sysOn(env, sysOfLine(l)) && (!env.lineFilter || env.lineFilter(l)));
+    const fed = (it) => { const ks = itemLinks(it); if (!ks.length) return false; const poly = Model.itemPts(it);
+      return shownL.some(l => ks.some(k => k[1].includes(l.kind)) && [l.pts[0], l.pts[l.pts.length - 1]].some(e => G.dist(e, it) < 12 || G.distPoly(e, poly) < 12)); };
+    const items = App.V.items.filter(it => ((L[catItem(it.key).layer] !== false && Render.sysOn(env, sysOf(it))) || (env.drawing && fed(it))) && (!env.itemFilter || env.itemFilter(it)));
     // «напольные» объекты — под стенами и дверьми (крыльцо и веранда не закрывают открытую дверь)
     const isGround = (it) => { const d = catItem(it.key); return !d.sym && (it.h <= 20 || d.shape === 'rug' || d.shape === 'veranda') && !['tree', 'conifer', 'bush'].includes(d.shape); };
     const isCanopy = (it) => ['tree', 'conifer', 'bush', 'hedge'].includes(catItem(it.key).shape);
@@ -142,7 +147,8 @@ const Render = {
     lay('CHECKS');
     if (L.checks !== false && typeof Checks !== 'undefined') Checks.draw(env);
     lay('DIMS');
-    if (L.walls && App.doc.settings.showWallDims && !env.ghostWalls) Render.wallDims(env);
+    if (L.walls && App.doc.settings.showWallDims && !env.ghostWalls && !env.drawing) Render.wallDims(env);   // на листах — размерные цепочки
+    if (env.siteTies) Render.siteTies(env);
     if (L.dims) { Render.dims(env); lay('TEXT'); Render.texts(env); }
     if (L.rooms) Render.roomLabels(env);
     lay('UNDERLAY');
@@ -274,7 +280,7 @@ const Render = {
       const ar = Math.abs(G.polyArea(a.pts));
       const lp = G.labelPoint(a.pts);
       const bb = G.bbox(a.pts);
-      if ((bb.x1 - bb.x0) * env.scale > 70) {
+      if ((bb.x1 - bb.x0) * env.scale > 70 && !(a.kind === 'plot' && env.drawing && !env.siteTies)) {   // на листах сетей подпись участка не нужна
         const title = a.name || k.name;
         const areaTxt = a.kind === 'plot' ? `${(ar / 1e6).toFixed(2)} сот. · ${(ar / 1e4).toFixed(1)} м²` : U.fmtArea(ar);
         const blk = Render._blk || (Render._blk = Render._itemBlockers());
@@ -282,7 +288,20 @@ const Render = {
         const outl = ((App.floorData || [])[0] || {}).outlines || [];
         const blocked = (p) => App.rooms.some(r => G.pointInPoly(p, r.axis)) || outl.some(o => G.distPoly(p, o.outer) < 150) || Render._inBlk(p, blk) || smaller.some(o => G.pointInPoly(p, o.pts))
           || App.V.walls.some(w => w.kind !== 'fence' && G.distSeg(p, w.a, w.b) < w.th / 2 + 30);
-        const spots = Render.freeSpots(a.pts, lp, blocked);
+        let spots = Render.freeSpots(a.pts, lp, blocked);
+        if (a.kind === 'plot' && (!spots.length || env.drawing)) {
+          // участок сплошь занят газонами и постройками: подпись — снаружи, у середины стороны (сначала — не у улицы)
+          const c = G.polyCentroid(a.pts), out = [];
+          const onRoad = (p) => App.V.roads.some(r => r.pts.some((b, i) => i > 0 && G.distSeg(p, r.pts[i - 1], b) < r.width / 2 + 60));
+          a.pts.forEach((p, i) => {
+            const q = a.pts[(i + 1) % a.pts.length], m = G.mid(p, q), d = G.sub(q, p);
+            let n = G.perp(G.unit(d)); if (G.dot(n, G.sub(m, c)) < 0) n = G.mul(n, -1);
+            const at = G.add(m, G.mul(n, 22 * px));
+            if (!onRoad(at)) out.push({ at, h: Math.abs(d.x) > Math.abs(d.y) });   // горизонтальная сторона — подпись влезает
+          });
+          out.sort((u, v) => v.h - u.h);
+          spots = [...out.map(o => o.at), ...spots];
+        }
         const main = spots.length ? spots[0] : lp;
         Render.label(env, [title, areaTxt], main, 0, { color: k.stroke, size: 12, bold: true, prio: a.kind === 'plot' ? 8 : 4, alts: spots.slice(1), must: a.kind === 'plot' });
       }
@@ -391,8 +410,15 @@ const Render = {
       // метка, поставленная пользователем (перетаскиванием), — главная позиция
       const spots = r.tag && r.tag.fixed ? [] : Render.freeSpots(r.floor, r.label, (p) => Render._inBlk(p, blk));
       const main = r.tag && r.tag.fixed ? r.label : (Render._inBlk(r.label, blk) && spots.length ? spots[0] : r.label);
-      Render.label(env, [r.name, U.fmtArea(Rooms.area(r))], main, 0, { size, bold: true, color: sel ? Theme.C.accent : Theme.C.roomText, color2: Theme.C.muted, prio: 9, alts: spots, must: true });
+      const num = env.roomNums ? Render.roomNo(r) : 0;
+      Render.label(env, [(num ? num + '. ' : '') + r.name, U.fmtArea(Rooms.area(r))], main, 0, { size, bold: true, color: sel ? Theme.C.accent : Theme.C.roomText, color2: Theme.C.muted, prio: 9, alts: spots, must: true });
     }
+  },
+
+  /** Номер помещения — как в экспликации листа (порядок помещений этажа) */
+  roomNo(r) {
+    const fd = (App.floorData || []).find(x => x.rooms.some(q => q.id === r.id));
+    return fd ? fd.rooms.findIndex(q => q.id === r.id) + 1 : 0;
   },
 
   shadows(env) {
@@ -736,7 +762,7 @@ const Render = {
     ctx.restore();
     if (part) return;
     if (it.label && !['building', 'garage', 'canopy', 'canopyLean', 'gazebo', 'greenhouse', 'labelbox', 'deck', 'veranda'].includes(def.shape) && Math.min(w, d) * env.scale > 30) {
-      Render.label(env, it.label, { x: it.x, y: it.y }, 0, { size: 11, bg: true, prio: 6 });
+      Render.label(env, it.label, { x: it.x, y: it.y }, 0, { size: 11, bg: true, prio: SITE_BLD_SHAPES.has(def.shape) ? 8 : 6, must: SITE_BLD_SHAPES.has(def.shape) });   // постройку на генплане подписываем всегда
     }
     if (App.doc.settings.showItemDims && !def.sym && Math.max(w, d) * env.scale > 45) {
       Render.label(env, `${Math.round(it.w)}×${Math.round(it.d)}`, { x: it.x, y: it.y + 10 * px }, 0, { size: 9.5, color: C.muted, prio: 1 });
@@ -800,8 +826,37 @@ const Render = {
         }
         continue;
       }
-      for (const p of l.pts) { ctx.beginPath(); ctx.arc(p.x, p.y, 2.2 * px, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); }
+      // точки излома — только маркер редактора: на чертеже их читали бы как соединения
+      if (!env.exporting) for (const p of l.pts) { ctx.beginPath(); ctx.arc(p.x, p.y, 2.2 * px, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); }
     }
+    // ответвления: кабель — распаечная коробка (кружок с точкой, ПУЭ 2.1.23), труба — тройник (точка)
+    const shown = App.V.lines.filter(l => L[LINE_KINDS[l.kind].layer] !== false && Render.sysOn(env, sysOfLine(l)) && (!lf || lf(l)));
+    for (const t of Render.lineTees(shown)) {
+      const color = t.line.color || LINE_KINDS[t.line.kind].color;
+      ctx.beginPath(); ctx.arc(t.p.x, t.p.y, t.box ? Math.max(6, 4.5 * px) : 3 * px, 0, Math.PI * 2);
+      if (t.box) { ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = color; ctx.lineWidth = 1.4 * px; ctx.stroke(); ctx.beginPath(); ctx.arc(t.p.x, t.p.y, Math.max(2, 1.5 * px), 0, Math.PI * 2); }
+      ctx.fillStyle = color; ctx.fill();
+    }
+  },
+  /** Ответвления трасс: конец одной трассы лежит внутри участка другой трассы того же вида.
+   *  box — для кабелей (электрика, слаботочка): соединение в распаечной коробке */
+  lineTees(lines) {
+    const out = [], seen = new Set(), items = (App.V && App.V.items) || App.doc.items;
+    const grp = (l) => ((l.label || '').match(/^(Гр\.\s?\d+|\d+ В|Ввод)/) || [])[1];
+    // конец у своего прибора (розетка, светильник, кран) — подключение, а не ответвление
+    const dev = []; for (const it of items) { const ks = itemLinks(it); if (ks.length) dev.push({ it, r: Math.max(6, Math.min(it.w, it.d) / 2), kinds: ks.flatMap(k => k[1]) }); }   // один раз на вызов
+    const atDevice = (e, l) => dev.some(q => q.kinds.includes(l.kind) && G.dist(e, q.it) < q.r);
+    for (const l of lines) for (const e of [l.pts[0], l.pts[l.pts.length - 1]]) {
+      if (l.kind === 'overhead' || atDevice(e, l)) continue;                // ВЛ: опоры рисуются сами
+      const m = lines.find(o => o !== l && o.kind === l.kind && (o.floor || null) === (l.floor || null) && (!grp(l) || !grp(o) || grp(l) === grp(o))
+        && o.pts.some((a, i) => i > 0 && G.distSeg(e, o.pts[i - 1], a) < 2) && G.dist(e, o.pts[0]) > 2 && G.dist(e, o.pts[o.pts.length - 1]) > 2);
+      if (!m) continue;
+      const key = Math.round(e.x) + ',' + Math.round(e.y) + l.kind;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ p: e, line: l, box: ['power', 'lowvolt'].includes(sysOfLine(l)) });
+    }
+    return out;
   },
 
   /** Отмостка: бетонная полоса вокруг дома и построек */
@@ -825,6 +880,28 @@ const Render = {
   },
 
   /* ------------------------------- размеры ------------------------------- */
+  /** Генплан: привязка дома (со всех сторон) и построек (к ближайшей границе) к границам участка */
+  siteTies(env) {
+    const plot = App.V.areas.find(a => a.kind === 'plot');
+    if (!plot) return;
+    const P = plot.pts, color = '#b03a2e';
+    const hit = (p, dir) => { let best = Infinity; P.forEach((c, i) => { const t = G.raySeg(p, dir, c, P[(i + 1) % P.length]); if (t != null && t < best) best = t; }); return best; };
+    const blds = App.V.items.filter(it => { const sh = catItem(it.key).shape; return BLD_HOLLOW.has(sh) || (SITE_BLD_SHAPES.has(sh) && sh !== 'veranda'); }).map(it => ({ it, poly: Model.itemPts(it) }));
+    // размер сквозь другую постройку ничего не привязывает — такой луч пропускаем
+    const clear = (p, d, t, self) => { for (let k = 30; k < t - 10; k += 25) { const q = G.add(p, G.mul(d, k)); if (blds.some(b => b.it !== self && G.pointInPoly(q, b.poly))) return false; } return true; };
+    const tie = (bb, all, self) => {
+      const c = { x: (bb.x0 + bb.x1) / 2, y: (bb.y0 + bb.y1) / 2 };
+      // луч — от стороны габарита, чуть сдвинут от середины (размер не ложится на подписи в центре)
+      const rays = [[{ x: bb.x0, y: c.y + (bb.y1 - bb.y0) * 0.2 }, { x: -1, y: 0 }], [{ x: bb.x1, y: c.y + (bb.y1 - bb.y0) * 0.2 }, { x: 1, y: 0 }],
+        [{ x: c.x + (bb.x1 - bb.x0) * 0.2, y: bb.y0 }, { x: 0, y: -1 }], [{ x: c.x + (bb.x1 - bb.x0) * 0.2, y: bb.y1 }, { x: 0, y: 1 }]]
+        .map(([p, d]) => ({ p, d, t: hit(p, d) })).filter(r => Number.isFinite(r.t) && r.t > 20 && G.pointInPoly(r.p, P) && clear(r.p, r.d, r.t, self));
+      const use = all ? rays : rays.sort((a, b) => a.t - b.t).slice(0, 1);
+      for (const r of use) Render.dimLine(env, r.p, G.add(r.p, G.mul(r.d, r.t)), 0, U.fmtLen(r.t), color);
+    };
+    const fd = (App.floorData || [])[0];
+    if (fd && fd.outlines.length) { let b = null; for (const o of fd.outlines) b = G.bboxUnion(b, G.bbox(o.outer)); tie(b, true); }
+    for (const b of blds) tie(G.bbox(b.poly), false, b.it);
+  },
   dimLine(env, a, b, off, text, color) {
     const { ctx, px } = env;
     const u = G.unit(G.sub(b, a)), n = G.perp(u);

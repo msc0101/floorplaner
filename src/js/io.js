@@ -112,7 +112,7 @@ const IO = {
       if (o.noRoof) layers.roof = false;
       if (o.found) layers.found = true;
       if (o.layersOver) Object.assign(layers, o.layersOver);
-      Render.draw({ ctx, w: cv.width, h: cv.height, dpr: 1, fs: o.fs || 1, scale, ox: cx - cv.width / 2 / scale, oy: cy - cv.height / 2 / scale, C: Theme.light, exporting: true, printGrid: !!o.grid, layers, sys: o.sysOnly || o.sys, ghostWalls: o.ghostWalls, noLines: o.noLines, lineFilter: o.lineFilter, foundDims: o.foundDims, itemFilter: o.itemFilter, noCompass: o.noCompass });
+      Render.draw({ ctx, w: cv.width, h: cv.height, dpr: 1, fs: o.fs || 1, scale, ox: cx - cv.width / 2 / scale, oy: cy - cv.height / 2 / scale, C: Theme.light, exporting: true, printGrid: !!o.grid, layers, sys: o.sysOnly || o.sys, ghostWalls: o.ghostWalls, noLines: o.noLines, lineFilter: o.lineFilter, foundDims: o.foundDims, itemFilter: o.itemFilter, noCompass: o.noCompass, drawing: !!o.drawing, roomNums: !!o.roomNums, siteTies: !!o.siteTies });
       // компас и масштабная линейка
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       const k = Math.max(1, Math.min(W, H) / 900);

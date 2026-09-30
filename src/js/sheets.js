@@ -49,7 +49,7 @@ const Sheets = {
     if (house && typeof Detail !== 'undefined') out.push({ key: 'section', kind: 'detail', detail: 'section', fid: g.id, title: 'Разрез 1-1', sub: 'Фундамент, стены, перекрытие, крыша — отметки и узлы', panel: (sp) => Detail.sectionPanel(sp) });
     if (d.roofs.some(r => Roof.frame(r)) && typeof Detail !== 'undefined') {
       out.push({ key: 'roof', kind: 'detail', detail: 'roofPlan', fid: g.id, title: 'Кровля: стропильная система', sub: 'Стропила, обрешётка, мауэрлат, снеговая нагрузка', panel: () => Sheets.roofPanel() });
-      out.push({ key: 'roof-node', kind: 'detail', detail: 'roofNode', fid: g.id, title: 'Узел: карниз и опирание стропил', sub: 'Армопояс, опорный брус, стропило, утепление, кровельный пирог', fixedN: 10, panel: (sp) => Detail.nodePanel(sp, 'Узел карниза', /Конструкции/) });
+      out.push({ key: 'roof-node', kind: 'detail', detail: 'roofNode', fid: g.id, title: 'Узел: карниз и опирание стропил', sub: 'Армопояс, опорный брус, стропило, утепление, кровельный пирог', fixedN: 10, panel: (sp) => Detail.nodePanel(sp, 'Узел карниза', null, Detail.EAVE_NOTES) });
     }
     if (house && typeof Finish !== 'undefined') out.push({ key: 'finish', kind: 'finish', fid: g.id, title: 'План отделки', sub: 'Полы, стены, потолки по помещениям', bbox: () => Sheets.wallsBox(g.id), toggles: { dims: ['Размеры', false], furniture: ['Мебель', false] }, panel: () => Finish.panel() });
     // сети: внутри дома и снаружи — отдельными листами, у каждого свой масштаб
@@ -146,7 +146,7 @@ const Sheets = {
     const sheet = U.el('div', { class: 'sheet drawing sheet2', style: { width: mm(Lt.PW), height: mm(Lt.PH) }, 'data-key': spec.key },
       U.el('div', { class: 'dframe2', style: { left: '20mm', top: '5mm', width: mm(Lt.PW - 25), height: mm(Lt.PH - 10) } }),
       U.el('img', { src: img.toDataURL('image/png'), style: { position: 'absolute', left: mm(box.x), top: mm(box.y), width: mm(box.w), height: mm(box.h) }, alt: spec.title }),
-      Lt.pnl ? U.el('div', { class: 'spanel', style: { left: mm(Lt.pnl.x), top: mm(Lt.pnl.y), width: mm(Lt.pnl.w), height: mm(Lt.pnl.h) } }, spec.panel(spec)) : null,
+      Lt.pnl ? U.el('div', { class: 'spanel' + (Lt.pnl.w > 150 ? ' wide' : ''), style: { left: mm(Lt.pnl.x), top: mm(Lt.pnl.y), width: mm(Lt.pnl.w), height: mm(Lt.pnl.h) } }, spec.panel(spec)) : null,
       U.el('div', { class: 'tb2', style: { right: '5mm', bottom: '5mm' } }, tb));
     sheet._layout = Lt;
     sheet._page = `p${Lt.PW}x${Lt.PH}`;
@@ -155,12 +155,14 @@ const Sheets = {
   },
   /** Слои и фильтры отрисовки плана по виду листа */
   renderOpts(spec, t) {
-    const L = { grid: false, underlay: false, site: false, siteobj: false, walls: true, roof: false, lower: false, rooms: true, furniture: false, plumbing: false, heating: false, gas: false, electric: false, dims: !!t.dims, notes: false, checks: false, found: false, masonry: false, finish: false, shadows: false, heat: false };
+    const L = { grid: false, underlay: false, site: false, siteobj: false, walls: true, roof: false, lower: false, rooms: true, furniture: false, plumbing: false, heating: false, gas: false, electric: false, dims: !!t.dims, notes: false, checks: false, found: false, masonry: false, finish: false, shadows: false, heat: false, fence: false };
     const none = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, false])), all = Object.fromEntries(Object.keys(SYSTEMS).map(k => [k, true]));
     switch (spec.kind) {
       case 'site': {
-        Object.assign(L, { site: true, siteobj: true, rooms: false, plumbing: !!t.wells, gas: !!t.wells, dims: !!t.dims });
-        return { layersOver: L, sys: t.wells || t.nets ? all : none, noLines: !t.nets, itemFilter: t.wells ? null : (it) => !sysOf(it) };
+        Object.assign(L, { site: true, siteobj: true, fence: true, rooms: false, plumbing: !!t.wells, gas: !!t.wells, dims: !!t.dims });
+        // машины, яма и погреб внутри гаража на генплане не нужны — только загромождают подписи
+        const inner = (it) => ['car', 'pit'].includes(catItem(it.key).shape);
+        return { layersOver: L, siteTies: true, sys: t.wells || t.nets ? all : none, noLines: !t.nets, itemFilter: (it) => !inner(it) && (t.wells || !sysOf(it)) };
       }
       case 'found': {
         Object.assign(L, { rooms: false, found: true, siteobj: !!t.pits, dims: false });
@@ -171,19 +173,32 @@ const Sheets = {
         return { layersOver: L, sys: none, noLines: true, noCompass: true, itemFilter: (it) => BLD_HOLLOW.has(catItem(it.key).shape) };
       }
       case 'plan': case 'finish': {
-        Object.assign(L, { furniture: !!t.furniture, plumbing: !!t.furniture, rooms: t.rooms !== false, finish: spec.kind === 'finish', heating: !!t.nets, gas: !!t.nets, electric: !!t.nets });
-        return { layersOver: L, sys: t.nets ? all : none, noLines: !t.nets, noCompass: spec.kind === 'finish' };
+        // веранды и крыльца — часть дома (иначе стол на веранде «висит» в воздухе), прочие постройки участка — нет
+        Object.assign(L, { furniture: !!t.furniture, plumbing: !!t.furniture, rooms: t.rooms !== false, finish: spec.kind === 'finish', heating: !!t.nets, gas: !!t.nets, electric: !!t.nets, siteobj: true });
+        return { layersOver: L, sys: t.nets ? all : none, noLines: !t.nets, noCompass: spec.kind === 'finish', roomNums: true, itemFilter: (it) => catItem(it.key).layer !== 'siteobj' || catItem(it.key).shape === 'veranda' };
       }
       case 'sys': {
         for (const k of Sheets.SYS_LAYERS[spec.sys] || []) L[k] = true;
         if (t.fixtures && (spec.sys === 'water' || spec.sys === 'sewer')) L.plumbing = true;
         L.rooms = !spec.outdoor; L.furniture = false;
-        if (spec.outdoor) Object.assign(L, { site: true, siteobj: true });
+        if (spec.outdoor) Object.assign(L, { site: true, siteobj: true, fence: true });
         const only = { ...none, [spec.sys]: true };
-        return { layersOver: L, sysOnly: only, lineFilter: spec.lineSet ? (l) => spec.lineSet.has(l.id) : null, itemFilter: spec.outdoor ? (it) => sysOf(it) === spec.sys || BLD_HOLLOW.has(catItem(it.key).shape) : null };
+        // в доме — только то, что у дома (вентиляция гаража и т.п. не лезет на край листа); на участке — все постройки для привязки
+        const near = Sheets.houseBox(spec.fid);
+        const inDoor = (it) => !near || (it.x > near.x0 && it.x < near.x1 && it.y > near.y0 && it.y < near.y1);
+        const site = (it) => { const d = catItem(it.key); return BLD_HOLLOW.has(d.shape) || SITE_BLD_SHAPES.has(d.shape); };
+        return { layersOver: L, sysOnly: only, roomNums: !spec.outdoor, lineFilter: spec.lineSet ? (l) => spec.lineSet.has(l.id) : null, itemFilter: spec.outdoor ? (it) => sysOf(it) === spec.sys || site(it) : inDoor };
       }
     }
     return { layersOver: L };
+  },
+
+  /** Габарит помещений этажа + 2 м — «дом» на листах внутренних сетей */
+  houseBox(fid) {
+    const fd = (App.floorData || []).find(x => x.floor.id === fid) || (App.floorData || [])[0];
+    if (!fd || !fd.rooms.length) return null;
+    const b = G.bbox(fd.rooms.flatMap(r => r.floor || r.axis || []));
+    return G.bboxValid(b) ? { x0: b.x0 - 200, y0: b.y0 - 200, x1: b.x1 + 200, y1: b.y1 + 200 } : null;
   },
 
   /* ----------------------------- панели листов ----------------------------- */
@@ -196,7 +211,12 @@ const Sheets = {
     const s = Rooms.summary(), rows = [];
     if (s.plotArea) rows.push(['Участок', `${(s.plotArea / 1e4).toFixed(0)} м² (${(s.plotArea / 1e6).toFixed(2)} сот.)`], ['Застроено', `${(s.built / 1e4).toFixed(0)} м² (${(s.built / s.plotArea * 100).toFixed(1)}%)`]);
     for (const it of s.outb) rows.push([it.label || catItem(it.key).name, `${(it.w * it.d / 1e4).toFixed(1)} м²`]);
-    let ch = []; try { ch = Checks.run().results.filter(r => r.ok).slice(0, 12).map(r => [`${r.a.name} — ${r.bName}`, `${(r.d / 100).toFixed(1)} м (≥ ${(r.rule.min / 100).toFixed(1)})`]); } catch { ch = []; }
+    let ch = []; try {
+      // главное для согласования — дом и постройки к границам, улице и друг к другу; кусты и деревья — в конец, повторы — одной строкой
+      const minor = (r) => /Кустарник|Дерев|Плодов|Хвойн/.test(r.a.name + r.bName) ? 1 : 0, seen = new Set();
+      ch = Checks.run().results.filter(r => r.ok).sort((a, b) => minor(a) - minor(b) || (a.d - a.rule.min) - (b.d - b.rule.min))
+        .map(r => [`${r.a.name} — ${r.bName}`, `${(r.d / 100).toFixed(1)} м (≥ ${(r.rule.min / 100).toFixed(1)})`]).filter(r => !seen.has(r[0]) && seen.add(r[0])).slice(0, 12);
+    } catch { ch = []; }
     return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Генплан'), Sheets.T(['Объект', 'Площадь'], Sheets.cut(rows, 14)), ch.length ? U.el('h4', {}, 'Отступы по нормам (выполнены)') : null, ch.length ? Sheets.T(null, ch) : null,
       U.el('div', { class: 'norm' }, '§ СП 53.13330.2019; СП 4.13130.2013; СП 42.13330.2016'));
   },
@@ -273,7 +293,7 @@ const Sheets = {
     body.textContent = '';
     $('pvTitle').textContent = `Комплект для строителей — листов: ${specs.filter(s => Sheets.cfg(s.key).on !== false).length} из ${specs.length}`;
     const top = U.el('div', { class: 'pv-top' },
-      U.el('label', {}, 'Формат ', U.el('select', { onchange: (e) => { Sheets._o = { ...Sheets._o, paper: e.target.value }; App.doc.settings.sheetPaper = e.target.value; Sheets.preview(Sheets._o); } }, Object.keys(Sheets.PAPER).map(k => U.el('option', { value: k, selected: k === o.paper }, k)))),
+      U.el('label', {}, 'Формат ', U.el('select', { onchange: (e) => { Sheets._o = { ...Sheets._o, paper: e.target.value }; App.doc.settings.sheetPaper = e.target.value; const k = body.scrollTop / Math.max(1, body.scrollHeight); Sheets.preview(Sheets._o); body.scrollTop = k * body.scrollHeight; } }, Object.keys(Sheets.PAPER).map(k => U.el('option', { value: k, selected: k === o.paper }, k)))),
       U.el('span', { class: 'note' }, 'Масштаб и ориентация подбираются сами, чтобы чертёж занял лист. У листа можно выбрать своё.'));
     body.append(top);
     if (!$('dlgPreview').open) $('dlgPreview').showModal();                // ширина окна известна только после показа
@@ -281,8 +301,14 @@ const Sheets = {
     let n = 0;
     specs.forEach((spec) => {
       const c = Sheets.cfg(spec.key), on = c.on !== false;
-      const wrap = U.el('div', { class: 'pv-sheet' + (on ? '' : ' off') });
-      const redraw = () => Sheets.preview(Sheets._o);
+      const wrap = U.el('div', { class: 'pv-sheet' + (on ? '' : ' off'), 'data-pv': spec.key });
+      // перестроить комплект, не теряя места: лист, на котором щёлкнули, остаётся там же на экране
+      const redraw = () => {
+        const y = wrap.getBoundingClientRect().top;
+        Sheets.preview(Sheets._o);
+        const w2 = [...body.querySelectorAll('.pv-sheet')].find(x => x.dataset.pv === spec.key);
+        if (w2) body.scrollTop += w2.getBoundingClientRect().top - y;
+      };
       const tools = U.el('div', { class: 'pv-tools' },
         U.el('label', { class: 'pv-on' }, U.el('input', { type: 'checkbox', checked: on, onchange: (e) => { Sheets.setCfg(spec.key, { on: e.target.checked }); redraw(); } }), U.el('b', {}, spec.title)),
         spec.kind !== 'report' ? U.el('label', {}, 'Масштаб ', U.el('select', { onchange: (e) => { Sheets.setCfg(spec.key, { scale: e.target.value === 'auto' ? undefined : e.target.value }); redraw(); } },

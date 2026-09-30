@@ -112,11 +112,16 @@ const extra = await page.evaluate(() => {
   r.svg = Vector.svg(reg, 100, {}).includes('<svg');
   r.dxf = Vector.dxf(null, 100, { drawing: true }).length > 1000;
   r.estimate = Math.round(Estimate.totals(Estimate.rows()).total) > 0;
+  // смета скрыта: ни кнопки, ни пункта меню, ни строки в отчёте, пока не нажали Ctrl+Alt+S
+  r.estHidden = !document.querySelector('[data-act="estimate"]') && !Analysis.run().stats.some(x => /Смета/.test(x.title));
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, altKey: true }));
+  r.estHotkey = $('dlgEstimate').open && Estimate.shown; $('dlgEstimate').close(); Estimate.shown = false;
   r.checks = App.checks.results.length;
   r.autoDims = Drawing.autoDims(App.doc.floors[0].id).length;
   return r;
 });
 console.log('extra', JSON.stringify(extra));
+if (!extra.estHidden || !extra.estHotkey) errors.push('Смета: должна быть скрыта и открываться Ctrl+Alt+S: ' + JSON.stringify(extra));
 await page.evaluate(() => View3D.toggle(true));
 await page.waitForTimeout(500);
 await page.screenshot({ path: join(shots, '11-3d.png') });
@@ -585,10 +590,15 @@ const kit = await page.evaluate(() => {
   r.sys3d = less <= all && nor < all;
   View3D.toggle(false);
   r.mounts = typeof Analysis.mounts === 'function';
+  // ответвления трасс: распаечная коробка на тройнике кабеля одной группы; излом — не соединение
+  { const a = { id: 't1', kind: 'power', label: 'Гр.1', pts: [{ x: 0, y: 0 }, { x: 200, y: 0 }] }, b = { id: 't2', kind: 'power', label: 'Гр.1', pts: [{ x: 100, y: 0 }, { x: 100, y: 80 }] }, c = { id: 't3', kind: 'power', label: 'Гр.2', pts: [{ x: 150, y: 0 }, { x: 150, y: -60 }] };
+    const T = Render.lineTees([a, b, c]); r.tees = T.length === 1 && T[0].box; }
+  // хранение в гараже: предметы есть в каталоге и строятся в 3D
+  r.storage = ['garageRack', 'workbench', 'tireRack', 'wallShelf', 'ceilRack'].every(k => catItem(k) && catItem(k).key === k);
   return r;
 });
 console.log('kit', JSON.stringify(kit));
-if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain || !kit.sys3d || !kit.mounts) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
+if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain || !kit.sys3d || !kit.mounts || !kit.tees || !kit.storage) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

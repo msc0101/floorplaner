@@ -92,12 +92,26 @@ const Detail = {
       ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = D.mm(lw); if (dash) ctx.setLineDash(dash.map(D.mm));
       ctx.beginPath(); ctx.moveTo(D.X(s0), D.Y(z0)); ctx.lineTo(D.X(s1), D.Y(z1)); ctx.stroke(); ctx.restore();
     };
+    /** Занятые подписями прямоугольники (px листа) — выноски и подписи их обходят */
+    D.boxes = [];
+    D.hit = (b) => D.boxes.some(q => b.x0 < q.x1 && b.x1 > q.x0 && b.y0 < q.y1 && b.y1 > q.y0);
+    D.cm = (vmm) => D.mm(vmm) / k;                                                                    // мм листа → см сцены
     D.dot = (s, z, rmm, color = '#111') => { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(D.X(s), D.Y(z), D.mm(rmm), 0, Math.PI * 2); ctx.fill(); };
     D.text = (txt, s, z, o = {}) => {
-      ctx.save(); ctx.fillStyle = o.color || '#111'; ctx.font = `${o.bold ? 700 : 400} ${D.mm(o.size || 2.4)}px Arial, sans-serif`;
+      ctx.save(); ctx.font = `${o.bold ? 700 : 400} ${D.mm(o.size || 2.4)}px Arial, sans-serif`;
       ctx.textAlign = o.align || 'left'; ctx.textBaseline = o.base || 'middle';
+      if (!o.rot) {
+        const w = ctx.measureText(txt).width, h = D.mm((o.size || 2.4) * 1.15), x = D.X(s), y = D.Y(z), p = D.mm(0.5);
+        const x0 = o.align === 'center' ? x - w / 2 : o.align === 'right' ? x - w : x, y0 = o.base === 'bottom' ? y - h : o.base === 'top' ? y : y - h / 2;
+        const b = { x0: x0 - p, y0: y0 - p, x1: x0 + w + p, y1: y0 + h + p };
+        if (o.avoid && D.hit(b)) { ctx.restore(); return false; }                                     // подпись необязательная — не налезаем
+        if (o.bg) { ctx.fillStyle = 'rgba(255,255,255,.88)'; ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); }
+        D.boxes.push(b);
+      }
+      ctx.fillStyle = o.color || '#111';
       if (o.rot) { ctx.translate(D.X(s), D.Y(z)); ctx.rotate(o.rot); ctx.fillText(txt, 0, 0); } else ctx.fillText(txt, D.X(s), D.Y(z));
       ctx.restore();
+      return true;
     };
     /** Выноска: точка на элементе → полка с текстом (строки) в точке (ts, tz) */
     D.leader = (s, z, ts, tz, lines, o = {}) => {
@@ -117,7 +131,16 @@ const Detail = {
       const n = D.notes.length + 1, r = D.mm(2.6);
       D.notes.push(text);
       ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = D.mm(0.2);
-      const cx = D.X(ts), cy = D.Y(tz), dx = cx - D.X(s), dy = cy - D.Y(z), L = Math.hypot(dx, dy) || 1;
+      let cx = D.X(ts), cy = D.Y(tz);
+      // кружок не должен закрывать отметки и подписи: сдвигаем дальше по выноске, затем вбок
+      { const ux = cx - D.X(s), uy = cy - D.Y(z), ul = Math.hypot(ux, uy) || 1, st = D.mm(3.2);
+        const box = (x, y) => ({ x0: x - r, y0: y - r, x1: x + r, y1: y + r });
+        const tries = [[0, 0]];
+        for (let i = 1; i <= 6; i++) tries.push([ux / ul * st * i, uy / ul * st * i], [-uy / ul * st * i, ux / ul * st * i], [uy / ul * st * i, -ux / ul * st * i]);
+        const ok = tries.find(([ax, ay]) => !D.hit(box(cx + ax, cy + ay)));
+        if (ok) { cx += ok[0]; cy += ok[1]; }
+        D.boxes.push(box(cx, cy)); }
+      const dx = cx - D.X(s), dy = cy - D.Y(z), L = Math.hypot(dx, dy) || 1;
       ctx.beginPath(); ctx.moveTo(D.X(s), D.Y(z)); ctx.lineTo(cx - dx / L * r, cy - dy / L * r); ctx.stroke();
       ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(D.X(s), D.Y(z), D.mm(0.55), 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -131,7 +154,10 @@ const Detail = {
       ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y);
       for (const x of [x0, x1]) { ctx.moveTo(x - t, y + t); ctx.lineTo(x + t, y - t); ctx.moveTo(x, y - t * 1.6); ctx.lineTo(x, y + t * 1.6); }
       ctx.stroke(); ctx.fillStyle = '#111'; ctx.font = `${D.mm(2.2)}px Arial, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-      ctx.fillText(txt ?? String(Math.round(Math.abs(s1 - s0) * 10)), (x0 + x1) / 2, y - D.mm(0.6)); ctx.restore();
+      const tH = txt ?? String(Math.round(Math.abs(s1 - s0) * 10)), tw = ctx.measureText(tH).width;
+      ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillRect((x0 + x1) / 2 - tw / 2 - D.mm(0.3), y - D.mm(2.9), tw + D.mm(0.6), D.mm(2.3));
+      D.boxes.push({ x0: (x0 + x1) / 2 - tw / 2, y0: y - D.mm(2.9), x1: (x0 + x1) / 2 + tw / 2, y1: y - D.mm(0.6) });
+      ctx.fillStyle = '#111'; ctx.fillText(tH, (x0 + x1) / 2, y - D.mm(0.6)); ctx.restore();
     };
     D.dimV = (z0, z1, s, txt) => {
       const x = D.X(s), y0 = D.Y(z0), y1 = D.Y(z1), t = D.mm(1.2);
@@ -150,7 +176,11 @@ const Detail = {
       ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - a * 2.2); ctx.lineTo(x + dir * D.mm(14), y - a * 2.2); ctx.stroke();
       const v = z / 100, t = (v > 0.0005 ? '+' : v < -0.0005 ? '−' : '±') + Math.abs(v).toFixed(3);
       ctx.font = `${D.mm(2.3)}px Arial, sans-serif`; ctx.textAlign = left ? 'right' : 'left'; ctx.textBaseline = 'bottom';
-      ctx.fillText(t + (label ? '  ' + label : ''), x + dir * D.mm(1), y - a * 2.2 - D.mm(0.4)); ctx.restore();
+      const txt = t + (label ? '  ' + label : ''), tw = ctx.measureText(txt).width, tx = x + dir * D.mm(1), ty = y - a * 2.2 - D.mm(0.4);
+      const b = { x0: left ? tx - tw - D.mm(0.4) : tx - D.mm(0.4), y0: ty - D.mm(2.6), x1: left ? tx + D.mm(0.4) : tx + tw + D.mm(0.4), y1: y + D.mm(0.3) };
+      ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, ty - b.y0 + D.mm(0.2));      // подложка — штриховка не перечёркивает
+      ctx.fillStyle = '#111'; ctx.fillText(txt, tx, ty); ctx.restore();
+      D.boxes.push(b);
     };
     return D;
   },
@@ -342,6 +372,8 @@ const Detail = {
     const inOp = (s, z) => g.ops.some(o => s > o.s0 - 0.5 && s < o.s1 + 0.5 && z > o.z0 - 0.5 && z < o.z1 + 0.5);
     const lint = g.ops.map(o => ({ s0: o.s0 - 25, s1: o.s1 + 25, z0: o.z1, z1: Math.min(o.z1 + bh, top) }));
     let row = 0, blocks = 0;
+    // отметки — слева (справа подписи армированных рядов)
+    D.level(-D.cm(8), g.H, '', true); D.level(-D.cm(8), 0, 'верх ленты', true);
     D.rect(0, -3, g.L, 0, '#000', null);                                                                  // гидроизоляция по ленте
     for (let z = 0; z < top - 0.5; z += bh, row++) {
       const zt = Math.min(z + bh, top), off = row % 2 ? bl / 2 : 0;
@@ -357,7 +389,7 @@ const Detail = {
       const reinf = R.every && (row === 0 || (row + 1) % R.every === 0);
       if (reinf) {
         D.line(0, zt - joint / 2, g.L, zt - joint / 2, '#c0392b', 0.5, [2, 0.8]);
-        D.text(`2Ø8 А500 (ряд ${row + 1})`, g.L + 4, zt - joint / 2, { size: 2, color: '#c0392b' });
+        D.text(`2Ø8 А500 (ряд ${row + 1})`, g.L + 4, zt - joint / 2, { size: 2, color: '#c0392b', avoid: true });
       }
       // ряд под окном — армировать с заходом 0,9 м
       for (const o of g.ops) if (o.z0 > 0 && Math.abs(zt - o.z0) < bh / 2) D.line(Math.max(0, o.s0 - 90), zt - joint / 2 - 1, Math.min(g.L, o.s1 + 90), zt - joint / 2 - 1, '#c0392b', 0.35, [1, 0.6]);
@@ -366,15 +398,16 @@ const Detail = {
       D.rect(o.s0, o.z0, o.s1, o.z1, '#ffffff', '#111', 0.35);
       D.line(o.s0, o.z0, o.s1, o.z1, '#bbb', 0.12); D.line(o.s0, o.z1, o.s1, o.z0, '#bbb', 0.12);
       const l = { s0: Math.max(0, o.s0 - 25), s1: Math.min(g.L, o.s1 + 25), z0: o.z1, z1: Math.min(o.z1 + bh, top) };
-      D.rect(l.s0, l.z0, l.s1, l.z1, D.pat.concrete, '#111', 0.35);
-      D.text(`Перемычка U-блок ${Math.round(l.s1 - l.s0)} см, 2Ø12`, (l.s0 + l.s1) / 2, l.z1 + 3, { size: 2, align: 'center' });
+      // марка перемычки (ПР-1…) — расшифровка в ведомости на панели листа; проём под армопоясом — пояс и есть перемычка
+      const lt = Detail.lintels(g).find(q => q.ops.includes(o));
+      if (l.z1 - l.z0 > 1) D.rect(l.s0, l.z0, l.s1, l.z1, D.pat.concrete, '#111', 0.35);
+      if (lt) D.text(lt.mark, (l.s0 + l.s1) / 2, l.z1 - l.z0 > 1 ? (l.z0 + l.z1) / 2 : o.z1 - D.cm(4), { size: 2.2, align: 'center', bold: true, bg: true });
       D.dimH(o.s0, o.s1, o.z0 + (o.z1 - o.z0) / 2, `${Math.round((o.s1 - o.s0) * 10)}`);
       if (o.z0 > 0) D.dimV(0, o.z0, o.s0 + 6, `${Math.round(o.z0 * 10)}`);
     }
     if (ring) { D.rect(0, top, g.L, g.H, D.pat.concrete, '#111', 0.4); D.text('Армопояс 250 мм, 4Ø12 А500, хомуты Ø8 шаг 300', g.L / 2, top + ring / 2, { size: 2.3, align: 'center', bold: true }); }
-    D.dimH(0, g.L, -18, `${Math.round(g.L * 10)}`);
-    D.dimV(0, g.H, -12, `${Math.round(g.H * 10)}`);
-    D.level(g.L + 30, g.H, '', false); D.level(g.L + 30, 0, 'верх ленты', false);
+    D.dimH(0, g.L, -D.cm(7), `${Math.round(g.L * 10)}`);
+    D.dimV(0, g.H, -D.cm(4), `${Math.round(g.H * 10)}`);
     return { g, blocks: Math.ceil(blocks * 1.05), rows: row, bl, bh0 };
   },
 
@@ -391,26 +424,26 @@ const Detail = {
       D.line(u, -Dh, u, Dh, '#8a5a2b', 0.7);
       if (k % 4 === 0) D.text((fr.scheme === 'truss' ? 'Ф' : 'С') + (k + 1), u, -Dh - 8, { size: 2, align: 'center' });
     }
-    D.dimH(S.u0, Math.min(S.u1, S.u0 + fr.step * 100), Dh + 25, String(fr.step * 1000));
-    D.dimH(-W, W, Dh + 45, String(Math.round(r.w * 10)));
-    D.dimV(-Dh, Dh, -W - 20, String(Math.round(r.d * 10)));
-    D.dimV(S.v0, S.v1, -W - 40, String(Math.round((S.v1 - S.v0) * 10)));
-    D.text(`${fr.scheme === 'truss' ? 'Фермы' : 'Стропила'} ${fr.b}×${fr.h} шаг ${fr.step * 1000} — ${fr.n}${fr.scheme === 'truss' ? '' : ' пар'} шт.`, 0, -Dh * 0.5, { size: 3, align: 'center', bold: true });
-    D.text(`Уклон ${Math.round(fr.pitch)}°, конёк +${(Roof.params(r).top / 100).toFixed(3)}`, 0, Dh * 0.5, { size: 2.6, align: 'center' });
+    D.dimH(S.u0, Math.min(S.u1, S.u0 + fr.step * 100), Dh + D.cm(6), String(fr.step * 1000));
+    D.dimH(-W, W, Dh + D.cm(13), String(Math.round(r.w * 10)));
+    D.dimV(S.v0, S.v1, -W - D.cm(6), String(Math.round((S.v1 - S.v0) * 10)) + ' (по лежням)');
+    D.dimV(-Dh, Dh, -W - D.cm(13), String(Math.round(r.d * 10)) + ' (по свесам)');
+    D.text(`${fr.scheme === 'truss' ? 'Фермы' : 'Стропила'} ${fr.b}×${fr.h} шаг ${fr.step * 1000} — ${fr.n}${fr.scheme === 'truss' ? '' : ' пар'} шт.`, 0, -Dh * 0.5, { size: 3, align: 'center', bold: true, bg: true });
+    D.text(`Уклон ${Math.round(fr.pitch)}°, конёк +${(Roof.params(r).top / 100).toFixed(3)}`, 0, Dh * 0.5, { size: 2.6, align: 'center', bg: true });
   },
 
   /* ------------------------------ листы ------------------------------ */
   /** Габарит сцены листа (см; ось y — вниз, как на плане) */
   bbox(spec) {
     const M = Detail.model();
-    if (spec.detail === 'wallElev') { const g = Detail.elevGeom(spec.arg); return { x0: -40, y0: -g.H - 20, x1: g.L + 70, y1: 35 }; }
+    if (spec.detail === 'wallElev') { const g = Detail.elevGeom(spec.arg); return { x0: -110, y0: -g.H - 20, x1: g.L + 100, y1: 60 }; }
     if (!M.r) return { x0: 0, y0: 0, x1: 100, y1: 100 };
     const Dh = M.r.d / 2, ridge = Roof.params(M.r).top + 30;
-    if (spec.detail === 'roofPlan') return { x0: -M.r.w / 2 - 60, y0: -Dh - 20, x1: M.r.w / 2 + 20, y1: Dh + 60 };
+    if (spec.detail === 'roofPlan') return { x0: -M.r.w / 2 - 120, y0: -Dh - 20, x1: M.r.w / 2 + 20, y1: Dh + 110 };
     const C = Detail.cut(M), ext = Detail.cutWalls(M, C.u).filter(w => w.kind === 'ext'), W0 = ext[0] || { v: -Dh + 50, th: 40 };
     if (spec.detail === 'foundNode') { const f = W0.v - W0.th / 2; return { x0: f - 140, y0: -(M.lv.stripTop + 110), x1: W0.v + W0.th / 2 + 140, y1: -(M.lv.cushion - 20) }; }
     if (spec.detail === 'roofNode') { const f = W0.v - W0.th / 2; return { x0: -Dh - 40, y0: -(M.lv.wallTop + 130), x1: f + W0.th + 120, y1: -(M.lv.wallTop - 70) }; }
-    return { x0: -Dh - 75, y0: -ridge - 15, x1: Dh + 65, y1: -(M.lv.cushion - 50) };
+    return { x0: -Dh - 115, y0: -ridge - 15, x1: Dh + 65, y1: -(M.lv.cushion - 90) };
   },
   /** Нарисовать лист-деталь в канвас W×H px в масштабе 1:N */
   render(spec, Wpx, Hpx, N, dpmm) {
@@ -434,8 +467,8 @@ const Detail = {
     const node = mode === 'foundNode' || mode === 'roofNode';
     const sL = node ? left - 25 : -S.Dh - 35;
     if (mode !== 'roofNode') { D.level(sL, lv.fin, 'чистый пол', true); D.level(sL, lv.gnd, 'земля', true); D.level(sL, lv.stripBot, 'низ ленты', true); }
-    if (mode !== 'foundNode') { D.level(sL, lv.wallTop, 'верх стен', true); if (lv.ring) D.level(sL, lv.wallTop - lv.ring, 'армопояс', true); D.level(S.inner[0] + 30, lv.ceil, 'потолок', false); }
-    if (!node) D.level(0, Roof.params(r).top + 8, 'конёк', false);
+    if (mode !== 'foundNode') { D.level(sL, lv.wallTop, 'верх стен', true); if (lv.ring) D.level(sL, lv.wallTop - lv.ring, 'низ армопояса', true); D.level(S.inner[0] + 30, lv.ceil - D.cm(1), 'потолок', false); }
+    if (!node) D.level(0, Roof.params(r).top, 'конёк', false);                                          // та же отметка, что в таблице и на плане кровли
     const T = {
       floor: 'Пол по грунту: керамогранит 10 мм на клею; стяжка 50 мм с трубами тёплого пола; плита 100 мм B20, сетка Ø8 200×200; XPS 100 мм; песок 300 мм с послойным трамбованием; снять растительный слой',
       found: F ? `Фундамент: ${FOUND_TYPES[F.type].toLowerCase()} — лента ${Math.round(F.width * 1000)}×${Math.round(F.H * 1000)} мм, бетон B20 W6 F150; ${F.bars}; защитный слой 40 мм` : 'Фундамент — по расчёту',
@@ -482,7 +515,7 @@ const Detail = {
       D.dimH(-S.Dh, face, top - 60, String(Math.round((face + S.Dh) * 10)));
       D.dimV(top, zr(face) , face - 12);
     } else {
-      if (ext.length >= 2) { D.dimH(ext[0].v, ext[ext.length - 1].v, lv.cushion - 28, String(Math.round((ext[ext.length - 1].v - ext[0].v) * 10))); D.dimH(-S.Dh, S.Dh, lv.cushion - 42); }
+      if (ext.length >= 2) { D.dimH(ext[0].v, ext[ext.length - 1].v, lv.cushion - D.cm(6), String(Math.round((ext[ext.length - 1].v - ext[0].v) * 10))); D.dimH(-S.Dh, S.Dh, lv.cushion - D.cm(13)); }
       D.dimV(lv.fin, lv.wallTop, S.Dh + 45); D.dimV(lv.gnd, lv.fin, S.Dh + 45);
       D.callout(20, lv.slab, 70, lv.fin + 60, T.floor);
       D.callout(Wv, lv.stripBot + 20, Wv - 80, lv.stripBot - 10, T.found);
@@ -502,11 +535,17 @@ const Detail = {
   /* ------------------------------ панели ------------------------------ */
   /** Расшифровка позиций (номера на чертеже) */
   posList(spec) { const n = (spec && spec._notes) || []; return n.length ? U.el('ol', { class: 'pos' }, n.map(t => U.el('li', {}, t))) : null; },
-  nodePanel(spec, title, re) {
+  nodePanel(spec, title, re, fixed) {
     return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, title), Detail.posList(spec),
-      U.el('h4', {}, 'Указания'), Sheets.ul(Sheets.notes(re).slice(0, 5)),
+      U.el('h4', {}, 'Указания'), Sheets.ul(fixed || Sheets.notes(re).slice(0, 5)),
       U.el('div', { class: 'norm' }, '§ СП 22.13330.2016; СП 45.13330.2017; СП 50-101-2004; СП 15.13330.2020; СП 17.13330.2017; СП 64.13330.2017'));
   },
+  /** Указания к узлу карниза — по узлу, а не общие замечания проекта */
+  EAVE_NOTES: ['Лежень — по гидроизоляции на армопояс, анкеры М12 шаг 1000 мм; ферма/стропило — к лежню уголками или скобами с двух сторон',
+    'Продухи: приток — через перфорированный софит, вытяжка — через конёк; сечение ≥ 1/300 площади чердака',
+    'Пароизоляция — под утеплителем, нахлёсты 100 мм с проклейкой, примыкания к стенам — на ленту',
+    'Мембрана — с выпуском на капельник; карнизная планка — под мембраной',
+    'Желоб — на кронштейнах шаг 600 мм, уклон 3–5 мм на 1 м к воронкам'],
   sectionPanel(spec) {
     const M = Detail.model();
     const rows = [['Чистый пол', '±0.000'], ['Земля', ((M.lv.gnd) / 100).toFixed(3)], ['Низ ленты', (M.lv.stripBot / 100).toFixed(3)], ['Верх стен', '+' + (M.lv.wallTop / 100).toFixed(3)]];
@@ -533,14 +572,30 @@ const Detail = {
       U.el('h4', {}, 'Указания'), Sheets.ul(['Древесина — сосна/ель 2 сорта, влажность ≤ 20 %, антисептик и антипирен', fr.scheme === 'truss' ? 'Фермы — заводские на МЗП по расчёту изготовителя; монтаж с временными связями, постоянные раскосы по нижним и верхним поясам' : 'Стропила — к мауэрлату скользящими опорами, в коньке — на болтах через накладки', 'Снегозадержатели над входами и вдоль карниза', 'Дымоход: разделка до сгораемых конструкций ≥ 130 мм (кирпич) / по паспорту', 'Люк на чердак утеплённый, 600×900']),
       U.el('div', { class: 'norm' }, '§ СП 17.13330.2017; СП 20.13330.2016; СП 64.13330.2017; СП 7.13130.2013'));
   },
+  /** Перемычки стены: одинаковые (длина, тип) — одна марка ПР-n; проём до армопояса — пояс-перемычка */
+  lintels(g) {
+    if (g._lint) return g._lint;
+    const top = g.H - (g.ring ? 25 : 0), out = [];
+    for (const o of g.ops) {
+      const len = Math.round(Math.min(g.L, o.s1 + 25) - Math.max(0, o.s0 - 25)), belt = o.z1 >= top - 5;
+      const key = belt ? 'belt' + len : 'u' + len;
+      let q = out.find(x => x.key === key);
+      if (!q) out.push(q = { key, len, belt, ops: [], mark: '' });
+      q.ops.push(o);
+    }
+    out.sort((a, b) => a.belt - b.belt || a.len - b.len).forEach((q, i) => { q.mark = 'ПР-' + (i + 1); });
+    return (g._lint = out);
+  },
   elevPanel(E) {
     const g = Detail.elevGeom(E), M = WALL_MATERIALS[g.mat] || {}, R = WALL_REINF[g.mat] || {}, [bl, bh] = M.block || [39, 18.8];
     const area = (g.L * g.H - g.ops.reduce((a, o) => a + (o.s1 - o.s0) * (o.z1 - o.z0), 0)) / 1e4;
     const perM2 = 1e4 / ((bl + 1) * (bh + 1));
     const rows = Math.ceil(g.H / (bh + 1));
     return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Раскладка: ' + E.name),
-      Sheets.T(null, [['Материал', `${M.name || g.mat}, ${g.th} см`], ['Блок', `${bl * 10}×${bh * 10} мм, шов ${M.block ? '10–12' : '10'} мм`], ['Длина / высота', `${(g.L / 100).toFixed(2)} × ${(g.H / 100).toFixed(2)} м`], ['Площадь кладки', `${area.toFixed(1)} м²`], ['Блоков', `≈ ${Math.ceil(area * perM2 * 1.05)} шт. (+5 %)`], ['Рядов', String(rows)], ['Проёмов', String(g.ops.length)]]),
+      Sheets.T(null, [['Материал', `${M.name || g.mat}; стена ${g.th} см${g.clad ? ' (с утеплителем и облицовкой)' : ''}`], ['Блок', `${bl * 10}×${bh * 10} мм, шов ${M.block ? '10–12' : '10'} мм`], ['Длина / высота', `${(g.L / 100).toFixed(2)} × ${(g.H / 100).toFixed(2)} м`], ['Площадь кладки', `${area.toFixed(1)} м²`], ['Блоков', `≈ ${Math.ceil(area * perM2 * 1.05)} шт. (+5 %)`], ['Рядов', String(rows)], ['Проёмов', String(g.ops.length)]]),
       U.el('h4', {}, 'Армирование и перемычки'), Sheets.ul([R.every ? `1-й и каждый ${R.every}-й ряд: ${R.how}` : (R.how || 'по расчёту'), 'Ряд под окнами — с заходом 900 мм в стороны', 'Перемычки — U-блоки с бетоном B20 и 2Ø12 А500, опирание ≥ 250 мм', g.ring ? 'Армопояс 250 мм по всему периметру, 4Ø12, хомуты Ø8 шаг 300' : null, g.clad ? 'Облицовка: кирпич на гибких связях (базальтопластик 4 шт./м², у проёмов — шаг 300)' : null].filter(Boolean)),
+      g.ops.length ? U.el('h4', {}, 'Ведомость перемычек') : null,
+      g.ops.length ? Sheets.T(['Марка', 'Перемычка', 'Кол.'], Detail.lintels(g).map(q => [q.mark, q.belt ? `армопояс над проёмом ${Math.round(q.len - 50)} см — работает как перемычка: нижнее армирование по расчёту` : `U-блок с бетоном B20, 2Ø12 А500, L = ${q.len} см (опирание 25 см)`, String(q.ops.length)])) : null,
       U.el('h4', {}, 'Перевязка'), Sheets.ul(['Смещение швов — ½ блока (≥ 0,4 высоты)', 'Углы и примыкания — перевязка через ряд', 'Первый ряд — на раствор по гидроизоляции, выставить по нивелиру']),
       U.el('div', { class: 'norm' }, '§ ' + (R.src || 'СП 15.13330.2020')));
   },

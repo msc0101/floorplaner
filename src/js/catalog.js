@@ -437,6 +437,14 @@ const CATALOG = [
     { key: 'column', name: 'Колонна', shape: 'column', w: 30, d: 30, h: 280 },
     { key: 'column', name: 'Колонна круглая', shape: 'columnRound', w: 30, d: 30, h: 280, key2: 'columnRound' },
   ]},
+  // хранение в гараже и мастерской: стеллажи вдоль глухих стен, верстак у окна, антресоль над капотом — место у машины не простаивает
+  { id: 'garage', name: 'Гараж и мастерская', layer: 'furniture', items: [
+    { key: 'garageRack', name: 'Стеллаж металлический 150×50, 5 полок (гараж, кладовая)', kw: 'стеллаж металлический полки гараж хранение ящики', shape: 'garageRack', w: 150, d: 50, h: 200 },
+    { key: 'workbench', name: 'Верстак слесарный 150×70 с тисками и перфопанелью', kw: 'верстак мастерская инструмент тиски перфопанель гараж', shape: 'workbench', w: 150, d: 70, h: 90 },
+    { key: 'tireRack', name: 'Стеллаж для шин (2 комплекта) 110×40', kw: 'шины колёса резина хранение стеллаж гараж', shape: 'tireRack', w: 110, d: 40, h: 200 },
+    { key: 'wallShelf', name: 'Полка навесная 120×30 (на кронштейнах, низ на 1,6 м)', kw: 'полка навесная кронштейн гараж хранение', shape: 'wallShelf', w: 120, d: 30, h: 40, z0: 160 },
+    { key: 'ceilRack', name: 'Антресоль потолочная над капотом 180×60 (низ на 1,8 м)', kw: 'антресоль потолочная полка гараж над машиной хранение', shape: 'ceilRack', w: 180, d: 60, h: 45, z0: 180 },
+  ] },
   { id: 'electric', name: 'Электрика', layer: 'electric', items: [
     { key: 'socket', name: 'Розетка', shape: 'socket', w: 8, d: 4, h: 30, sym: 22 },
     { key: 'socket2', name: 'Розетка двойная', shape: 'socket2', w: 15, d: 4, h: 30, sym: 26 },
@@ -771,6 +779,8 @@ function bldWallH(it) {
 
 /* ===================== ПОСТРОЙКИ «КАК ДОМ»: стены с толщиной, внутри — пусто ===================== */
 const BLD_HOLLOW = new Set(['building', 'garage']);
+/** Отдельно стоящие постройки участка — для привязки сетей на листах наружных сетей */
+const SITE_BLD_SHAPES = new Set(['barrelSauna', 'gazebo', 'greenhouse', 'canopy', 'canopyLean', 'veranda']);
 const BLD_SIDES = { front: 'спереди (+Г)', back: 'сзади (−Г)', left: 'слева (−Ш)', right: 'справа (+Ш)' };
 /** Толщина стен постройки */
 function bldWallT(it) {
@@ -963,6 +973,28 @@ const Painters = (() => {
     for (let i = 0; i < n; i++) { const x = -w / 2 + w * (i + 0.5) / n; line(P, [x - 8, d / 2 - 9, x + 8, d / 2 - 9]); }
   };
   // дровница: каркас и торцы поленьев
+  // стеллаж: контур, стойки по углам, полки — диагональ (обозначение стеллажа)
+  S.garageRack = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d, 0); thin(P);
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) box(P, sx * w / 2 - (sx > 0 ? 4 : 0), sy * d / 2 - (sy > 0 ? 4 : 0), 4, 4, 0, false);
+    line(P, [-w / 2, -d / 2, w / 2, d / 2]);
+    for (let x = -w / 2 + w / 3; x < w / 2 - 5; x += w / 3) line(P, [x, -d / 2, x, d / 2]);
+  };
+  // верстак: столешница, тиски у края, перфопанель по задней кромке
+  S.workbench = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d, 0); thin(P);
+    box(P, w / 2 - 28, d / 2 - 14, 20, 14, 1, false);                                         // тиски
+    line(P, [-w / 2, -d / 2 + 4, w / 2, -d / 2 + 4]);                                        // перфопанель
+    for (let x = -w / 2 + 8; x < w / 2 - 4; x += 10) circle(P, x, -d / 2 + 2, 0.8, true);
+    box(P, -w / 2 + 6, -d / 2 + 10, 40, d - 16, 0, false);                                    // тумба с ящиками
+  };
+  S.tireRack = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d, 0); thin(P);
+    for (const x of [-w / 4, w / 4]) circle(P, x, 0, Math.min(w / 4, d / 2) - 2, false);
+  };
+  // навесное и потолочное — пунктиром: над полом, проход под ними свободен
+  S.wallShelf = (P, w, d) => { P.ctx.save(); P.ctx.setLineDash([6 * P.px, 4 * P.px]); box(P, -w / 2, -d / 2, w, d, 0, false); line(P, [-w / 2, -d / 2, w / 2, d / 2]); P.ctx.restore(); };
+  S.ceilRack = (P, w, d) => { P.ctx.save(); P.ctx.setLineDash([10 * P.px, 4 * P.px, 2 * P.px, 4 * P.px]); box(P, -w / 2, -d / 2, w, d, 0, false); line(P, [-w / 2, -d / 2, w / 2, d / 2]); line(P, [-w / 2, d / 2, w / 2, -d / 2]); P.ctx.restore(); };
   S.woodRack = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 0); thin(P);
     for (let x = -w / 2 + 6; x < w / 2 - 3; x += 9) for (let y = -d / 2 + 6; y < d / 2 - 3; y += 9) circle(P, x, y, 3.5, false);
@@ -1361,8 +1393,9 @@ const Painters = (() => {
     const c = P.ctx, fov = U.rad(U.clamp(P.it.fov ?? P.def.fov ?? 90, 10, 180)), R = U.clamp(P.it.range ?? P.def.range ?? 1500, 100, 5000);
     c.save();
     c.beginPath(); c.moveTo(0, d / 2); c.arc(0, d / 2, R, Math.PI / 2 - fov / 2, Math.PI / 2 + fov / 2); c.closePath();
-    c.fillStyle = 'rgba(124, 58, 237, 0.07)'; c.fill();
-    c.strokeStyle = 'rgba(124, 58, 237, 0.55)'; c.setLineDash([8 * P.px, 5 * P.px]); lw(P, 1); c.stroke();
+    const dwg = P.env && P.env.drawing;                                    // на листе — только контур: заливки секторов складываются в сплошной фон
+    if (!dwg) { c.fillStyle = 'rgba(124, 58, 237, 0.07)'; c.fill(); }
+    c.strokeStyle = dwg ? 'rgba(124, 58, 237, 0.35)' : 'rgba(124, 58, 237, 0.55)'; c.setLineDash([8 * P.px, 5 * P.px]); lw(P, 1); c.stroke();
     c.restore();
     box(P, -w / 2, -d / 2, w, d * 0.75, 1);
     box(P, -w * 0.35, -d / 2 + d * 0.75, w * 0.7, d * 0.25, 0);

@@ -65,8 +65,8 @@ const Analysis = {
     if (Object.keys(nets).length) stats.push({ title: 'Инженерные сети', rows: Object.entries(nets).map(([k, v]) => [`${LINE_KINDS[k].code} ${LINE_KINDS[k].name}`, m(v)]) });
     const blind = Model.blindAreas();
     if (blind.length) stats.push({ title: 'Отмостка', rows: blind.map(b => [b.name, `${m(b.w)} шириной, ${m2(b.area)}`]) });
-    const est = Estimate.totals(Estimate.rows());
-    if (est.total) stats.push({ title: 'Смета (ориентировочно)', rows: [['Итого с резервом ' + est.pct + '%', Estimate.money(est.total)]] });
+    // смета — скрытый раздел (Ctrl+Alt+S): в отчёте только после того, как её открыли в этом сеансе
+    if (Estimate.shown) { const est = Estimate.totals(Estimate.rows()); if (est.total) stats.push({ title: 'Смета (ориентировочно)', rows: [['Итого с резервом ' + est.pct + '%', Estimate.money(est.total)]] }); }
 
     // ---------------- помещения ----------------
     const rooms = [];
@@ -628,6 +628,20 @@ const Analysis = {
     }
     // печи и камины: дымоход и свободное место перед топкой
     const ws = d.walls.filter(w => w.kind !== 'fence');
+    // гараж: хранение не должно зажимать машину — проход ≥ 0,5 м (открыть дверь, пройти); антресоль — выше крыши машины
+    for (const st of d.items.filter(o => ['garageRack', 'workbench', 'tireRack', 'ceilRack'].includes(catItem(o.key).shape))) {
+      const sp = Model.itemPts(st), def = catItem(st.key), fl = st.floor || f1;
+      for (const car of d.items.filter(o => catItem(o.key).shape === 'car' && (o.floor || f1) === fl)) {
+        const cp = Model.itemPts(car);
+        if (def.shape === 'ceilRack') {
+          const z0 = st.z0 ?? def.z0 ?? 180, ch = car.h || catItem(car.key).h || 150;
+          if (cp.some(q => G.pointInPoly(q, sp)) || sp.some(q => G.pointInPoly(q, cp))) { if (z0 < ch + 20) add('bad', 'Гараж', `${name(st)}: низ на ${m(z0)} — над машиной высотой ${m(ch)} нужно ≥ 20 см зазора`, 'эксплуатация гаража', st, st.id); }
+          continue;
+        }
+        const gap = Math.min(...sp.map(p => G.distPoly(p, cp)), ...cp.map(p => G.distPoly(p, sp)));
+        if (gap < 49.5) add('warn', 'Гараж', `${name(st)}: до машины ${m(Math.max(0, gap))} — оставьте проход ≥ 0,5 м (дверь, багажник, пройти с инструментом)`, 'эргономика гаража (проход вдоль машины ≥ 0,5 м)', st, st.id);
+      }
+    }
     for (const it of d.items) {
       const sh = catItem(it.key).shape;
       if (!['stoveHeat', 'fireplace', 'fireplaceCorner', 'stoveMetal'].includes(sh)) continue;

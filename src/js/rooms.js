@@ -230,7 +230,7 @@ const Rooms = {
     const footprint = fd[0].outlines.reduce((s, o) => s + o.area, 0);
     const perFloor = fd.map(x => ({ floor: x.floor, total: x.rooms.reduce((s, r) => s + r.areaFloor, 0), rooms: x.rooms.length }));
     // постройки на участке (предметы-постройки)
-    const outb = App.doc.items.filter(it => ['building', 'garage', 'canopy', 'canopyLean', 'gazebo', 'greenhouse', 'pool', 'deck', 'veranda'].includes(catItem(it.key).shape));
+    const outb = App.doc.items.filter(it => ['building', 'garage', 'canopy', 'canopyLean', 'gazebo', 'greenhouse', 'pool', 'deck', 'veranda', 'barrelSauna'].includes(catItem(it.key).shape));
     const outbArea = outb.reduce((s, it) => s + it.w * it.d, 0);
     // гаражи, сараи, бани — площадь внутри (по аналогии с помещениями дома)
     const outbInner = outb.filter(it => BLD_HOLLOW.has(catItem(it.key).shape)).reduce((s, it) => s + bldInnerArea(it), 0);

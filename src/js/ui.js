@@ -706,7 +706,7 @@ const UI = {
       F.select('Фасад', o.facade, opts(FIN_FACADE), (v) => set('facade', v)),
       o.facade !== 'none' ? F.select('Цвет кирпича', o.brick, Object.entries(FIN_BRICK_COLORS).map(([k, v]) => [k, v[0]]), (v) => set('brick', v)) : null,
       o.facade !== 'none' && !clad ? F.btns([['Облицевать наружные стены', () => { const n = Finish.cladWalls(o.facade); Model.commit(); UI.toast(`Облицовка добавлена: стены толще наружу на ${FIN_FACADE[o.facade].th + FIN_FACADE[o.facade].gap} см, внутренние размеры не изменились${n ? `; сдвинуто у фасада: ${n}` : ''}`); UI.refresh(); }, 'primary']]) : null,
-      F.note('Отделка видна в 3D и на листе «План отделки», площади — в смете. Слой «Отделка» на плане — раскладка плитки и коды покрытий. Облицовка утолщает стены наружу, фундамент пересчитывается сам.'));
+      F.note('Отделка видна в 3D и на листе «План отделки», площади — в ведомости отделки на том же листе. Слой «Отделка» на плане — раскладка плитки и коды покрытий. Облицовка утолщает стены наружу, фундамент пересчитывается сам.'));
   },
   /** Конструкции: грунт → авторасчёт фундамента; кладка и армирование стен по материалам */
   structSection() {
@@ -1174,7 +1174,7 @@ const UI = {
     if (a.kind !== 'water') body.append(F.section('Покрытие',
       F.btns([['Заасфальтировать', () => pave('asphalt'), a.kind === 'asphalt' ? 'on' : 'primary'], ['Бетон', () => pave('concrete'), a.kind === 'concrete' ? 'on' : ''], ['Щебень', () => pave('gravel'), a.kind === 'gravel' ? 'on' : '']]),
       F.btns([['Плитка / мощение', () => pave('paving'), a.kind === 'paving' ? 'on' : ''], ['Газон', () => pave('lawn'), a.kind === 'lawn' ? 'on' : '']]),
-      F.note(a.kind === 'plot' ? 'Для границы участка создаётся отдельная зона покрытия по тому же контуру (граница остаётся). Чтобы покрыть только часть — нарисуйте зону инструментом «Зона».' : 'Покрытие ровное, вровень с землёй, без бордюров. Площадь идёт в «Площади» и в смету.')));
+      F.note(a.kind === 'plot' ? 'Для границы участка создаётся отдельная зона покрытия по тому же контуру (граница остаётся). Чтобы покрыть только часть — нарисуйте зону инструментом «Зона».' : 'Покрытие ровное, вровень с землёй, без бордюров. Площадь идёт в «Площади».')));
     const sides = U.el('div', { class: 'sides' });
     a.pts.forEach((p, i) => {
       const q = a.pts[(i + 1) % a.pts.length];
@@ -1746,7 +1746,7 @@ const UI = {
       for (const v of Object.values(spec).sort((a, b) => a.cat.localeCompare(b.cat))) sec.append(F.info(v.name, v.n + ' шт.'));
       body.append(sec);
     }
-    body.append(F.btns([['Смета…', () => Estimate.open(), 'primary'], ['Печать с экспликацией…', () => $('dlgPrint').showModal()], ['Копировать как текст', () => IO.copySummary()]]));
+    body.append(F.btns([['Печать с экспликацией…', () => $('dlgPrint').showModal(), 'primary'], ['Копировать как текст', () => IO.copySummary()]]));
   },
 
   /* ------------------------------- проект --------------------------------- */
@@ -1782,7 +1782,7 @@ const UI = {
       bl.w > 0 ? F.num('Ширина', bl.w, (v) => { s.blind = { w: U.clamp(v, 30, 300), last: U.clamp(v, 30, 300) }; Model.commit(); }, { min: 30, max: 300 }) : null,
       bl.w > 0 && blinds.length ? F.info('Площадь', U.fmtArea(blinds.reduce((a, b) => a + b.area, 0))) : null,
       narrow.length ? F.note(`<b style="color:var(--danger)">Свес крыши ${U.fmtLen(narrow[0].over)} — отмостка должна быть шире свеса минимум на 20 см (≥ ${U.fmtLen(narrow[0].over + 20)}).</b>`) : null,
-      F.note('Норма: ширина не менее 0,8–1 м и на 20 см больше свеса кровли, уклон от стены 1–3% (СП 82.13330, СП 22.13330). Отмостка гаража, бани, сарая — в свойствах постройки. Попадает в смету.')));
+      F.note('Норма: ширина не менее 0,8–1 м и на 20 см больше свеса кровли, уклон от стены 1–3% (СП 82.13330, СП 22.13330). Отмостка гаража, бани, сарая — в свойствах постройки.')));
     body.append(F.section('Грунт',
       F.num('Глубина промерзания', Climate.frost(), (v) => { s.frost = U.clamp(v, 0, 400); Model.commit(); }, { min: 0, max: 400 }),
       U.isNum(s.frost) ? F.btns([[`По городу (${U.fmtLen(Climate.get().frost)})`, () => { delete s.frost; Model.commit(); }]]) : F.note(`По климату: ${Climate.get().city}${Climate.get().exact ? '' : ' (ближайший город из списка)'}.`),

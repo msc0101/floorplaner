@@ -518,6 +518,10 @@ button.mini:disabled { opacity: .35; }
   .tb2 .tblock { position: static; }
   .spanel { position: absolute; overflow: hidden; border-left: .3mm solid #000; padding-left: 2mm; box-sizing: border-box; }
   .spanel .sysdesc { position: static; width: auto; }
+  /* широкая низкая панель (книжный лист): текст в две колонки — иначе требования обрезаются */
+  .spanel.wide .sysdesc { column-count: 2; column-gap: 6mm; column-fill: auto; height: 100%; }
+  .spanel.wide .sysdesc h3, .spanel.wide .sysdesc h4 { break-after: avoid; }
+  .spanel.wide .sysdesc table, .spanel.wide .sysdesc li, .spanel.wide .sysdesc .norm { break-inside: avoid; }
   .sysdesc ul { margin: 0; padding-left: 4mm; }
   .sysdesc ol.pos { margin: 0; padding-left: 5mm; }
   .sysdesc ol.pos li { margin: 0 0 1mm; }
