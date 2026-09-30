@@ -7608,6 +7608,8 @@ const View3D = {
       // подземная трасса проходит мимо прибора (столбик, фонарь, колонка): отвод от трассы и подъём в его основание
       if (dep > 0) for (const it of App.doc.items) {
         if ((it.floor || f1) !== f.id || !itemLinks(it).some(([, ks]) => ks.includes(l.kind))) continue;
+        // водосточная труба сливает в дождеприёмник / лоток рядом (по поверхности) — под землю уходит только он, иначе два стояка «буквой U»
+        if (catItem(it.key).key === 'downspout' && App.doc.items.some(o => o !== it && ['stormInlet', 'drainChannel', 'drainWell'].includes(o.key) && (o.floor || f1) === f.id && G.dist(o, it) <= 80)) continue;
         let best = null;
         for (let i = 1; i < l.pts.length; i++) { const pr = G.proj(it, l.pts[i - 1], l.pts[i]); if (pr.d < 40 && (!best || pr.d < best.pr.d)) best = { pr, i }; }
         if (!best || l.pts.some(q => G.dist(q, it) < 12)) continue;                          // у вершины — стояк рисуется как у конца
