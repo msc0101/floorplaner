@@ -306,7 +306,7 @@ const UI = {
         U.el('button', { type: 'button', title: 'Вид сверху', onclick: () => View3D.view('top') }, 'Сверху'),
         U.el('button', { type: 'button', title: 'С высоты человеческого роста', onclick: () => View3D.view('eye') }, 'Глаза')),
       U.el('div', { class: 'fbtns' },
-        U.el('button', { type: 'button', onclick: () => { View3D.fit(); View3D.redraw(); } }, 'Показать всё'),
+        U.el('button', { type: 'button', onclick: () => { if (Walk.on) Walk.stop(); if (View3D.camView) View3D.setCamView(null); View3D.fit(); View3D.redraw(); } }, 'Показать всё'),
         U.el('button', { type: 'button', onclick: () => View3D.snapshot() }, 'PNG'),
         U.el('button', { type: 'button', onclick: () => View3D.exportOBJ(), title: '3D-модель для Blender, SketchUp, Twinmotion' }, 'OBJ'),
         U.el('button', { type: 'button', onclick: () => IFC.export(), title: 'BIM-модель для Revit, ArchiCAD, Renga' }, 'IFC')),

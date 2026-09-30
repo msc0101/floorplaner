@@ -10557,12 +10557,49 @@ const View3D = {
   /** Готовые ракурсы: с юга/севера/востока/запада (по компасу) и сверху */
   view(kind) {
     const c = View3D.cam;
+    // из прогулки / вида с камеры — назад к обзору
+    if (Walk.on) Walk.stop();
+    if (View3D.camView) View3D.setCamView(null);
     // камера «смотрит с» стороны света: yaw — угол позиции камеры вокруг цели
     const byBearing = (b) => { const d = Sun.planDir(b); return Math.atan2(d.x, d.y); };
-    if (kind === 'top') c.pitch = 1.5;
-    else if (kind === 'eye') { c.pitch = 0.08; c.ty = 1.6; c.dist = Math.max(12, c.dist * 0.6); }
+    if (kind === 'top') { c.yaw = 0; c.pitch = 1.5; }                                 // сверху: как на плане (верх экрана — верх плана)
+    else if (kind === 'eye') c.pitch = 0.08;
     else { c.yaw = byBearing({ s: 180, n: 0, e: 90, w: 270 }[kind]); c.pitch = 0.35; }
+    View3D.frame(View3D.houseBox3d(), kind === 'eye');
     View3D.redraw();
+  },
+  /** Габарит дома в 3D (м): помещения всех этажей и крыши над ними; нет помещений — всё содержимое участка */
+  houseBox3d() {
+    const pts = [];
+    for (const fd of App.floorData || []) for (const o of fd.outlines || []) pts.push(...o.outer);
+    const b0 = pts.length ? G.bbox(pts) : null;
+    let top = App.doc.floors.reduce((m, f) => Math.max(m, f.elev + (f.h || 280)), 300);
+    if (b0) for (const r of App.doc.roofs) {                                         // крыша над домом — со свесами и коньком
+      const P = Roof.faces(r).flat(), rb = G.bbox(P);
+      if (rb.x1 < b0.x0 || rb.x0 > b0.x1 || rb.y1 < b0.y0 || rb.y0 > b0.y1) continue;           // крыша не над домом (беседка, навес)
+      pts.push(...P); top = Math.max(top, Roof.params(r).top);
+    }
+    const b = pts.length ? G.bbox(pts) : (Model.contentBBox() || { x0: -500, y0: -500, x1: 500, y1: 500 });
+    return { x0: b.x0 / 100, x1: b.x1 / 100, z0: b.y0 / 100, z1: b.y1 / 100, y0: 0, y1: top / 100 };
+  },
+  /** Навести орбиту на габарит B так, чтобы он целиком влез в кадр при текущих yaw/pitch (сфера вокруг габарита — с любой стороны) */
+  frame(B, eye) {
+    const c = View3D.cam, cv = $('canvas3d'), asp = cv && cv.clientHeight ? cv.clientWidth / cv.clientHeight : 1.5;
+    // развёрнутая панель «3D-вид» лежит поверх холста слева — вписываем дом в видимую часть справа от неё
+    let a = -1;                                                                        // левая граница видимой части в NDC
+    const pn = $('panel3d');
+    if (cv && pn && !pn.classList.contains('collapsed') && pn.offsetParent) {
+      const cr = cv.getBoundingClientRect(), pr = pn.getBoundingClientRect();
+      if (pr.left <= cr.left + 40 && pr.height > cr.height * 0.4 && pr.right < cr.right - cr.width * 0.3) a = -1 + 2 * (pr.right - cr.left) / cr.width;
+    }
+    const fovV = 0.8, tH = Math.tan(fovV / 2) * asp, hw = (1 - a) / 2, m = (1 + a) / 2;
+    const half = Math.min(fovV / 2, Math.atan(hw * tH));
+    const R = Math.hypot(B.x1 - B.x0, B.y1 - B.y0, B.z1 - B.z0) / 2;
+    c.dist = U.clamp(R / Math.sin(half) * 1.05, 2, 1500);
+    // центр дома — в центр видимой части: цель сдвигается влево по экрану (вектор «вправо» камеры — (cos yaw, 0, −sin yaw))
+    const sh = m * c.dist * tH;
+    c.tx = (B.x0 + B.x1) / 2 - Math.cos(c.yaw) * sh; c.tz = (B.z0 + B.z1) / 2 + Math.sin(c.yaw) * sh;
+    c.ty = eye ? Math.min(1.6, (B.y0 + B.y1) / 2) : (B.y0 + B.y1) / 2;
   },
   /** OBJ с цветами вершин (Blender, MeshLab, SketchUp через плагин, Twinmotion) */
   exportOBJ() {
@@ -12629,7 +12666,7 @@ const UI = {
         U.el('button', { type: 'button', title: 'Вид сверху', onclick: () => View3D.view('top') }, 'Сверху'),
         U.el('button', { type: 'button', title: 'С высоты человеческого роста', onclick: () => View3D.view('eye') }, 'Глаза')),
       U.el('div', { class: 'fbtns' },
-        U.el('button', { type: 'button', onclick: () => { View3D.fit(); View3D.redraw(); } }, 'Показать всё'),
+        U.el('button', { type: 'button', onclick: () => { if (Walk.on) Walk.stop(); if (View3D.camView) View3D.setCamView(null); View3D.fit(); View3D.redraw(); } }, 'Показать всё'),
         U.el('button', { type: 'button', onclick: () => View3D.snapshot() }, 'PNG'),
         U.el('button', { type: 'button', onclick: () => View3D.exportOBJ(), title: '3D-модель для Blender, SketchUp, Twinmotion' }, 'OBJ'),
         U.el('button', { type: 'button', onclick: () => IFC.export(), title: 'BIM-модель для Revit, ArchiCAD, Renga' }, 'IFC')),

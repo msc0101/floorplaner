@@ -469,8 +469,8 @@ const porch = await page.evaluate(() => {
   r.garage = !!gj && gj.r.d < g0.r.d && Math.abs(gj.roofZ({ x: 0, y: gd.d / 2 }) - (hz - 3)) < 2;
   View3D.toggle(true);
   Walk.start(true); r.ghost = Walk.on && Walk.ghost;
-  const x0 = Walk.x, f0 = Walk.foot; Walk.pitch = 0.5; Walk.keys.add('KeyW'); Walk.update(0.5); Walk.keys.clear();
-  r.fly = Walk.x !== x0 && Walk.foot > f0;
+  const x0 = Walk.x, y0 = Walk.y, f0 = Walk.foot; Walk.pitch = 0.5; Walk.keys.add('KeyW'); Walk.update(0.5); Walk.keys.clear();
+  r.fly = Math.hypot(Walk.x - x0, Walk.y - y0) > 1 && Walk.foot > f0;                // вперёд по взгляду (по оси плана X может не меняться)
   Walk.setGhost(false); r.walk = !Walk.ghost; Walk.stop(); View3D.toggle(false);
   return r;
 });
@@ -588,6 +588,19 @@ const kit = await page.evaluate(() => {
   const all = cnt(); View3D.opts.sys3d = { power: false, lowvolt: false }; const less = cnt(); View3D.opts.sys3d = {};
   View3D.opts.roofView = 'none'; View3D.opts.roof = false; const nor = cnt(); View3D.opts.roofView = 'frame'; View3D.opts.roof = true; cnt(); View3D.opts.roofView = 'full'; cnt();
   r.sys3d = less <= all && nor < all;
+  // кнопки ракурсов из любой точки (улетели далеко, гуляем) — дом целиком в кадре
+  r.views = ['top', 's', 'e', 'w', 'n', 'eye'].every(k => {
+    const c = View3D.cam; c.tx = 80; c.tz = -60; c.dist = 400; c.pitch = 0.1;
+    if (k === 'w') Walk.start(true);
+    View3D.view(k); View3D.draw();
+    const B = View3D.houseBox3d(), VP = View3D._view.VP;
+    let ok = !Walk.on;
+    for (const x of [B.x0, B.x1]) for (const y of [B.y0, B.y1]) for (const z of [B.z0, B.z1]) {
+      const q = [0, 1, 2, 3].map(i => VP[i] * x + VP[4 + i] * y + VP[8 + i] * z + VP[12 + i]);
+      if (!(q[3] > 0 && Math.abs(q[0] / q[3]) <= 1 && Math.abs(q[1] / q[3]) <= 1)) ok = false;
+    }
+    return ok;
+  });
   View3D.toggle(false);
   r.mounts = typeof Analysis.mounts === 'function';
   // ответвления трасс: распаечная коробка на тройнике кабеля одной группы; излом — не соединение
@@ -609,7 +622,7 @@ const kit = await page.evaluate(() => {
   return r;
 });
 console.log('kit', JSON.stringify(kit));
-if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain || !kit.sys3d || !kit.mounts || !kit.tees || !kit.storage || kit.mansard !== true) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
+if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain || !kit.sys3d || !kit.mounts || !kit.tees || !kit.storage || kit.mansard !== true || !kit.views) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);
