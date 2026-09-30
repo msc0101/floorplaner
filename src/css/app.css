@@ -599,3 +599,4 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
 .an-print .an-stats { grid-template-columns: 1fr 1fr; }
 .an-print .an-cols { grid-template-columns: 1fr; }
 .an-h { font-size: 15px; margin: 18px 0 0; }
+.frow2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }

@@ -46,7 +46,7 @@ const Detail = {
     const L = [{ kind: 'block', th: core, name: (WALL_MATERIALS[w.mat] || {}).name || 'Кладка', mat: w.mat }];
     if (ins) L.push({ kind: 'ins', th: ins, name: 'Минвата фасадная 100 кг/м³' });
     if (gap) L.push({ kind: 'gap', th: gap, name: 'Вентзазор' });
-    if (clad) L.push({ kind: 'brick', th: clad, name: 'Облицовочный кирпич' });
+    if (clad) L.push({ kind: 'brick', th: clad, name: (FIN_FACADE[w.cladMat] || FIN_FACADE.brick).short.replace('Кирпич', 'Облицовочный кирпич') });
     return L;
   },
   /** Разрез поперёк конька посередине самого широкого окна (чтобы попала перемычка) */
@@ -264,7 +264,8 @@ const Detail = {
         else if (l.kind === 'brick') {
           const tb = Math.min(hi(a, top), hi(b, top)) - 5;
           D.poly([[a, bot], [b, bot], [b, hi(b, top) - 5], [a, hi(a, top) - 5]], P.brick, '#111', 0.3);
-          for (let z = bot + 7.7; z < tb; z += 7.7) D.line(a, z, b, z, '#8a4a36', 0.1);
+          const crs = Finish.course();
+          for (let z = bot + crs; crs > 0 && z < tb; z += crs) D.line(a, z, b, z, '#8a4a36', 0.1);
           for (let z = bot + 30; z < tb - 5; z += 50) D.line(at - dir * (L[0].th / 2), z, b - dir * 3, z, '#555', 0.15, [0.6, 0.4]);
         }
         at = b;

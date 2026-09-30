@@ -344,7 +344,7 @@ console.log('guides', JSON.stringify(gd));
 if (gd.len !== 140 || gd.x !== 140105) errors.push('Подсказки расстояний: ' + JSON.stringify(gd));
 // сети в библиотеке; ЛЭП — опоры и ввод на стену; стены мансарды не выше ската крыши
 const net = await page.evaluate(() => {
-  const cat = CATALOG.find(c => c.id === 'networks'), r = { n: cat ? cat.items.length : 0 };
+  const cat = CATALOG.find(c => c.id === 'networks'), r = { n: cat ? cat.items.length : 0, nk: Object.keys(LINE_KINDS).length };
   IO.loadDemo();
   const ov = App.doc.lines.find(l => l.kind === 'overhead');
   const poles = overheadPoles(ov, App.doc.items, App.doc.walls);
@@ -360,7 +360,7 @@ const net = await page.evaluate(() => {
   return r;
 });
 console.log('networks', JSON.stringify(net));
-if (net.n !== 12 || net.poles !== 2 || !net.item || !net.wall || net.zRidge !== Math.round(440 + 510 * Math.tan(38 * Math.PI / 180)) || net.zOut !== null || !net.belowRoof) errors.push('Сети / ЛЭП / стены под крышей: ' + JSON.stringify(net));
+if (net.n !== net.nk || net.poles !== 2 || !net.item || !net.wall || net.zRidge !== Math.round(440 + 510 * Math.tan(38 * Math.PI / 180)) || net.zOut !== null || !net.belowRoof) errors.push('Сети / ЛЭП / стены под крышей: ' + JSON.stringify(net));
 // проём постройки: выделяется отдельно, удаляется Del; площадь постройки внутри — в сводке
 const bop = await page.evaluate(() => {
   const f = App.doc.floors[0].id;
@@ -588,6 +588,8 @@ const kit = await page.evaluate(() => {
   const all = cnt(); View3D.opts.sys3d = { power: false, lowvolt: false }; const less = cnt(); View3D.opts.sys3d = {};
   View3D.opts.roofView = 'none'; View3D.opts.roof = false; const nor = cnt(); View3D.opts.roofView = 'frame'; View3D.opts.roof = true; cnt(); View3D.opts.roofView = 'full'; cnt();
   r.sys3d = less <= all && nor < all;
+  // ночь: светильник в помещении светит только в своём габарите, уличные — вне помещений
+  { View3D.opts.night = true; View3D.dirty = true; View3D.draw(); const Z = View3D.lightZones(); r.nightZones = View3D.gl.getError() === 0 && Z.pb.length === View3D.lights.length * 8 && (!App.rooms.length || Z.rb.length > 0); View3D.opts.night = false; View3D.dirty = true; View3D.draw(); }
   // кнопки ракурсов из любой точки (улетели далеко, гуляем) — дом целиком в кадре
   r.views = ['top', 's', 'e', 'w', 'n', 'eye'].every(k => {
     const c = View3D.cam; c.tx = 80; c.tz = -60; c.dist = 400; c.pitch = 0.1;
@@ -608,6 +610,21 @@ const kit = await page.evaluate(() => {
     const T = Render.lineTees([a, b, c]); r.tees = T.length === 1 && T[0].box; }
   // хранение в гараже: предметы есть в каталоге и строятся в 3D
   r.storage = ['garageRack', 'workbench', 'tireRack', 'wallShelf', 'ceilRack'].every(k => catItem(k) && catItem(k).key === k);
+  // фасад: смена облицовки меняет толщину наружу и возвращается обратно; в свойствах стены есть выбор облицовки
+  { const ext = App.doc.walls.filter(w => w.kind === 'ext'), th0 = ext.map(w => w.th).join(), o0 = Finish.opt().facade, A0 = App.rooms.reduce((a, q) => a + q.areaFloor, 0);
+    Finish.applyFacade('euro'); Model.commit(); const thick = ext.every(w => w.clad === 8.5 && w.cladMat === 'euro');
+    Finish.applyFacade('plaster'); Model.commit(); const pl = Finish.course() === 0 && ext.every(w => w.clad === 1);
+    Finish.applyFacade(o0 === 'none' ? 'none' : o0); if (o0 === 'none') Finish.applyFacade('none'); Model.commit();
+    const b = document.createElement('div'); UI.propsWall(b, ext[0]);
+    r.facade = thick && pl && Math.abs(App.rooms.reduce((a, q) => a + q.areaFloor, 0) - A0) < 500 && !!b.querySelector('select[data-field=facade]') || 'th ' + th0 + ' → ' + ext.map(w => w.th).join(); }
+  // тёплый пол: контур без подводки к коллектору — замечание (касание соседнего контура — не подключение)
+  { const m = Model.add('items', { key: 'manifoldWF', x: 9000, y: 9000, w: 60, d: 12, h: 60, rot: 0 });
+    const loop = Model.add('lines', { kind: 'warmfloor', pts: [{ x: 9300, y: 9300 }, { x: 9500, y: 9300 }, { x: 9500, y: 9312 }, { x: 9310, y: 9312 }], dia: 16, depth: 0, label: 'ТП тест' });
+    Model.commit();
+    const miss = Analysis.run().issues.some(x => x.id === loop.id && /коллектору/.test(x.text));
+    Model.add('lines', { kind: 'warmfloor', pts: [{ x: 9000, y: 9000 }, { x: 9000, y: 9306 }, { x: 9305, y: 9306 }], dia: 16, depth: 0, label: 'ТП подводка: тест' }); Model.commit();
+    const fed = !Analysis.run().issues.some(x => x.id === loop.id);
+    r.wfloop = miss && fed; Model.remove(App.doc.lines.filter(l => /тест/.test(l.label || '')).map(l => l.id).concat([m.id])); Model.commit(); }
   // мансарда: крыша над вторым этажом — жилой объём, разрез с плитой перекрытия и коленом, потолок под скатом
   { const rf = App.doc.roofs[0], f2 = App.doc.floors[1];
     if (rf && f2) {
@@ -622,7 +639,7 @@ const kit = await page.evaluate(() => {
   return r;
 });
 console.log('kit', JSON.stringify(kit));
-if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain || !kit.sys3d || !kit.mounts || !kit.tees || !kit.storage || kit.mansard !== true || !kit.views) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
+if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain || !kit.sys3d || !kit.mounts || !kit.tees || !kit.storage || kit.mansard !== true || !kit.views || kit.facade !== true || !kit.wfloop || !kit.nightZones) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

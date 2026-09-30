@@ -309,7 +309,19 @@ const View3D = {
       const fd = (App.floorData || []).find(x => x.floor.id === f.id);
       // «Только фундамент»: без дома — ленты с арматурой, подушка, утепление, пол по грунту, ямы и подземные сети
       if (mode === 'found') {
-        if (first) { View3D.found3d(e, true); for (const it of App.V.items) if (catItem(it.key).shape === 'pit') { const n0 = P.length, g0 = GP.length; View3D.item(it, catItem(it.key), e, top => top); ibox(it.id, n0, g0); } }
+        if (first) {
+          View3D.found3d(e, true);
+          // подземные сооружения (погреб, колодцы, септик, скважина) — целиком; приборы на поверхности, к которым выходят
+          // подземные трубы и кабели (баня, колонка, фонарь), — полупрозрачным контуром на земле, чтобы стояки не висели в воздухе
+          const UNDER = new Set(['pit', 'ring', 'septic', 'borehole', 'well']);
+          const ends = d.lines.filter(l => l.depth > 0 && (l.floor || f.id) === f.id).flatMap(l => [l.pts[0], l.pts[l.pts.length - 1]]);
+          for (const it of App.V.items) {
+            const sh = catItem(it.key).shape;
+            if (UNDER.has(sh)) { const n0 = P.length, g0 = GP.length; View3D.item(it, catItem(it.key), e, top => top); ibox(it.id, n0, g0); continue; }
+            if (BLD_HOLLOW.has(sh) || !ends.some(q => G.dist(q, it) <= Math.max(it.w, it.d) / 2 + 30)) continue;
+            prism(Model.itemPts(it), e, e + 4, View3D.hex('#9fb4c8'), { glass: true });
+          }
+        }
         View3D.nets3d(f, e);
         return;
       }
@@ -386,7 +398,7 @@ const View3D = {
         for (const poly0 of Render.wallPieces(w, cache)) {
           if (mode === 'masonry') {                                             // кладка без отделки: блоки со швами, утеплитель, без облицовки
             const mOut = G.mid(w.a, w.b), core = View3D.clipSlab(poly0, mOut, nOut, -w.th / 2 - 1, w.th / 2 - wallClad(w) - (w.ins || 0));
-            if (core.length >= 3) { body(core, e, top); View3D.joints3d(w, core, e, top, nOut); }
+            if (core.length >= 3) { body(core, e, top); View3D.joints3d(w, core, e, top, nOut, wRoofs.length ? roofTop : null); }
             if (w.ins > 0) { const ins = View3D.clipSlab(poly0, mOut, nOut, w.th / 2 - wallClad(w) - w.ins, w.th / 2 - wallClad(w)); if (ins.length >= 3) body(ins, e + 5, top - 5, View3D.hex('#f2dc6a')); }
             continue;
           }
@@ -402,7 +414,8 @@ const View3D = {
               const u = Model.wallDir(w), ss = fpts.map(p => G.dot(p, u)), a = fpts[ss.indexOf(Math.min(...ss))], b2 = fpts[ss.indexOf(Math.max(...ss))], o2 = G.mul(nOut, 0.15), mort = brickC.map(x => Math.min(1, x * 1.35));
               // растворные швы: под скатом — только там, где стена ещё есть (фронтон сужается кверху)
               const NS = 24, smp = wRoofs.length ? Array.from({ length: NS + 1 }, (_, k) => { const p = G.add(a, G.mul(G.sub(b2, a), k / NS)); return { p, z: roofTop(p) }; }) : null;
-              for (let z = e + 45 + 7.7; z < top - 2; z += 7.7) {
+              const crs = Finish.course();                                         // ряд облицовки; штукатурка — без швов
+              for (let z = e + 45 + crs; crs > 0 && z < top - 2; z += crs) {
                 let pa = a, pb = b2;
                 if (smp) { const ins = smp.filter(q => q.z > z + 1); if (!ins.length) break; pa = ins[0].p; pb = ins[ins.length - 1].p; if (G.dist(pa, pb) < 5) continue; }
                 face([V3(G.add(pa, o2), z - 0.5), V3(G.add(pb, o2), z - 0.5), V3(G.add(pb, o2), z + 0.5), V3(G.add(pa, o2), z + 0.5)], mort, V3(G.sub(G.mid(pa, pb), G.mul(nOut, 20)), z));
@@ -839,6 +852,29 @@ const View3D = {
     return mc != null ? Math.min(top, mc - 20) : top;                                          // мансарда: проводка под скатом
   },
   /** Точка (см) внутри дома или постройки с крышей, ниже её кровли — для «комнатного» освещения на прогулке */
+  /** Зоны ночного света (м): у светильника в помещении / постройке — габарит этого помещения (pb: 2 вектора на фонарь,
+   *  xz-габарит и [низ, верх, 1]); уличным — список габаритов помещений (rb), куда их свет не заходит; ry — диапазон высот помещений */
+  lightZones() {
+    if (View3D._lz && View3D._lz.of === View3D.lights) return View3D._lz;
+    const zones = [], d = App.doc, E = 0.03;
+    for (const fd of App.floorData || []) {
+      const e = fd.floor.elev || 0, h = fd.floor.h || 280;
+      for (const r of fd.rooms) { const b = G.bbox(r.floor || r.axis); if (G.bboxValid(b)) zones.push({ poly: r.floor || r.axis, x0: b.x0 / 100 - E, z0: b.y0 / 100 - E, x1: b.x1 / 100 + E, z1: b.y1 / 100 + E, y0: e / 100 - 0.3, y1: (e + h) / 100 + 0.05 }); }
+    }
+    for (const it of d.items) {
+      if (!BLD_HOLLOW.has(catItem(it.key).shape)) continue;
+      const P = Model.itemPts(it), b = G.bbox(P), e = Model.elevOf(it), t = bldShell(it, it.w, it.d).t || 20;
+      zones.push({ poly: P, x0: (b.x0 + t) / 100, z0: (b.y0 + t) / 100, x1: (b.x1 - t) / 100, z1: (b.y1 - t) / 100, y0: e / 100 - 0.3, y1: (e + bldWallH(it)) / 100 + 0.05 });
+    }
+    const pb = [];
+    for (const [x, y, z] of View3D.lights || []) {
+      const p = { x: x * 100, y: z * 100 }, Zn = zones.find(q => y >= q.y0 && y <= q.y1 && G.pointInPoly(p, q.poly));
+      pb.push(...(Zn ? [Zn.x0, Zn.z0, Zn.x1, Zn.z1, Zn.y0, Zn.y1, 1, 0] : [0, 0, 0, 0, 0, 0, 0, 0]));
+    }
+    const rb = zones.flatMap(q => [q.x0 + 2 * E, q.z0 + 2 * E, q.x1 - 2 * E, q.z1 - 2 * E]);
+    const ry = zones.length ? [Math.min(...zones.map(q => q.y0)), Math.max(...zones.map(q => q.y1))] : [0, 0];
+    return (View3D._lz = { of: View3D.lights, pb, rb, ry });
+  },
   indoorAt(x, y, z) {
     const p = { x, y }, fd = App.floorData || [];
     if (fd.some(f => f.outlines.some(o => G.pointInPoly(p, o.outer))) && App.doc.roofs.some(r => { const zr = Roof.zAt(r, p); return zr != null && z < zr + 30; })) return true;
@@ -888,7 +924,8 @@ const View3D = {
       face([V(uo, v0, base), V(uo, v1, base), V(uo, v1, zr(v1)), V(uo, 0, zr(0)), V(uo, v0, zr(v0))], wallC, ref);
       face([V(uo - sg * 30, v0, base), V(uo - sg * 30, v1, base), V(uo - sg * 30, v1, zr(v1)), V(uo - sg * 30, 0, zr(0)), V(uo - sg * 30, v0, zr(v0))], C('#b9b4a8'), V(uo, 0, base + 100));
       // ряды кладки (шов каждые 7,7 см — кирпич 65 + шов 12) и вертикальные швы вразбежку
-      for (let z = base + 7.7, row = 0; z < zr(0) - 3; z += 7.7, row++) {
+      const crs = brick ? Finish.course() : 7.7;
+      for (let z = base + crs, row = 0; crs > 0 && z < zr(0) - 3; z += crs, row++) {
         const hv = Math.min(Dh - (z - base + 15.5) / t, Math.max(-v0, v1));                            // полуширина фронтона на этой высоте
         if (hv <= 2) break;
         const a0 = Math.max(v0, -hv), a1 = Math.min(v1, hv);
@@ -956,7 +993,7 @@ const View3D = {
     void rise;
   },
   /** Швы кладки на обеих гранях несущего слоя: ряды и вертикальные швы с перевязкой в полблока */
-  joints3d(w, core, e, top, nOut) {
+  joints3d(w, core, e, top, nOut, roofTop) {
     const { face, V3 } = View3D._g, M = WALL_MATERIALS[w.mat] || {}, [bl, bh0] = M.block || [39, 18.8], bh = bh0 + 1;
     const u = Model.wallDir(w), mOut = G.mid(w.a, w.b), ks = core.map(p => G.dot(G.sub(p, mOut), nOut)), jc = View3D.hex(M.color || '#cccccc').map(x => x * 0.72);
     for (const side of [Math.min(...ks), Math.max(...ks)]) {
@@ -964,10 +1001,17 @@ const View3D = {
       if (pts.length < 2) continue;
       const ss = pts.map(p => G.dot(p, u)), a = pts[ss.indexOf(Math.min(...ss))], b = pts[ss.indexOf(Math.max(...ss))], L = G.dist(a, b), o = G.mul(nOut, side > 0 ? 0.2 : -0.2), ref = (z) => V3(G.sub(G.mid(a, b), G.mul(nOut, side > 0 ? 10 : -10)), z);
       let row = 0;
+      const du = G.unit(G.sub(b, a));
+      // под скатом (фронтон) шов ряда — только там, где стена ещё есть: верх стены = низ кровли
+      const NS = Math.max(2, Math.ceil(L / 20)), smp = roofTop ? Array.from({ length: NS + 1 }, (_, k) => ({ s: L * k / NS, z: roofTop(G.add(a, G.mul(du, L * k / NS))) })) : null;
       for (let z = e + bh; z < top - 1; z += bh, row++) {
-        face([V3(G.add(a, o), z - 0.5), V3(G.add(b, o), z - 0.5), V3(G.add(b, o), z + 0.5), V3(G.add(a, o), z + 0.5)], jc, ref(z));
+        let s0 = 0, s1 = L;
+        if (smp) { const inn = smp.filter(q => q.z > z + 1); if (!inn.length) break; s0 = inn[0].s; s1 = inn[inn.length - 1].s; if (s1 - s0 < 5) continue; }
+        const pa = G.add(a, G.mul(du, s0)), pb = G.add(a, G.mul(du, s1));
+        face([V3(G.add(pa, o), z - 0.5), V3(G.add(pb, o), z - 0.5), V3(G.add(pb, o), z + 0.5), V3(G.add(pa, o), z + 0.5)], jc, ref(z));
         for (let s2 = (row % 2 ? bl / 2 : 0) + bl; s2 < L - 2; s2 += bl + 1) {
-          const p = G.add(G.add(a, G.mul(G.unit(G.sub(b, a)), s2)), o), q = G.add(p, G.mul(G.unit(G.sub(b, a)), 1));
+          if (s2 < s0 || s2 > s1 || (roofTop && roofTop(G.add(a, G.mul(du, s2))) < z + bh)) continue;
+          const p = G.add(G.add(a, G.mul(du, s2)), o), q = G.add(p, G.mul(du, 1));
           face([V3(p, z), V3(q, z), V3(q, z + bh - 1), V3(p, z + bh - 1)], jc, ref(z));
         }
       }
@@ -979,7 +1023,10 @@ const View3D = {
     for (const w of App.doc.walls) {
       if ((w.floor || App.doc.floors[0].id) !== f.id || !['ext', 'int'].includes(w.kind)) continue;
       const R = WALL_REINF[w.mat], L = Model.wallLen(w), u = G.unit(G.sub(w.b, w.a)), ang = U.deg(Math.atan2(u.y, u.x)), m = G.mid(w.a, w.b);
-      if (R && R.ring) box(m.x, m.y, L, w.th + 1, ang, e + w.h - 25, e + w.h + 0.5, con);
+      // верх стены — не выше кровли этого этажа (фронтон под скатом): армопояс — под низом ската, а не в воздухе
+      let top = e + w.h;
+      for (const r of App.doc.roofs) if ((r.floor || App.doc.floors[0].id) === f.id) for (const c of [w.a, w.b, m]) for (const k of [-0.5, 0.5]) { const z = Roof.zAt(r, G.add(c, G.mul(G.perp(u), k * w.th))); if (z != null) top = Math.min(top, z - 3); }
+      if (R && R.ring) box(m.x, m.y, L, w.th + 1, ang, top - 25, top + 0.5, con);
       for (const o of App.doc.openings.filter(x => x.wall === w.id)) {
         const top = e + (o.sill || 0) + (o.h || 210), c = G.add(w.a, G.mul(u, o.pos));
         box(c.x, c.y, o.w + 50, w.th + 1, ang, top, top + 20, con.map(x => x * 0.92));
@@ -3210,7 +3257,9 @@ const View3D = {
     const prog = (vs, fs) => { const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(pr); if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr)); return pr; };
     const hp = gl.getShaderPrecisionFormat && gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT).precision > 0 ? 'highp' : 'mediump';
     // ночные точечные источники (фонари): сколько влезает в uniform-регистры фрагментного шейдера
-    const NL = View3D.NL = U.clamp(((gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) || 16) - 24) | 0, 0, 64);
+    // на каждый фонарь — 3 вектора (позиция+радиус, габарит его помещения xz, высоты+признак «внутри»), плюс NR габаритов помещений
+    const NR = View3D.NR = 32;
+    const NL = View3D.NL = U.clamp((((gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) || 16) - 26 - NR) / 3) | 0, 0, 48);
     // основная программа: полусферическое освещение, солнце с тенями (PCF), дымка; ночью — фонари и светящиеся окна
     View3D.prog = prog(
       `attribute vec3 p; attribute vec3 n; attribute vec3 c; uniform mat4 uVP; uniform mat4 uLVP;
@@ -3220,7 +3269,7 @@ const View3D = {
        varying vec3 vN; varying vec3 vC; varying vec3 vW; varying vec4 vL;
        uniform vec3 uL; uniform vec3 uSky; uniform vec3 uGround; uniform vec3 uEye; uniform vec3 uSunCol;
        uniform float uFog; uniform float uSunK; uniform float uAmb; uniform float uUseShadow; uniform float uTexel; uniform float uAlpha; uniform sampler2D uShadow;
-       uniform float uNight; uniform float uGlow; uniform float uPLn; uniform vec4 uClip;${NL ? ` uniform vec4 uPL[${NL}];` : ''}
+       uniform float uNight; uniform float uGlow; uniform float uPLn; uniform vec4 uClip;${NL ? ` uniform vec4 uPL[${NL}]; uniform vec4 uPB[${NL * 2}]; uniform vec4 uRB[${NR}]; uniform float uRBn; uniform vec2 uRBy;` : ''}
        float unpack(vec4 v){ return dot(v, vec4(1.0, 1.0/255.0, 1.0/65025.0, 1.0/16581375.0)); }
        float shadowAt(vec3 n){
          vec3 s = vL.xyz / vL.w * 0.5 + 0.5;
@@ -3245,11 +3294,23 @@ const View3D = {
          float em = step(1.01, max(vC.r, max(vC.g, vC.b)));          // плафоны светильников: цвет > 1
          vec3 col = base * (amb + dif * sh * uSunCol);
          ${NL ? `vec3 pl = vec3(0.0);
+         // свет не проходит сквозь стены: светильник в помещении светит только внутри его габарита,
+         // уличный фонарь — только снаружи помещений (грани наружных стен снаружи — лежат вне габаритов комнат)
+         float inRoom = 0.0;
+         if (vW.y > uRBy.x && vW.y < uRBy.y) for (int j = 0; j < ${NR}; j++) {
+           if (float(j) >= uRBn) break;
+           vec4 b = uRB[j];
+           if (vW.x > b.x && vW.x < b.z && vW.z > b.y && vW.z < b.w) { inRoom = 1.0; break; }
+         }
          for (int i = 0; i < ${NL}; i++) {
            if (float(i) >= uPLn) break;
+           vec4 bx = uPB[2 * i], by = uPB[2 * i + 1];
+           if (by.z > 0.5) { if (vW.x < bx.x || vW.x > bx.z || vW.z < bx.y || vW.z > bx.w || vW.y < by.x || vW.y > by.y) continue; }
+           else if (inRoom > 0.5) continue;
            vec3 d = uPL[i].xyz - vW; float r = length(d);
            float a = clamp(1.0 - r / uPL[i].w, 0.0, 1.0);
-           pl += a * a * (0.35 + 0.65 * abs(dot(n, d / max(r, 0.01))));
+           float nd = dot(n, d / max(r, 0.01));
+           pl += a * a * (nd > 0.0 ? 0.3 + 0.7 * nd : 0.0);                    // грань, отвёрнутая от фонаря, им не освещается
          }
          col += base * pl * vec3(1.0, 0.82, 0.58) * 1.25 * uNight;` : ''}
          col += base * em * uNight * 0.9 + vec3(1.0, 0.78, 0.45) * 0.55 * uGlow;
@@ -3259,7 +3320,7 @@ const View3D = {
        }`);
     const pr = View3D.prog;
     View3D.loc = { p: gl.getAttribLocation(pr, 'p'), n: gl.getAttribLocation(pr, 'n'), c: gl.getAttribLocation(pr, 'c') };
-    for (const u of ['uAmb', 'uVP', 'uLVP', 'uL', 'uSky', 'uGround', 'uEye', 'uSunCol', 'uFog', 'uSunK', 'uUseShadow', 'uTexel', 'uAlpha', 'uShadow', 'uNight', 'uGlow', 'uPLn', 'uPL', 'uClip']) View3D.loc[u] = gl.getUniformLocation(pr, u);
+    for (const u of ['uAmb', 'uVP', 'uLVP', 'uL', 'uSky', 'uGround', 'uEye', 'uSunCol', 'uFog', 'uSunK', 'uUseShadow', 'uTexel', 'uAlpha', 'uShadow', 'uNight', 'uGlow', 'uPLn', 'uPL', 'uPB', 'uRB', 'uRBn', 'uRBy', 'uClip']) View3D.loc[u] = gl.getUniformLocation(pr, u);
     // карта теней: глубина, упакованная в RGBA
     View3D.depthProg = prog(
       `attribute vec3 p; uniform mat4 uLVP; varying vec3 vW; void main(){ vW = p; gl_Position = uLVP * vec4(p, 1.0); }`,
@@ -3389,7 +3450,13 @@ const View3D = {
     gl.uniform4fv(L.uClip, View3D.clipPlane());
     const pls = lt.night ? (View3D.lights || []).slice(0, View3D.NL) : [];
     gl.uniform1f(L.uPLn, pls.length);
-    if (pls.length && L.uPL) gl.uniform4fv(L.uPL, new Float32Array(pls.flat()));
+    if (pls.length && L.uPL) {
+      const Z = View3D.lightZones();
+      gl.uniform4fv(L.uPL, new Float32Array(pls.flat()));
+      if (L.uPB) gl.uniform4fv(L.uPB, new Float32Array(Z.pb.slice(0, pls.length * 8).concat(Array(Math.max(0, 8 - pls.length * 8)).fill(0))));
+      if (L.uRB && Z.rb.length) gl.uniform4fv(L.uRB, new Float32Array(Z.rb.slice(0, View3D.NR * 4)));
+      gl.uniform1f(L.uRBn, Math.min(View3D.NR, Z.rb.length / 4)); gl.uniform2fv(L.uRBy, Z.ry);
+    }
     gl.uniform1f(L.uUseShadow, shadows ? 1 : 0); gl.uniform1f(L.uTexel, 1 / View3D.sm.size);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, View3D.sm.tex); gl.uniform1i(L.uShadow, 0);
     const drawMesh = (m, alpha) => {

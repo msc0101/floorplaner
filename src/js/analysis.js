@@ -421,12 +421,23 @@ const Analysis = {
       const ok = (l, p) => items.some(it => inRect(it, p, 15) && (itemLinks(it).some(([, ks]) => ks.includes(l.kind)) || catItem(it.key).sym || ['pit', 'ring', 'borehole', 'well', 'septic', 'boiler', 'pole'].includes(catItem(it.key).shape)))
         || lines.some(x => x !== l && sysOfLine(x) === sysOfLine(l) && x.pts.some((q, i) => G.dist(q, p) <= 15 || (i && G.distSeg(p, x.pts[i - 1], q) <= 8)));
       const mans = items.filter(it => it.key === 'manifoldWF');
+      // тёплый пол: у коллектора — подводки, на их концах — контуры (подача и обратка рядом); касание соседнего контура — не подключение
+      const atMan = (p) => mans.some(m => inRect(m, p, 20));
+      const wf = lines.filter(l => l.kind === 'warmfloor'), ends = (l) => [l.pts[0], l.pts[l.pts.length - 1]];
+      const feeder = (l) => ends(l).some(atMan);
+      const wfOk = (l, p) => atMan(p) || wf.some(x => x !== l && feeder(x) !== feeder(l) && ends(x).some(q => G.dist(q, p) <= 15));
       let nFeed = 0;
       for (const l of lines) {
         if (l.kind === 'warmfloor') {
-          // контур тёплого пола: начало (подача и обратка) — у коллектора или на подводке от него
-          const p = l.pts[0];
-          if (ok(l, p) || !mans.length) continue;
+          if (feeder(l)) {                                                       // подводка: второй конец — у начала контура
+            const far = ends(l).find(p => !atMan(p));
+            if (far && !wfOk(l, far)) add('warn', 'Подключения', `${l.label || 'Подводка тёплого пола'}: конец подводки не доходит до контура`, SRC.warmfloor, far, l.id);
+            continue;
+          }
+          // контур: подача и обратка — у коллектора или на конце подводки от него
+          const bad = ends(l).filter(p => !wfOk(l, p));
+          if (!bad.length || !mans.length) continue;
+          const [e0, e1] = ends(l), p = G.dist(e0, e1) < 30 ? G.mid(e0, e1) : bad[0];     // подача и обратка рядом — подводка к середине между ними
           const m0 = mans.slice().sort((a, b) => G.dist(a, p) - G.dist(b, p))[0], k = nFeed++;
           add('warn', 'Подключения', `${l.label || 'Контур тёплого пола'}: не подведён к коллектору тёплого пола`, SRC.warmfloor, p, l.id, () => {
             const mx = Math.round(m0.x - 20 + (k % 8) * 5), my = Math.round(m0.y + 5);

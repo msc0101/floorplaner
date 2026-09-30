@@ -585,6 +585,7 @@ const CATALOG = [
     drain: 'ливнёвка ливневка дренаж водоотвод', heating: 'отопление трубы тепло', warmfloor: 'тёплый теплый пол отопление',
     gas: 'газ газопровод подземный', gasAir: 'газ газопровод надземный опоры фасад ввод', power: 'электричество кабель электрика ввод', overhead: 'лэп вл провод столб опора электричество воздушная линия сип',
     lowvolt: 'интернет сеть тв кабель слаботочка', ground: 'заземление контур',
+    freon: 'кондиционер фреон трасса дренаж сплит', airIn: 'печь камин приток воздух топка',
   }).map(([k, kw]) => ({ key: 'net_' + k, name: LINE_KINDS[k].name, shape: 'netIcon', kw: 'сети трасса коммуникации ' + kw, tool: 'line', lineKind: k, w: 100, d: 100, h: 0 })) },
   { id: 'porch', name: 'Крыльцо, веранда, терраса', layer: 'siteobj', items: [
     { key: 'porch', name: 'Крыльцо с козырьком', shape: 'veranda', w: 200, d: 150, h: 300, ph: 60, encl: 'rail', roofed: true, attached: true, stepW: 120, shadow: true },

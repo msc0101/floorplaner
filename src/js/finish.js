@@ -24,16 +24,20 @@ const FIN_CEIL = {
   stretch: { name: 'Натяжной потолок ПВХ, матовый белый', short: 'Натяжной', color: '#fbfbfa', price: 'fin:stretch' },
   gkl:     { name: 'ГКЛ по каркасу, покраска', short: 'ГКЛ', color: '#f6f6f4', price: 'fin:gkl' },
 };
+// th — толщина облицовки, gap — вентзазор по умолчанию, course — ряд кладки (лицо + шов), perM2 — штук на 1 м² стены
 const FIN_FACADE = {
-  brick:  { name: 'Облицовочный кирпич 250×120×65 на гибких связях', short: 'Облицовочный кирпич', th: 12, gap: 3, price: 'fin:brick' },
-  none:   { name: 'Без облицовки', short: '—', th: 0, gap: 0 },
+  brick:   { name: 'Облицовочный кирпич одинарный 250×120×65 на гибких связях', short: 'Кирпич одинарный', th: 12, gap: 3, course: 7.7, perM2: 51, price: 'fin:brick' },
+  brick15: { name: 'Облицовочный кирпич полуторный 250×120×88 на гибких связях', short: 'Кирпич полуторный', th: 12, gap: 3, course: 10, perM2: 39, price: 'fin:brick' },
+  euro:    { name: 'Облицовочный кирпич евро 250×85×65 на гибких связях', short: 'Кирпич евро', th: 8.5, gap: 3, course: 7.7, perM2: 51, price: 'fin:brick' },
+  plaster: { name: 'Тонкослойная штукатурка по минвате (мокрый фасад), окраска', short: 'Штукатурка', th: 1, gap: 0, course: 0, perM2: 0, price: 'fin:plaster' },
+  none:    { name: 'Без облицовки', short: '—', th: 0, gap: 0 },
 };
 const FIN_BRICK_COLORS = { red: ['Красно-коричневый', '#9b5238'], brown: ['Коричневый', '#6e4633'], beige: ['Бежевый', '#cdb48f'], gray: ['Серый', '#8c8a86'], white: ['Белый', '#e6e1d7'] };
 
 const Finish = {
   /** Настройки отделки проекта */
   opt() {
-    return Object.assign({ floor: 'porcelain', living: 'carpet', wet: 'tile', walls: 'paint', wallColor: '#e7e0d4', wetWalls: 'tile', ceil: 'stretch', door: '#8b5e3c', winOut: '#383e42', winIn: '#f4f4f2', facade: 'brick', brick: 'red', garageFloor: 'concrete' }, App.doc.settings.finish || {});
+    return Object.assign({ floor: 'porcelain', living: 'carpet', wet: 'tile', walls: 'paint', wallColor: '#e7e0d4', wetWalls: 'tile', ceil: 'stretch', door: '#8b5e3c', winOut: '#383e42', winIn: '#f4f4f2', facade: 'brick', brick: 'red', facadeColor: '#e6dcc8', garageFloor: 'concrete' }, App.doc.settings.finish || {});
   },
   set(k, v) { App.doc.settings.finish = { ...(App.doc.settings.finish || {}), [k]: v }; },
   /** Отделка помещения по его назначению (или заданная у помещения вручную) */
@@ -49,7 +53,16 @@ const Finish = {
   },
   /** Текущий этаж — мансарда (помещения под утеплёнными скатами) */
   mansard() { return App.doc.roofs.some(x => x.floor === App.floor && Roof.living(x)); },
-  brickColor() { return (FIN_BRICK_COLORS[Finish.opt().brick] || FIN_BRICK_COLORS.red)[1]; },
+  /** Цвет облицовки: кирпич — по палитре, штукатурка — свой цвет */
+  brickColor() { const o = Finish.opt(); return o.facade === 'plaster' ? o.facadeColor : (FIN_BRICK_COLORS[o.brick] || FIN_BRICK_COLORS.red)[1]; },
+  /** Высота ряда облицовки (см) для швов в 3D и на разрезе; 0 — штукатурка без швов */
+  course() { const F = FIN_FACADE[Finish.opt().facade]; return F ? F.course || 0 : 7.7; },
+  /** Сменить облицовку всех наружных стен (вид, вентзазор): толщина меняется наружу, внутренние грани на месте */
+  applyFacade(kind, gap) {
+    const Fc = FIN_FACADE[kind] || FIN_FACADE.none, g = kind === 'none' ? 0 : U.isNum(gap) ? gap : Fc.gap;
+    Finish.set('facade', kind); if (kind !== 'none' && Fc.gap) Finish.set('gap', g); 
+    return Finish.cladWalls(kind, Fc.th ? Fc.th + g : 0, g);
+  },
 
   /* ------------------------------- план ------------------------------- */
   /** Слой «Отделка»: раскладка плитки, ковролин, коды П/С/Пт у помещения */
@@ -105,20 +118,24 @@ const Finish = {
     if (o.facade !== 'none') {
       for (const w of d.walls.filter(x => x.kind === 'ext')) out.facade += Model.wallLen(w) * (w.h + 45) / 1e4 - d.openings.filter(x => x.wall === w.id).reduce((a, x) => a + x.w * (x.h || 150) / 1e4, 0);
       for (const it of d.items.filter(x => BLD_HOLLOW.has(catItem(x.key).shape) && catItem(x.key).key !== 'house')) out.facade += 2 * (it.w + it.d) * bldWallH(it) / 1e4 - bldShell(it, it.w, it.d).ops.reduce((a, x) => a + x.w * x.h / 1e4, 0);
-      out.bricks = Math.ceil(out.facade * 51 * 1.05);                          // одинарный 250×120×65 с растворным швом 10 мм — 51 шт./м², +5 %
+      out.bricks = Math.ceil(out.facade * (FIN_FACADE[o.facade].perM2 || 0) * 1.05);   // одинарный 250×120×65 со швом 10 мм — 51 шт./м², полуторный — 39, +5 % на бой и подрезку
     }
     out.doors = d.openings.filter(x => (OPENING_TYPES[x.type] || {}).cat === 'door').length;
     out.windows = d.openings.filter(x => (OPENING_TYPES[x.type] || {}).cat === 'window').length;
     return out;
   },
   /** Облицевать наружные стены: толщина растёт наружу (внутренние грани на месте), предметы у фасада сдвигаются вместе с ним */
-  cladWalls(kind = 'brick') {
-    const d = App.doc, Fc = FIN_FACADE[kind] || FIN_FACADE.brick, add = Fc.th + Fc.gap;
+  cladWalls(kind = 'brick', total, gap) {
+    const d = App.doc, Fc = FIN_FACADE[kind] || FIN_FACADE.brick, target = U.isNum(total) ? total : Fc.th + Fc.gap, g = U.isNum(gap) ? gap : Fc.gap;
     const moved = [];
     for (const f of d.floors) {
       const fd = (App.floorData || []).find(x => x.floor.id === f.id), inside = (p) => fd && fd.outlines.some(o => G.pointInPoly(p, o.outer));
-      const ext = d.walls.filter(w => (w.floor || d.floors[0].id) === f.id && w.kind === 'ext' && !(w.clad > 0));
-      if (!ext.length || !add) continue;
+      // у всех наружных стен этажа — одна облицовка: прибавка = новая − текущая (у ещё не облицованных текущая 0)
+      const ext = d.walls.filter(w => (w.floor || d.floors[0].id) === f.id && w.kind === 'ext');
+      const cur = (w) => (w.clad || 0) + (w.clad > 0 ? w.gap || 0 : 0);
+      if (!ext.length || ext.every(w => Math.abs(cur(w) - target) < 0.01 && (w.cladMat || 'brick') === kind)) continue;
+      const add = target - (ext.length ? cur(ext[0]) : 0);
+      if (ext.some(w => Math.abs(cur(w) - cur(ext[0])) > 0.01)) { for (const w of ext) { w.th += target - cur(w); Finish.setClad(w, kind, target, g); } continue; }   // разнобой — без сдвига осей
       // смещение оси каждой стены наружу на add/2
       const shift = new Map(ext.map(w => { const u = Model.wallDir(w); let n = G.perp(u); if (inside(G.add(G.mid(w.a, w.b), G.mul(n, w.th / 2 + 10)))) n = G.mul(n, -1); return [w, n]; }));
       const line = (w) => { const n = shift.get(w); return [G.add(w.a, G.mul(n, add / 2)), G.add(w.b, G.mul(n, add / 2))]; };
@@ -135,15 +152,21 @@ const Finish = {
         w.a = newPt.get(w.id + 'a'); w.b = newPt.get(w.id + 'b');
         const ds = G.dot(G.sub(a0, w.a), u0);
         for (const op of d.openings.filter(x => x.wall === w.id)) op.pos += ds;
-        w.th += add; w.clad = Fc.th; w.gap = Fc.gap; w.cladMat = kind;
+        w.th += add; Finish.setClad(w, kind, target, g);
         // предметы и концы трасс на фасаде (в полосе 60 см снаружи) — наружу вместе с гранью
         const n = shift.get(w), L = Model.wallLen(w);
-        const onFace = (p) => { const s = G.dot(G.sub(p, w.a), Model.wallDir(w)), k = G.dot(G.sub(p, G.mid(w.a, w.b)), n); return s > -40 && s < L + 40 && k > (w.th - add) / 2 - 20 && k < (w.th - add) / 2 + 60; };
+        const onFace = (p) => { const s = G.dot(G.sub(p, w.a), Model.wallDir(w)), k = G.dot(G.sub(p, G.mid(w.a, w.b)), n); return s > -40 && s < L + 40 && k > (w.th - add) / 2 - 20 - Math.max(0, -add) && k < (w.th - add) / 2 + 60; };
         for (const it of d.items) if ((it.floor || d.floors[0].id) === f.id && !BLD_HOLLOW.has(catItem(it.key).shape) && !moved.includes(it) && onFace(it)) { it.x += n.x * add; it.y += n.y * add; moved.push(it); }
         for (const l of d.lines) if ((l.floor || d.floors[0].id) === f.id) for (const p of l.pts) if (onFace(p) && !moved.includes(p)) { p.x += n.x * add; p.y += n.y * add; moved.push(p); }
       }
     }
+    // постройки с облицовкой «как у дома» — тот же материал
+    for (const it of d.items) if (it.clad > 0) { if (target > 0) { it.clad = target - g; it.gap = g; } else { delete it.clad; delete it.gap; } }
     return moved.length;
+  },
+  /** Поля облицовки стены: total — облицовка + зазор */
+  setClad(w, kind, total, g) {
+    if (total > 0) { w.clad = Math.round((total - g) * 10) / 10; w.gap = g; w.cladMat = kind; } else { delete w.clad; delete w.gap; delete w.cladMat; }
   },
 
   /* ------------------------------- лист ------------------------------- */
@@ -160,7 +183,7 @@ const Finish = {
     return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Ведомость отделки'),
       Sheets.T(['№', 'Помещение', 'Пол, м²', 'Стены, м²', 'Потолок, м²'], rows),
       U.el('h4', {}, App.doc.floors.length > 1 ? 'Материалы (весь дом)' : 'Материалы'), Sheets.T(null, [...sum(Q.floor, FIN_FLOORS), ...sum(Q.walls, FIN_WALLS), ...sum(Q.ceil, FIN_CEIL),
-        o.facade !== 'none' ? [`Фасад: ${FIN_FACADE[o.facade].name}, ${(FIN_BRICK_COLORS[o.brick] || [])[0] || ''}`, `${Q.facade.toFixed(0)} м², ≈ ${Q.bricks} шт.`] : null,
+        o.facade !== 'none' ? [`Фасад: ${FIN_FACADE[o.facade].name}${o.facade === 'plaster' ? ', цвет ' + o.facadeColor : ', ' + ((FIN_BRICK_COLORS[o.brick] || [])[0] || '')}`, `${Q.facade.toFixed(0)} м²${Q.bricks ? `, ≈ ${Q.bricks} шт.` : ''}`] : null,
         ['Двери межкомнатные: массив / шпон, тон «орех средний»', `${Q.doors} шт.`], ['Окна ПВХ: снаружи антрацит (ламинация), внутри белые', `${Q.windows} шт.`]].filter(Boolean)),
       U.el('h4', {}, 'Указания'), Sheets.ul(['Плитка 600×1200 — на клей С2 с системой выравнивания, шов 2 мм, по стяжке с тёплым полом — эластичный клей', 'В санузлах — обмазочная гидроизоляция пола и стен на 200 мм (в душе — на высоту 2 м)', 'Обои под покраску — по шпаклёвке и грунту, краска матовая моющаяся', 'Натяжной потолок — после чистовой отделки стен; закладные под светильники заранее', 'Облицовка: кирпич на гибких связях 4 шт./м², вентзазор 20–40 мм, продухи внизу и вверху кладки']),
       U.el('div', { class: 'norm' }, '§ СП 71.13330.2017 «Изоляционные и отделочные покрытия»; СП 29.13330.2011 «Полы»; СП 15.13330.2020'));

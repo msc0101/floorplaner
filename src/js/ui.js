@@ -693,7 +693,6 @@ const UI = {
     const o = Finish.opt(), set = (k, v) => { Finish.set(k, v); Model.commit(); UI.refresh(); };
     const opts = (T) => Object.entries(T).map(([k, v]) => [k, v.name]);
     const color = (label, v, k) => F.row(label, U.el('input', { type: 'color', value: v, onchange: (e) => set(k, e.target.value) }));
-    const clad = App.doc.walls.some(w => w.kind === 'ext' && w.clad > 0);
     return F.section('Отделка',
       F.select('Полы (основное)', o.floor, opts(FIN_FLOORS), (v) => set('floor', v)),
       F.select('Полы в спальнях', o.living, opts(FIN_FLOORS), (v) => set('living', v)),
@@ -703,10 +702,35 @@ const UI = {
       F.select('Стены санузлов', o.wetWalls, opts(FIN_WALLS), (v) => set('wetWalls', v)),
       F.select('Потолки', o.ceil, opts(FIN_CEIL), (v) => set('ceil', v)),
       color('Двери (дерево)', o.door, 'door'), color('Окна снаружи', o.winOut, 'winOut'), color('Окна внутри', o.winIn, 'winIn'),
-      F.select('Фасад', o.facade, opts(FIN_FACADE), (v) => set('facade', v)),
-      o.facade !== 'none' ? F.select('Цвет кирпича', o.brick, Object.entries(FIN_BRICK_COLORS).map(([k, v]) => [k, v[0]]), (v) => set('brick', v)) : null,
-      o.facade !== 'none' && !clad ? F.btns([['Облицевать наружные стены', () => { const n = Finish.cladWalls(o.facade); Model.commit(); UI.toast(`Облицовка добавлена: стены толще наружу на ${FIN_FACADE[o.facade].th + FIN_FACADE[o.facade].gap} см, внутренние размеры не изменились${n ? `; сдвинуто у фасада: ${n}` : ''}`); UI.refresh(); }, 'primary']]) : null,
+      ...UI.facadeControls(),
       F.note('Отделка видна в 3D и на листе «План отделки», площади — в ведомости отделки на том же листе. Слой «Отделка» на плане — раскладка плитки и коды покрытий. Облицовка утолщает стены наружу, фундамент пересчитывается сам.'));
+  },
+  /** Вентстояк: отвод под полом из ближайшего погреба / ямы (центр) */
+  feedFromPit(it) {
+    const pit = App.doc.items.filter(o => catItem(o.key).shape === 'pit' && (o.floor || App.doc.floors[0].id) === (it.floor || App.doc.floors[0].id)).sort((a, b) => G.dist(a, it) - G.dist(b, it))[0];
+    if (!pit) { UI.toast('Рядом нет погреба или ямы'); return; }
+    it.feed = { x: Math.round(pit.x), y: Math.round(pit.y) }; if (!U.isNum(it.z0) || it.z0 >= 0) it.z0 = -Math.round(pitGeom(pit, pit.w, pit.d).depth - 30); Model.commit();
+  },
+  /** Фасад дома: вид облицовки (кирпич — формат, штукатурка), цвет, вентзазор; меняет все наружные стены сразу */
+  facadeControls() {
+    const o = Finish.opt(), F0 = FIN_FACADE[o.facade] || FIN_FACADE.none;
+    const ext = App.doc.walls.filter(w => w.kind === 'ext'), clad = ext.some(w => w.clad > 0);
+    const apply = (kind, gap) => {
+      const was = ext.length ? (ext[0].clad || 0) + (ext[0].clad > 0 ? ext[0].gap || 0 : 0) : 0;
+      const n = Finish.applyFacade(kind, gap); Model.commit();
+      const now = ext.length ? (ext[0].clad || 0) + (ext[0].clad > 0 ? ext[0].gap || 0 : 0) : 0;
+      if (Math.abs(now - was) > 0.01) UI.toast(`Наружные стены: ${now > was ? 'толще' : 'тоньше'} наружу на ${U.fmtLen(Math.abs(now - was))}, внутренние размеры не изменились${n ? `; сдвинуто у фасада: ${n}` : ''}. Фундамент пересчитан.`);
+      UI.refresh();
+    };
+    const brick = o.facade !== 'none' && o.facade !== 'plaster';
+    return [
+      F.select('Облицовка фасада', o.facade, Object.entries(FIN_FACADE).map(([k, v]) => [k, v.short === '—' ? 'Без облицовки' : v.short]), (v) => apply(v), { field: 'facade' }),
+      brick ? F.select('Цвет кирпича', o.brick, Object.entries(FIN_BRICK_COLORS).map(([k, v]) => [k, v[0]]), (v) => { Finish.set('brick', v); Model.commit(); UI.refresh(); }) : null,
+      o.facade === 'plaster' ? F.row('Цвет фасада', U.el('input', { type: 'color', value: o.facadeColor, onchange: (e) => { Finish.set('facadeColor', e.target.value); Model.commit(); UI.refresh(); } })) : null,
+      brick ? F.select('Вентзазор', String(U.isNum(o.gap) ? o.gap : F0.gap), [['2', '20 мм'], ['3', '30 мм'], ['4', '40 мм']], (v) => apply(o.facade, +v)) : null,
+      F0.th ? F.info('Толщина облицовки', `${U.fmtLen(F0.th)}${F0.course ? `, ряд ${Math.round(F0.course * 10)} мм, ≈ ${F0.perM2} шт./м²` : ''}`) : null,
+      F0.th && !clad && ext.length ? F.btns([['Облицевать наружные стены', () => apply(o.facade), 'primary']]) : null,
+    ];
   },
   /** Конструкции: грунт → авторасчёт фундамента; кладка и армирование стен по материалам */
   structSection() {
@@ -816,8 +840,8 @@ const UI = {
       F.select('Тип', w.kind, Object.entries(WALL_KINDS).map(([k, v]) => [k, v.name]), setKind),
       F.select('Материал', w.mat, Object.entries(mats).map(([k, v]) => [k, v.name]), (v) => App.setWallMat([w], v), { field: 'mat' }),
       M && M.ths ? U.el('div', { class: 'frow' }, U.el('span', { class: 'flabel' }, 'Типовая толщина'), U.el('div', { class: 'chips' }, M.ths.map(t => {
-        const total = t + (w.ins || 0);
-        return U.el('button', { type: 'button', class: Math.abs(w.th - total) < 0.01 ? 'on' : '', title: `${t} см` + (w.ins ? ` + утеплитель ${w.ins} см` : ''), onclick: () => { w.th = total; Model.commit(); } }, String(t));
+        const cl = w.clad > 0 ? w.clad + (w.gap || 0) : 0, total = t + (w.ins || 0) + cl;              // кладка + утеплитель + облицовка с зазором
+        return U.el('button', { type: 'button', class: Math.abs(w.th - total) < 0.01 ? 'on' : '', title: `${t} см` + (w.ins ? ` + утеплитель ${w.ins} см` : '') + (cl ? ` + облицовка ${cl} см` : ''), onclick: () => { w.th = total; Model.commit(); } }, String(t));
       }))) : null,
       F.num('Длина (по оси)', L, setLen, { min: 1, field: 'len' }),
       F.num(w.ins ? 'Толщина (общая)' : 'Толщина', w.th, (v) => UI.set(w, 'th', Math.max(v, (w.ins || 0) + 1)), { min: 2, max: 150 }),
@@ -850,6 +874,10 @@ const UI = {
       F.info('Азимут фасада', (() => { const n = G.perp(Model.wallDir(w)); const b1 = Sun.bearingOf(n), b2 = Sun.bearingOf(G.mul(n, -1)); return `${U.compass8(b1)} ${Math.round(b1)}° / ${U.compass8(b2)} ${Math.round(b2)}°`; })()),
       F.info('Площадь стены (без проёмов)', U.fmtArea(L * w.h - App.doc.openings.filter(o => o.wall === w.id).reduce((s, o) => s + o.w * (o.h || 0), 0))),
     ));
+    if (w.kind === 'ext') body.append(F.section('Фасад (все наружные стены)',
+      w.clad > 0 ? F.info('У этой стены', `${(FIN_FACADE[w.cladMat] || FIN_FACADE.brick).short}: ${U.fmtLen(w.clad)} + зазор ${U.fmtLen(w.gap || 0)}`) : F.info('У этой стены', 'без облицовки'),
+      ...UI.facadeControls(),
+      F.note('Облицовка одна на весь дом: стены утолщаются наружу, внутренние размеры и проёмы не меняются. Отделка комнат — вкладка «Проект» → «Отделка».')));
     if (w.kind === 'ext' && WALL_MATERIALS[w.mat]) {
       const R = wallR(w), need = 3.0;
       body.append(F.section('Теплозащита',
@@ -998,7 +1026,9 @@ const UI = {
           + ' Норма: до 1,5 м от конька — на 0,5 м выше конька, 1,5–3 м — не ниже конька, дальше — не ниже линии 10° от конька.')
           : F.note('Над трубой нет крыши дома — высоту задайте сами (не меньше 0,5 м над кровлей).'),
         !auto && st && top < st.need - 1 ? F.btns([['Поднять до нормы', () => { it.h = Math.ceil((st.need - st.e) / 5) * 5; Model.commit(); }]]) : null,
-        F.num('Низ трубы от пола (в погребе — минус)', it.z0 || 0, (v) => { it.z0 = U.clamp(v, -400, 300) || undefined; Model.commit(); }, { step: 5 })));
+        F.num('Низ трубы от пола (в погребе — минус)', it.z0 || 0, (v) => { it.z0 = U.clamp(v, -400, 300) || undefined; Model.commit(); }, { step: 5 }),
+        it.feed ? F.info('Отвод под полом', `из погреба (${U.fmtLen(it.feed.x)}, ${U.fmtLen(it.feed.y)}) к стояку`) : null,
+        it.feed ? F.btns([['Убрать отвод', () => { delete it.feed; Model.commit(); }], ['Отвод — от погреба рядом', () => UI.feedFromPit(it)]]) : F.btns([['+ Отвод из погреба', () => UI.feedFromPit(it)]])));
     }
     if (def.shape === 'cctv') {
       body.append(F.section('Камера',
@@ -1054,6 +1084,7 @@ const UI = {
         F.select('Толщина (типовая)', WALL_MATERIALS[bldWallMat(it)].ths.includes(sh.t) ? String(sh.t) : '', [['', `${sh.t} см — своя`], ...WALL_MATERIALS[bldWallMat(it)].ths.map(x => [String(x), `${x} см`])], (v) => { if (v) { it.wallT = +v; Model.commit(); } }),
         F.num('Толщина стен', sh.t, (v) => { it.wallT = U.clamp(v, 3, 60); Model.commit(); }, { min: 3, max: 60, field: 'wallT' }),
         F.info('Теплосопротивление стены', `R ≈ ${(sh.t / 100 / WALL_MATERIALS[bldWallMat(it)].lam).toFixed(2)} м²·°C/Вт` + (it.key === 'garage1' || it.key === 'garage2' || it.key === 'bathhouse' ? ' (тёплому гаражу / бане — от 2,0)' : '')),
+        F.check('Облицовка — как у дома', it.clad > 0, (v) => { const Fc = FIN_FACADE[Finish.opt().facade]; if (v && Fc && Fc.th) { it.clad = Fc.th; it.gap = U.isNum(Finish.opt().gap) ? Finish.opt().gap : Fc.gap; } else { delete it.clad; delete it.gap; } Model.commit(); }),
         F.check('Отмостка', it.blind > 0, (v) => { if (v) it.blind = Math.max(80, bldRoof(it).over + 20); else delete it.blind; Model.commit(); }),
         it.blind > 0 ? F.num('Ширина отмостки', it.blind, (v) => { it.blind = U.clamp(v, 30, 300); Model.commit(); }, { min: 30, max: 300 }) : null,
         it.blind > 0 && bldRoof(it).type !== 'none' && it.blind < bldRoof(it).over + 20 ? F.note(`<b style="color:var(--danger)">Отмостка должна быть шире свеса крыши (${U.fmtLen(bldRoof(it).over)}) минимум на 20 см.</b>`) : null,
@@ -1103,6 +1134,9 @@ const UI = {
         o.stepSides.length ? F.num('Ширина ступеней / прохода', o.stepW, (v) => { it.stepW = U.clamp(v, 60, 1000); Model.commit(); }, { min: 60 }) : null,
         o.encl !== 'open' ? UI.sideChips({ rail: 'Ограждение', glazed: 'Остекление', closed: 'Стены' }[o.encl], o.free, o.railSides, (list) => { it.railSides = list; Model.commit(); }) : null,
         g.steps ? F.info('Ступени', `${g.steps - 1} шт. + площадка, подъём ${U.fmtLen(g.rise)}, проступь ${g.tread} см`) : null,
+        ...(o.encl !== 'open' ? o.railSides.map(k => { const sp = (it.railSpan || {})[k], L = ['front', 'back'].includes(k) ? it.w : it.d;
+          const setSp = (i, v) => { const r = { ...(it.railSpan || {}) }, cur = r[k] ? [...r[k]] : [0, L]; cur[i] = U.clamp(v, 0, L); if (cur[0] <= 0.5 && cur[1] >= L - 0.5) delete r[k]; else r[k] = cur; it.railSpan = Object.keys(r).length ? r : undefined; Model.commit(); };
+          return U.el('div', { class: 'frow2' }, F.num(`${PORCH_SIDES[k].name}: от`, sp ? sp[0] : 0, (v) => setSp(0, v), { min: 0 }), F.num('до', sp ? sp[1] : L, (v) => setSp(1, v), { min: 0 })); }) : []),
         F.note('Стороны — если смотреть на площадку спереди; «сзади» — сторона у дома (у пристроенной недоступна). Где ступени — там проход в ограждении, у закрытой веранды — дверь. Высота объекта — до верха крыши.')));
       if (o.roofed) body.append(roofSection());
       const R0 = o.roofed && o.attached ? bldRoof(it) : null;
@@ -1110,6 +1144,12 @@ const UI = {
         F.check('Скат от карниза дома (крыши сливаются)', it.roofJoin !== false, (v) => { it.roofJoin = v ? undefined : false; Model.commit(); }),
         F.note('У односкатной крыши пристроенной веранды верх ската заводится под кровлю дома, уклон — как у дома, если хватает высоты над настилом (2,15 м у края), иначе чуть положе — с переломом ската.')));
     }
+    // высота установки настенных приборов (кондиционер, шкаф, регистратор): низ от пола
+    if ((U.isNum(it.z0) || U.isNum(def.z0)) && !def.stack && def.shape !== 'radiator' && def.shape !== 'pit') body.append(F.section('Установка',
+      F.num('Низ от пола', U.isNum(it.z0) ? it.z0 : def.z0, (v) => { it.z0 = U.clamp(v, -400, 500); Model.commit(); }, { step: 5 }),
+      def.shape === 'ac' || it.key === 'ac' ? F.note('Внутренний блок — под потолком, 10–15 см от него; струя — не на кровать, рабочий стол и высокие шкафы.') : null));
+    if (def.shape === 'car') body.append(F.section('Автомобиль', F.row('Цвет', U.el('input', { type: 'color', value: it.color || '#4a6da8', onchange: (e) => UI.set(it, 'color', e.target.value) }))));
+    if (def.shape === 'workbench') body.append(F.section('Верстак', F.num('Высота перфопанели', it.pegH ?? 100, (v) => UI.set(it, 'pegH', U.clamp(v, 0, 200)), { min: 0, max: 200 }), F.note('Под окном — низкая панель, чтобы не закрывать свет.')));
     body.append(F.section('Положение',
       F.num('X', it.x / 100, (v) => UI.set(it, 'x', v * 100), { unit: 'м', step: 0.01 }),
       F.num('Y', it.y / 100, (v) => UI.set(it, 'y', v * 100), { unit: 'м', step: 0.01 }),
@@ -1133,7 +1173,7 @@ const UI = {
       F.info('Длина', U.fmtLen(len)),
       F.info('Точек', String(l.pts.length)),
       k.dia || l.dia ? F.num('Диаметр', l.dia, (v) => UI.set(l, 'dia', v), { unit: 'мм' }) : null,
-      k.section !== undefined ? F.text('Сечение / марка', l.section || '', (v) => UI.set(l, 'section', v), { placeholder: k.section }) : null,
+      l.kind !== 'overhead' ? F.text(['power', 'lowvolt', 'ground'].includes(l.kind) ? 'Сечение / марка' : 'Марка / материал трубы', l.section || '', (v) => UI.set(l, 'section', v.trim() || undefined), { placeholder: k.section || '' }) : null,
       l.kind === 'overhead' || l.kind === 'gasAir' ? null : F.num('Глубина заложения', l.depth ?? 0, (v) => UI.set(l, 'depth', v), { min: 0 }),
       l.kind === 'water' || l.kind === 'hotwater' ? F.check('Греющий кабель и утеплитель (можно мельче промерзания)', !!l.heated, (v) => UI.set(l, 'heated', v || undefined)) : null,
       l.kind === 'sewer' && l.depth > 0 ? F.check('Утеплена: скорлупа ППУ / XPS над трубой (можно мельче промерзания)', !!l.heated, (v) => UI.set(l, 'heated', v || undefined)) : null,
