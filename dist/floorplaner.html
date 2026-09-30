@@ -1517,12 +1517,13 @@ const FENCE_MATERIALS = {
 const INSULATION_LAM = 0.045;
 function wallMaterial(w) { return (w.kind === 'fence' ? FENCE_MATERIALS : WALL_MATERIALS)[w.mat] || null; }
 function materialsFor(kind) { return kind === 'fence' ? FENCE_MATERIALS : WALL_MATERIALS; }
-/** Сопротивление теплопередаче стены, м²·°C/Вт (с учётом сопротивлений поверхностей 0.158) */
+/** Сопротивление теплопередаче стены, м²·°C/Вт (с учётом сопротивлений поверхностей 0.158).
+ *  Облицовка за вентзазором теплозащиту не даёт (СП 50.13330 п. Е.6) — считаются только кладка и утеплитель */
 function wallR(w) {
   const m = WALL_MATERIALS[w.mat];
   if (!m) return null;
-  const ins = Math.max(0, Math.min(w.ins || 0, w.th));
-  return (w.th - ins) / 100 / m.lam + ins / 100 / INSULATION_LAM + 0.158;
+  const ins = Math.max(0, Math.min(w.ins || 0, w.th)), core = Math.max(0, w.th - ins - (w.clad > 0 ? w.clad + (w.gap || 0) : 0));
+  return core / 100 / m.lam + ins / 100 / INSULATION_LAM + 0.158;
 }
 
 /* Виды площадных объектов */
@@ -4429,8 +4430,17 @@ const Roof = {
       span, half, L, pitch: U.deg(a), step, n, nRaft, rafterL, b: pick.b, h: pick.h, sig: pick.sig, f: pick.f, fmax: pick.fmax, R,
       snow: { district: cl.snow, Sg, mu, s0, sD }, gRoof, q, len, slope, bat: BAT[0], batStep: BAT[1], batM, counter: slope / step, osb: r.mat === 'soft' ? slope : 0,
       membrane: slope * 1.15, mauerlat: 2 * len, anchors: Math.ceil(2 * len) + 2, woodV, S,
-      attic: mans ? { ins: pick.h + 50, mansard: true, vent: 0 } : { ins: 200, vent: (S.v1 - S.v0) * (S.u1 - S.u0) / 1e4 / 300 },   // мансарда: утеплитель между стропилами + 50 мм поперёк, вентзазор над мембраной
+      attic: mans ? { ins: pick.h + 50, mansard: true, vent: 0, R: Roof.insR(pick.b, pick.h, step, pick.h + 50), need: Climate.Rreq('roof') }   // мансарда: утеплитель между стропилами + 50 мм поперёк, вентзазор над мембраной
+        : (() => { const need = Climate.Rreq('attic'), ins = U.isNum(r.atticIns) ? r.atticIns : [200, 250, 300, 350, 400, 450].find(t => Roof.insR(pick.b, pick.h, step, t) >= need * 1.1) || 450;
+          return { ins, auto: !U.isNum(r.atticIns), R: Roof.insR(pick.b, pick.h, step, ins), need, vent: (S.v1 - S.v0) * (S.u1 - S.u0) / 1e4 / 300 }; })(),
     };
+  },
+  /** Сопротивление теплопередаче утеплённого перекрытия / ската с деревянными балками (мостики холода — параллельными путями):
+   *  балки b×h мм с шагом step м, минвата ins мм (сначала между балками, остальное — поперёк); поверхности 0,115 + 0,083 */
+  insR(b, h, step, ins) {
+    const T = ins / 1000, H = h / 1000, f = Math.min(0.5, b / 1000 / step), RS = 0.198;
+    const Rw = (T >= H ? H / 0.18 + (T - H) / INSULATION_LAM : T / 0.18) + RS, Ri = T / INSULATION_LAM + RS;
+    return Math.round(1 / (f / Rw + (1 - f) / Ri) * 100) / 100;
   },
 
   /* ------------------------------ план ----------------------------------- */
@@ -4679,6 +4689,17 @@ const Climate = {
     if (!c) c = CITIES.reduce((b, x) => { const dd = (x[1] - g.lat) ** 2 + ((x[2] - g.lon) * Math.cos(U.rad(g.lat))) ** 2; return !b || dd < b.dd ? { x, dd } : b; }, null).x;
     const [city, , , , snow, wind, zone, t5, frost] = c;
     return { city, exact, snow, snowKpa: Climate.SNOW_KPA[snow], wind, windKpa: Climate.WIND_KPA[wind], zone, t5, frost };
+  },
+  /** ГСОП, °C·сут (градусо-сутки отопительного периода при +20 °C внутри): оценка по расчётной зимней температуре города
+   *  (Москва ≈ 4500, Димитровград ≈ 5200, Новосибирск ≈ 6000, Якутск ≈ 10 000); точно — по СП 131.13330 для адреса */
+  gsop() {
+    const t = Math.abs(Math.min(0, Climate.get().t5));
+    return Math.round(Math.max(800, 1300 + 125 * t + (t > 40 ? 200 * (t - 40) : 0)) / 50) * 50;
+  },
+  /** Нормируемое сопротивление теплопередаче, м²·°C/Вт (СП 50.13330.2012 табл. 3, жилые): стены, чердачное перекрытие, покрытие (мансарда) */
+  Rreq(kind) {
+    const D = Climate.gsop(), [a, b] = { wall: [0.00035, 1.4], attic: [0.00045, 1.9], roof: [0.0005, 2.2] }[kind] || [0.00035, 1.4];
+    return Math.round((a * D + b) * 100) / 100;
   },
   /** Глубина промерзания, см: задана вручную на вкладке «Проект» или по климату города */
   /** Нормативная глубина промерзания, см: из таблицы (суглинки, d0 = 0,23) с поправкой на грунт верхнего слоя (пески и супеси — d0 0,28–0,30), СП 22.13330 п. 5.5.3 */
@@ -13364,10 +13385,10 @@ const UI = {
       ...UI.facadeControls(),
       F.note('Облицовка одна на весь дом: стены утолщаются наружу, внутренние размеры и проёмы не меняются. Отделка комнат — вкладка «Проект» → «Отделка».')));
     if (w.kind === 'ext' && WALL_MATERIALS[w.mat]) {
-      const R = wallR(w), need = 3.0;
+      const R = wallR(w), need = Climate.Rreq('wall');
       body.append(F.section('Теплозащита',
         U.el('div', { class: 'finfo' }, U.el('span', {}, 'Сопротивление теплопередаче R'), U.el('b', { class: R >= need ? 'ok' : 'bad' }, `${R.toFixed(2)} м²·°C/Вт`)),
-        F.note(`Для жилого дома в средней полосе России нужно около ${need.toFixed(1)}–3.5 (СП 50.13330, зависит от региона). ` +
+        F.note(`Норма для жилого дома в г. ${Climate.get().city}: ${need.toFixed(2)} (СП 50.13330 табл. 3, ГСОП ≈ ${Climate.gsop()} °C·сут). Облицовка за вентзазором не считается. ` +
           (R >= need ? 'Стена проходит.' : `Не хватает: добавьте утеплитель ≈ ${Math.ceil((need - R) * INSULATION_LAM * 100 / 5) * 5} см минваты или возьмите толще/теплее материал.`) +
           ' Расчёт упрощённый, без учёта мостиков холода.')));
     }
@@ -13736,6 +13757,9 @@ const UI = {
       F.num('Низ крыши (карниз) от земли', r.base, (v) => UI.set(r, 'base', Math.max(0, v)), { min: 0 }),
       F.btns([['Высота по стенам', () => UI.set(r, 'base', Roof.autoBase(r.floor))], ['Повернуть конёк на 90°', () => { [r.w, r.d] = [r.d, r.w]; r.rot = U.normDeg((r.rot || 0) + 90); Model.commit(); }]]),
       F.check('Снегозадержатели по карнизам', !!r.snowGuard, (v) => UI.set(r, 'snowGuard', v || undefined)),
+      (() => { const fr = Roof.frame(r), A = fr && fr.attic; if (!A || A.mansard) return null;
+        return U.el('div', {}, F.select('Утеплитель чердачного перекрытия', A.auto ? '' : String(A.ins), [['', `по норме (${A.ins} мм)`], ...[200, 250, 300, 350, 400].map(t => [String(t), `минвата ${t} мм`])], (v) => { if (v) r.atticIns = +v; else delete r.atticIns; Model.commit(); }),
+          U.el('div', { class: 'finfo' }, U.el('span', {}, 'Сопротивление теплопередаче R'), U.el('b', { class: A.R >= A.need ? 'ok' : 'bad' }, `${A.R.toFixed(2)} (норма ${A.need.toFixed(2)}) м²·°C/Вт`))); })(),
       (() => { const cl = Climate.get(), mu = r.type === 'flat' ? 1 : U.clamp((60 - (r.pitch || 0)) / 30, 0, 1), S = 0.7 * cl.snowKpa * mu * 1.4;
         return F.info('Снег на кровлю (расчётно)', `${(S * 102).toFixed(0)} кг/м² — район ${Climate.roman(cl.snow)}, μ ${mu.toFixed(2)} (СП 20.13330 п. 10)`); })(),
       (ROOF_MATERIALS[r.mat] || {}).min ? F.note(`Минимальный уклон для «${ROOF_MATERIALS[r.mat].name.toLowerCase()}» — ${ROOF_MATERIALS[r.mat].min}° (СП 17.13330).${r.type !== 'flat' && r.pitch < ROOF_MATERIALS[r.mat].min ? ' <b style="color:var(--danger)">Сейчас меньше — смените кровлю или уклон.</b>' : ''}`) : null,
@@ -15488,6 +15512,41 @@ const Analysis = {
         }
       }
     });
+    // двери: одинарные межкомнатные — одной стандартной ширины (ГОСТ 475), наружные — не уже 90 (ширина выхода в свету ≥ 0,8 м)
+    {
+      const DS = d.openings.filter(o => o.type === 'door' || o.type === 'slide').map(o => ({ o, w: Model.get(o.wall) })).filter(x => x.w);
+      const inn = DS.filter(x => x.w.kind !== 'ext'), cnt = {};
+      for (const x of inn) cnt[x.o.w] = (cnt[x.o.w] || 0) + 1;
+      const std = +Object.entries(cnt).sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0];
+      const odd = inn.filter(x => x.o.w !== std || ![60, 70, 80, 90].includes(x.o.w));
+      if (odd.length && std) add('warn', 'Двери', `Межкомнатные двери разной ширины: ${odd.map(x => U.fmtLen(x.o.w)).join(', ')} при основной ${U.fmtLen(std)} — одинаковые полотна дешевле и проще в заказе (двустворчатые — отдельно)`, 'ГОСТ 475-2016 (полотна 600, 700, 800, 900 мм)', G.mid(...(() => { const g = Model.opGeom(odd[0].o); return [g.a, g.b]; })()), odd[0].o.id, () => { for (const x of odd) x.o.w = [60, 70, 80, 90].includes(std) ? std : 80; });
+      // входы в жилую часть; дверь техпомещения (котельная, кладовая) — по месту, обычно 80
+      const roomOf = (o) => { const g = Model.opGeom(o); if (!g) return null; const m = G.mid(g.a, g.b); const fd = (App.floorData || []).find(f => f.floor.id === (Model.get(o.wall).floor || d.floors[0].id)); return fd && fd.rooms.find(r => G.distPoly(m, r.floor || r.axis) < Model.get(o.wall).th / 2 + 15); };
+      for (const x of DS.filter(y => y.w.kind === 'ext' && y.o.type === 'door' && y.o.w < 90 && !/котельн|топоч|кладов|техн|гараж/i.test((roomOf(y.o) || {}).name || ''))) {
+        const g = Model.opGeom(x.o);
+        add('warn', 'Двери', `Наружная дверь ${U.fmtLen(x.o.w)}: у входной (эвакуационной) двери ширина в свету должна быть не меньше 0,8 м — это полотно 90 см (стандартная входная дверь 860–960 мм)`, 'СП 1.13130.2020 п. 4.2.5; ГОСТ 31173-2016', g ? G.mid(g.a, g.b) : null, x.o.id, () => { x.o.w = 90; });
+      }
+    }
+    // теплозащита по ГСОП города: наружные стены, чердачное перекрытие / скаты мансарды (облицовка за вентзазором не считается)
+    {
+      const city = Climate.get().city, src = `СП 50.13330.2012 п. 5.2, табл. 3; ГСОП ≈ ${Climate.gsop()} °C·сут (${city}, оценка по СП 131.13330)`, needW = Climate.Rreq('wall'), seen = new Set();
+      for (const w of d.walls.filter(x => x.kind === 'ext' && WALL_MATERIALS[x.mat])) {
+        const R = wallR(w), k = [w.mat, Math.round(w.th), w.ins || 0, w.clad || 0].join(':');
+        if (seen.has(k)) continue;
+        seen.add(k);
+        const nm = `Наружные стены (${WALL_MATERIALS[w.mat].name.toLowerCase()}${w.ins ? ` + минвата ${w.ins} см` : ''})`;
+        if (R < needW - 0.005) { const cm = Math.ceil((needW - R) * INSULATION_LAM * 100 / 5) * 5;
+          add('warn', 'Теплозащита', `${nm}: R = ${R.toFixed(2)} при норме ${needW.toFixed(2)} м²·°C/Вт${w.clad > 0 ? ' (облицовка за вентзазором теплозащиту не даёт)' : ''} — добавьте ${cm} см минваты (стены утолщаются наружу, комнаты не меняются)`, src, G.mid(w.a, w.b), w.id, () => Finish.addIns(cm)); }
+        else add('note', 'Теплозащита', `${nm}: R = ${R.toFixed(2)} ≥ ${needW.toFixed(2)} м²·°C/Вт — норма выполнена`, src);
+      }
+      for (const r of d.roofs) {
+        const fr = Roof.frame(r), A = fr && fr.attic;
+        if (!A || !U.isNum(A.R)) continue;
+        const nm = A.mansard ? `Скаты мансарды (минвата ${A.ins} мм по стропилам)` : `Чердачное перекрытие (минвата ${A.ins} мм${A.auto ? ', подобрано по норме с запасом 10 % на мостики холода' : ''})`;
+        if (A.R < A.need - 0.005) add('warn', 'Теплозащита', `${nm}: R = ${A.R.toFixed(2)} при норме ${A.need.toFixed(2)} м²·°C/Вт — увеличьте утеплитель`, src, { x: r.x, y: r.y }, r.id, A.mansard ? null : () => { delete r.atticIns; });
+        else add('note', 'Теплозащита', `${nm}: R = ${A.R.toFixed(2)} ≥ ${A.need.toFixed(2)} м²·°C/Вт — норма выполнена (с учётом деревянных ${fr.scheme === 'truss' ? 'поясов ферм' : 'балок'} как мостиков холода)`, src);
+      }
+    }
     // высота этажей
     for (const f of d.floors) {
       if (d.roofs.some(r => r.floor === f.id && Roof.living(r))) continue;                  // мансарда: высоты — по помещениям под скатами (выше)
@@ -16846,39 +16905,50 @@ const Finish = {
     const d = App.doc, Fc = FIN_FACADE[kind] || FIN_FACADE.brick, target = U.isNum(total) ? total : Fc.th + Fc.gap, g = U.isNum(gap) ? gap : Fc.gap;
     const moved = [];
     for (const f of d.floors) {
-      const fd = (App.floorData || []).find(x => x.floor.id === f.id), inside = (p) => fd && fd.outlines.some(o => G.pointInPoly(p, o.outer));
       // у всех наружных стен этажа — одна облицовка: прибавка = новая − текущая (у ещё не облицованных текущая 0)
       const ext = d.walls.filter(w => (w.floor || d.floors[0].id) === f.id && w.kind === 'ext');
       const cur = (w) => (w.clad || 0) + (w.clad > 0 ? w.gap || 0 : 0);
       if (!ext.length || ext.every(w => Math.abs(cur(w) - target) < 0.01 && (w.cladMat || 'brick') === kind)) continue;
       const add = target - (ext.length ? cur(ext[0]) : 0);
       if (ext.some(w => Math.abs(cur(w) - cur(ext[0])) > 0.01)) { for (const w of ext) { w.th += target - cur(w); Finish.setClad(w, kind, target, g); } continue; }   // разнобой — без сдвига осей
-      // смещение оси каждой стены наружу на add/2
-      const shift = new Map(ext.map(w => { const u = Model.wallDir(w); let n = G.perp(u); if (inside(G.add(G.mid(w.a, w.b), G.mul(n, w.th / 2 + 10)))) n = G.mul(n, -1); return [w, n]; }));
-      const line = (w) => { const n = shift.get(w); return [G.add(w.a, G.mul(n, add / 2)), G.add(w.b, G.mul(n, add / 2))]; };
-      const newPt = new Map();
-      for (const w of ext) for (const key of ['a', 'b']) {
-        const p = w[key], other = ext.find(x => x !== w && (G.dist(x.a, p) < 1 || G.dist(x.b, p) < 1));
-        const [a1, b1] = line(w);
-        let q = key === 'a' ? a1 : b1;
-        if (other) { const [a2, b2] = line(other), x = G.lineInter(a1, b1, a2, b2); if (x) q = { x: x.x, y: x.y }; }
-        newPt.set(w.id + key, q);
-      }
-      for (const w of ext) {
-        const u0 = Model.wallDir(w), a0 = { ...w.a };
-        w.a = newPt.get(w.id + 'a'); w.b = newPt.get(w.id + 'b');
-        const ds = G.dot(G.sub(a0, w.a), u0);
-        for (const op of d.openings.filter(x => x.wall === w.id)) op.pos += ds;
-        w.th += add; Finish.setClad(w, kind, target, g);
-        // предметы и концы трасс на фасаде (в полосе 60 см снаружи) — наружу вместе с гранью
-        const n = shift.get(w), L = Model.wallLen(w);
-        const onFace = (p) => { const s = G.dot(G.sub(p, w.a), Model.wallDir(w)), k = G.dot(G.sub(p, G.mid(w.a, w.b)), n); return s > -40 && s < L + 40 && k > (w.th - add) / 2 - 20 - Math.max(0, -add) && k < (w.th - add) / 2 + 60; };
-        for (const it of d.items) if ((it.floor || d.floors[0].id) === f.id && !BLD_HOLLOW.has(catItem(it.key).shape) && !moved.includes(it) && onFace(it)) { it.x += n.x * add; it.y += n.y * add; moved.push(it); }
-        for (const l of d.lines) if ((l.floor || d.floors[0].id) === f.id) for (const p of l.pts) if (onFace(p) && !moved.includes(p)) { p.x += n.x * add; p.y += n.y * add; moved.push(p); }
-      }
+      Finish.growExt(f, ext, add, (w) => Finish.setClad(w, kind, target, g), moved);
     }
     // постройки с облицовкой «как у дома» — тот же материал
     for (const it of d.items) if (it.clad > 0) { if (target > 0) { it.clad = target - g; it.gap = g; } else { delete it.clad; delete it.gap; } }
+    return moved.length;
+  },
+  /** Утолщить наружные стены этажа f наружу на add см (внутренние грани, проёмы и комнаты на месте): оси сдвигаются на add/2,
+   *  углы пересчитываются пересечением новых осей; предметы и концы трасс у фасада — наружу вместе с гранью */
+  growExt(f, ext, add, mutate, moved = []) {
+    const d = App.doc, fd = (App.floorData || []).find(x => x.floor.id === f.id), inside = (p) => fd && fd.outlines.some(o => G.pointInPoly(p, o.outer));
+    const shift = new Map(ext.map(w => { const u = Model.wallDir(w); let n = G.perp(u); if (inside(G.add(G.mid(w.a, w.b), G.mul(n, w.th / 2 + 10)))) n = G.mul(n, -1); return [w, n]; }));
+    const line = (w) => { const n = shift.get(w); return [G.add(w.a, G.mul(n, add / 2)), G.add(w.b, G.mul(n, add / 2))]; };
+    const newPt = new Map();
+    for (const w of ext) for (const key of ['a', 'b']) {
+      const p = w[key], other = ext.find(x => x !== w && (G.dist(x.a, p) < 1 || G.dist(x.b, p) < 1));
+      const [a1, b1] = line(w);
+      let q = key === 'a' ? a1 : b1;
+      if (other) { const [a2, b2] = line(other), x = G.lineInter(a1, b1, a2, b2); if (x) q = { x: x.x, y: x.y }; }
+      newPt.set(w.id + key, q);
+    }
+    for (const w of ext) {
+      const u0 = Model.wallDir(w), a0 = { ...w.a };
+      w.a = newPt.get(w.id + 'a'); w.b = newPt.get(w.id + 'b');
+      const ds = G.dot(G.sub(a0, w.a), u0);
+      for (const op of d.openings.filter(x => x.wall === w.id)) op.pos += ds;
+      w.th += add; mutate(w);
+      // предметы и концы трасс на фасаде (в полосе 60 см снаружи) — наружу вместе с гранью
+      const n = shift.get(w), L = Model.wallLen(w);
+      const onFace = (p) => { const s = G.dot(G.sub(p, w.a), Model.wallDir(w)), k = G.dot(G.sub(p, G.mid(w.a, w.b)), n); return s > -40 && s < L + 40 && k > (w.th - add) / 2 - 20 - Math.max(0, -add) && k < (w.th - add) / 2 + 60; };
+      for (const it of d.items) if ((it.floor || d.floors[0].id) === f.id && !BLD_HOLLOW.has(catItem(it.key).shape) && !moved.includes(it) && onFace(it)) { it.x += n.x * add; it.y += n.y * add; moved.push(it); }
+      for (const l of d.lines) if ((l.floor || d.floors[0].id) === f.id) for (const p of l.pts) if (onFace(p) && !moved.includes(p)) { p.x += n.x * add; p.y += n.y * add; moved.push(p); }
+    }
+    return moved;
+  },
+  /** Добавить утеплитель наружным стенам (всем этажам) на add см — наружу, как облицовка */
+  addIns(add) {
+    const d = App.doc, moved = [];
+    for (const f of d.floors) { const ext = d.walls.filter(w => (w.floor || d.floors[0].id) === f.id && w.kind === 'ext'); if (ext.length) Finish.growExt(f, ext, add, (w) => { w.ins = (w.ins || 0) + add; }, moved); }
     return moved.length;
   },
   /** Поля облицовки стены: total — облицовка + зазор */
@@ -17212,10 +17282,12 @@ const Detail = {
       D.rect(a0 - 7.5, lv.wallTop, a0 + 7.5, lv.wallTop + 5, P.wood, '#111', 0.25);                          // лежень / мауэрлат
       D.rect(a1 - 7.5, lv.wallTop, a1 + 7.5, lv.wallTop + 5, P.wood, '#111', 0.25);
       D.rect(a0 - 12, zb, a1 + 12, zb + hb, P.wood, '#111', 0.3);                                           // нижний пояс — на лежень над стеной
-      D.rect(inner[0], zb + hb, inner[1], zb + hb + 20, P.ins, '#333', 0.2);                                // утеплитель 200
+      const ti = fr.attic.ins / 10;                                                                          // минвата между поясами и поперёк
+      D.rect(inner[0], zb, inner[1], zb + ti, P.ins, '#333', 0.2);
+      D.rect(a0 - 12, zb, a1 + 12, zb + hb, null, '#111', 0.3);                                            // нижний пояс поверх утеплителя
       D.line(inner[0], zb - 0.5, inner[1], zb - 0.5, '#2a6', 0.4, [1, 0.6]);                               // пароизоляция
       D.line(inner[0], lv.ceil, inner[1], lv.ceil, '#555', 0.35);                                           // натяжной потолок
-      for (let v = inner[0] + 100; v < inner[1] - 100; v += 200) D.rect(v, zb + hb + 20, v + 30, zb + hb + 22.5, P.wood, '#111', 0.15);   // ходовые доски
+      for (let v = inner[0] + 100; v < inner[1] - 100; v += 200) D.rect(v, zb + Math.max(hb, ti), v + 30, zb + Math.max(hb, ti) + 2.5, P.wood, '#111', 0.15);   // ходовые доски
       }
       // 6) кровля: верхние пояса (стропила), решётка фермы, свесы, пирог кровли, конёк
       const hr = fr.h / 10 / Math.cos(U.rad(r.pitch));
@@ -17476,7 +17548,7 @@ const Detail = {
       lintel: 'Перемычка над проёмом: U-блок с бетоном B20, 2Ø12 А500, опирание ≥ 250 мм; подоконник и отлив',
       ring: 'Армопояс 250 мм по всем наружным стенам: бетон B20, 4Ø12 А500, хомуты Ø8 шаг 300; анкеры М12 шаг 1000 под лежень',
       plate: fr && fr.scheme === 'truss' ? 'Опорный лежень 150×50 (антисептик) по гидроизоляции; ферма — к лежню скобами / уголками с каждой стороны' : 'Мауэрлат 150×150 (антисептик) по гидроизоляции; стропило — скользящей опорой',
-      attic: fr ? `Чердачное перекрытие: ${fr.scheme === 'truss' ? 'нижний пояс ферм' : 'затяжка'} ${fr.b}×${fr.h}; пароизоляция снизу; минвата 200 мм; ходовые доски; холодный чердак с продухами ≥ 1/300 площади` : '',
+      attic: fr ? `Чердачное перекрытие: ${fr.scheme === 'truss' ? 'нижний пояс ферм' : 'затяжка'} ${fr.b}×${fr.h}; пароизоляция снизу; минвата ${fr.attic.ins} мм (R = ${fr.attic.R.toFixed(2)} при норме ${fr.attic.need.toFixed(2)}); ходовые доски; холодный чердак с продухами ≥ 1/300 площади` : '',
       ceil: 'Потолок: натяжной (ПВХ матовый) на профиле, отступ 50–100 мм от нижнего пояса',
       roof: fr ? `Кровля: ${(ROOF_MATERIALS[r.mat] || {}).name.toLowerCase()}; ${fr.bat}; контррейка 50×50 (вентзазор); гидроветрозащитная мембрана; ${fr.scheme === 'truss' ? 'ферма' : 'стропило'} ${fr.b}×${fr.h} шаг ${fr.step * 1000}` : '',
       truss: fr ? `${fr.name}; ${fr.scheme === 'truss' ? 'пластины МЗП в узлах' : 'узлы — на болтах М12 и гвоздях, ригель — с двух сторон стропила'}; пролёт ${fr.span.toFixed(2)} м; снег: район ${Climate.roman(fr.snow.district)} (${fr.snow.sD.toFixed(2)} кПа расчётная)` : '',

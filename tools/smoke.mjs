@@ -617,6 +617,12 @@ const kit = await page.evaluate(() => {
     Finish.applyFacade(o0 === 'none' ? 'none' : o0); if (o0 === 'none') Finish.applyFacade('none'); Model.commit();
     const b = document.createElement('div'); UI.propsWall(b, ext[0]);
     r.facade = thick && pl && Math.abs(App.rooms.reduce((a, q) => a + q.areaFloor, 0) - A0) < 500 && !!b.querySelector('select[data-field=facade]') || 'th ' + th0 + ' → ' + ext.map(w => w.th).join(); }
+  // теплозащита: облицовка за вентзазором не утепляет, норма — по ГСОП города; двери разной ширины — замечание
+  { const w0 = { kind: 'ext', mat: 'claybl', th: 55, ins: 10, clad: 12, gap: 3 }, w1 = { ...w0, clad: 0, gap: 0, th: 40 };
+    const fr = App.doc.roofs[0] && Roof.frame(App.doc.roofs[0]);
+    r.thermal = Math.abs(wallR(w0) - wallR(w1)) < 0.01 && Climate.Rreq('attic') > Climate.Rreq('wall') && Climate.gsop() > 1000 && (!fr || fr.attic.mansard || fr.attic.R >= fr.attic.need) || 'R ' + wallR(w0) + '/' + wallR(w1); }
+  { const ds = App.doc.openings.filter(o => o.type === 'door' && Model.get(o.wall) && Model.get(o.wall).kind !== 'ext');
+    if (ds.length >= 2) { const w0 = ds[0].w; ds[0].w = w0 === 70 ? 80 : 70; Model.commit(); r.doorStd = Analysis.run().issues.some(x => x.group === 'Двери' && /разной ширины/.test(x.text)); ds[0].w = w0; Model.commit(); } else r.doorStd = true; }
   // тяжёлая печь с кирпичной трубой — свой фундамент (масса > 750 кг), замечание с размерами
   { const st = Model.add('items', { key: 'stoveBrick', x: 9500, y: 8000, w: 102, d: 89, h: 210, rot: 0 }), ch = Model.add('items', { key: 'chimney', x: 9500, y: 8000, w: 25, d: 25, h: 700, rot: 0 }); Model.commit();
     const P = Struct.stovePads().find(q => q.it.id === st.id);
@@ -644,7 +650,7 @@ const kit = await page.evaluate(() => {
   return r;
 });
 console.log('kit', JSON.stringify(kit));
-if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain || !kit.sys3d || !kit.mounts || !kit.tees || !kit.storage || kit.mansard !== true || !kit.views || kit.facade !== true || !kit.wfloop || !kit.nightZones || kit.stovePad !== true) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
+if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain || !kit.sys3d || !kit.mounts || !kit.tees || !kit.storage || kit.mansard !== true || !kit.views || kit.facade !== true || !kit.wfloop || !kit.nightZones || kit.stovePad !== true || kit.thermal !== true || !kit.doorStd) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

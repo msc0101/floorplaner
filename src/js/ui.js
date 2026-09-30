@@ -879,10 +879,10 @@ const UI = {
       ...UI.facadeControls(),
       F.note('Облицовка одна на весь дом: стены утолщаются наружу, внутренние размеры и проёмы не меняются. Отделка комнат — вкладка «Проект» → «Отделка».')));
     if (w.kind === 'ext' && WALL_MATERIALS[w.mat]) {
-      const R = wallR(w), need = 3.0;
+      const R = wallR(w), need = Climate.Rreq('wall');
       body.append(F.section('Теплозащита',
         U.el('div', { class: 'finfo' }, U.el('span', {}, 'Сопротивление теплопередаче R'), U.el('b', { class: R >= need ? 'ok' : 'bad' }, `${R.toFixed(2)} м²·°C/Вт`)),
-        F.note(`Для жилого дома в средней полосе России нужно около ${need.toFixed(1)}–3.5 (СП 50.13330, зависит от региона). ` +
+        F.note(`Норма для жилого дома в г. ${Climate.get().city}: ${need.toFixed(2)} (СП 50.13330 табл. 3, ГСОП ≈ ${Climate.gsop()} °C·сут). Облицовка за вентзазором не считается. ` +
           (R >= need ? 'Стена проходит.' : `Не хватает: добавьте утеплитель ≈ ${Math.ceil((need - R) * INSULATION_LAM * 100 / 5) * 5} см минваты или возьмите толще/теплее материал.`) +
           ' Расчёт упрощённый, без учёта мостиков холода.')));
     }
@@ -1251,6 +1251,9 @@ const UI = {
       F.num('Низ крыши (карниз) от земли', r.base, (v) => UI.set(r, 'base', Math.max(0, v)), { min: 0 }),
       F.btns([['Высота по стенам', () => UI.set(r, 'base', Roof.autoBase(r.floor))], ['Повернуть конёк на 90°', () => { [r.w, r.d] = [r.d, r.w]; r.rot = U.normDeg((r.rot || 0) + 90); Model.commit(); }]]),
       F.check('Снегозадержатели по карнизам', !!r.snowGuard, (v) => UI.set(r, 'snowGuard', v || undefined)),
+      (() => { const fr = Roof.frame(r), A = fr && fr.attic; if (!A || A.mansard) return null;
+        return U.el('div', {}, F.select('Утеплитель чердачного перекрытия', A.auto ? '' : String(A.ins), [['', `по норме (${A.ins} мм)`], ...[200, 250, 300, 350, 400].map(t => [String(t), `минвата ${t} мм`])], (v) => { if (v) r.atticIns = +v; else delete r.atticIns; Model.commit(); }),
+          U.el('div', { class: 'finfo' }, U.el('span', {}, 'Сопротивление теплопередаче R'), U.el('b', { class: A.R >= A.need ? 'ok' : 'bad' }, `${A.R.toFixed(2)} (норма ${A.need.toFixed(2)}) м²·°C/Вт`))); })(),
       (() => { const cl = Climate.get(), mu = r.type === 'flat' ? 1 : U.clamp((60 - (r.pitch || 0)) / 30, 0, 1), S = 0.7 * cl.snowKpa * mu * 1.4;
         return F.info('Снег на кровлю (расчётно)', `${(S * 102).toFixed(0)} кг/м² — район ${Climate.roman(cl.snow)}, μ ${mu.toFixed(2)} (СП 20.13330 п. 10)`); })(),
       (ROOF_MATERIALS[r.mat] || {}).min ? F.note(`Минимальный уклон для «${ROOF_MATERIALS[r.mat].name.toLowerCase()}» — ${ROOF_MATERIALS[r.mat].min}° (СП 17.13330).${r.type !== 'flat' && r.pitch < ROOF_MATERIALS[r.mat].min ? ' <b style="color:var(--danger)">Сейчас меньше — смените кровлю или уклон.</b>' : ''}`) : null,

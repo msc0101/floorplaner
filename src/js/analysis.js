@@ -114,6 +114,41 @@ const Analysis = {
         }
       }
     });
+    // двери: одинарные межкомнатные — одной стандартной ширины (ГОСТ 475), наружные — не уже 90 (ширина выхода в свету ≥ 0,8 м)
+    {
+      const DS = d.openings.filter(o => o.type === 'door' || o.type === 'slide').map(o => ({ o, w: Model.get(o.wall) })).filter(x => x.w);
+      const inn = DS.filter(x => x.w.kind !== 'ext'), cnt = {};
+      for (const x of inn) cnt[x.o.w] = (cnt[x.o.w] || 0) + 1;
+      const std = +Object.entries(cnt).sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0];
+      const odd = inn.filter(x => x.o.w !== std || ![60, 70, 80, 90].includes(x.o.w));
+      if (odd.length && std) add('warn', 'Двери', `Межкомнатные двери разной ширины: ${odd.map(x => U.fmtLen(x.o.w)).join(', ')} при основной ${U.fmtLen(std)} — одинаковые полотна дешевле и проще в заказе (двустворчатые — отдельно)`, 'ГОСТ 475-2016 (полотна 600, 700, 800, 900 мм)', G.mid(...(() => { const g = Model.opGeom(odd[0].o); return [g.a, g.b]; })()), odd[0].o.id, () => { for (const x of odd) x.o.w = [60, 70, 80, 90].includes(std) ? std : 80; });
+      // входы в жилую часть; дверь техпомещения (котельная, кладовая) — по месту, обычно 80
+      const roomOf = (o) => { const g = Model.opGeom(o); if (!g) return null; const m = G.mid(g.a, g.b); const fd = (App.floorData || []).find(f => f.floor.id === (Model.get(o.wall).floor || d.floors[0].id)); return fd && fd.rooms.find(r => G.distPoly(m, r.floor || r.axis) < Model.get(o.wall).th / 2 + 15); };
+      for (const x of DS.filter(y => y.w.kind === 'ext' && y.o.type === 'door' && y.o.w < 90 && !/котельн|топоч|кладов|техн|гараж/i.test((roomOf(y.o) || {}).name || ''))) {
+        const g = Model.opGeom(x.o);
+        add('warn', 'Двери', `Наружная дверь ${U.fmtLen(x.o.w)}: у входной (эвакуационной) двери ширина в свету должна быть не меньше 0,8 м — это полотно 90 см (стандартная входная дверь 860–960 мм)`, 'СП 1.13130.2020 п. 4.2.5; ГОСТ 31173-2016', g ? G.mid(g.a, g.b) : null, x.o.id, () => { x.o.w = 90; });
+      }
+    }
+    // теплозащита по ГСОП города: наружные стены, чердачное перекрытие / скаты мансарды (облицовка за вентзазором не считается)
+    {
+      const city = Climate.get().city, src = `СП 50.13330.2012 п. 5.2, табл. 3; ГСОП ≈ ${Climate.gsop()} °C·сут (${city}, оценка по СП 131.13330)`, needW = Climate.Rreq('wall'), seen = new Set();
+      for (const w of d.walls.filter(x => x.kind === 'ext' && WALL_MATERIALS[x.mat])) {
+        const R = wallR(w), k = [w.mat, Math.round(w.th), w.ins || 0, w.clad || 0].join(':');
+        if (seen.has(k)) continue;
+        seen.add(k);
+        const nm = `Наружные стены (${WALL_MATERIALS[w.mat].name.toLowerCase()}${w.ins ? ` + минвата ${w.ins} см` : ''})`;
+        if (R < needW - 0.005) { const cm = Math.ceil((needW - R) * INSULATION_LAM * 100 / 5) * 5;
+          add('warn', 'Теплозащита', `${nm}: R = ${R.toFixed(2)} при норме ${needW.toFixed(2)} м²·°C/Вт${w.clad > 0 ? ' (облицовка за вентзазором теплозащиту не даёт)' : ''} — добавьте ${cm} см минваты (стены утолщаются наружу, комнаты не меняются)`, src, G.mid(w.a, w.b), w.id, () => Finish.addIns(cm)); }
+        else add('note', 'Теплозащита', `${nm}: R = ${R.toFixed(2)} ≥ ${needW.toFixed(2)} м²·°C/Вт — норма выполнена`, src);
+      }
+      for (const r of d.roofs) {
+        const fr = Roof.frame(r), A = fr && fr.attic;
+        if (!A || !U.isNum(A.R)) continue;
+        const nm = A.mansard ? `Скаты мансарды (минвата ${A.ins} мм по стропилам)` : `Чердачное перекрытие (минвата ${A.ins} мм${A.auto ? ', подобрано по норме с запасом 10 % на мостики холода' : ''})`;
+        if (A.R < A.need - 0.005) add('warn', 'Теплозащита', `${nm}: R = ${A.R.toFixed(2)} при норме ${A.need.toFixed(2)} м²·°C/Вт — увеличьте утеплитель`, src, { x: r.x, y: r.y }, r.id, A.mansard ? null : () => { delete r.atticIns; });
+        else add('note', 'Теплозащита', `${nm}: R = ${A.R.toFixed(2)} ≥ ${A.need.toFixed(2)} м²·°C/Вт — норма выполнена (с учётом деревянных ${fr.scheme === 'truss' ? 'поясов ферм' : 'балок'} как мостиков холода)`, src);
+      }
+    }
     // высота этажей
     for (const f of d.floors) {
       if (d.roofs.some(r => r.floor === f.id && Roof.living(r))) continue;                  // мансарда: высоты — по помещениям под скатами (выше)

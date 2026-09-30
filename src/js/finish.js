@@ -129,39 +129,50 @@ const Finish = {
     const d = App.doc, Fc = FIN_FACADE[kind] || FIN_FACADE.brick, target = U.isNum(total) ? total : Fc.th + Fc.gap, g = U.isNum(gap) ? gap : Fc.gap;
     const moved = [];
     for (const f of d.floors) {
-      const fd = (App.floorData || []).find(x => x.floor.id === f.id), inside = (p) => fd && fd.outlines.some(o => G.pointInPoly(p, o.outer));
       // у всех наружных стен этажа — одна облицовка: прибавка = новая − текущая (у ещё не облицованных текущая 0)
       const ext = d.walls.filter(w => (w.floor || d.floors[0].id) === f.id && w.kind === 'ext');
       const cur = (w) => (w.clad || 0) + (w.clad > 0 ? w.gap || 0 : 0);
       if (!ext.length || ext.every(w => Math.abs(cur(w) - target) < 0.01 && (w.cladMat || 'brick') === kind)) continue;
       const add = target - (ext.length ? cur(ext[0]) : 0);
       if (ext.some(w => Math.abs(cur(w) - cur(ext[0])) > 0.01)) { for (const w of ext) { w.th += target - cur(w); Finish.setClad(w, kind, target, g); } continue; }   // разнобой — без сдвига осей
-      // смещение оси каждой стены наружу на add/2
-      const shift = new Map(ext.map(w => { const u = Model.wallDir(w); let n = G.perp(u); if (inside(G.add(G.mid(w.a, w.b), G.mul(n, w.th / 2 + 10)))) n = G.mul(n, -1); return [w, n]; }));
-      const line = (w) => { const n = shift.get(w); return [G.add(w.a, G.mul(n, add / 2)), G.add(w.b, G.mul(n, add / 2))]; };
-      const newPt = new Map();
-      for (const w of ext) for (const key of ['a', 'b']) {
-        const p = w[key], other = ext.find(x => x !== w && (G.dist(x.a, p) < 1 || G.dist(x.b, p) < 1));
-        const [a1, b1] = line(w);
-        let q = key === 'a' ? a1 : b1;
-        if (other) { const [a2, b2] = line(other), x = G.lineInter(a1, b1, a2, b2); if (x) q = { x: x.x, y: x.y }; }
-        newPt.set(w.id + key, q);
-      }
-      for (const w of ext) {
-        const u0 = Model.wallDir(w), a0 = { ...w.a };
-        w.a = newPt.get(w.id + 'a'); w.b = newPt.get(w.id + 'b');
-        const ds = G.dot(G.sub(a0, w.a), u0);
-        for (const op of d.openings.filter(x => x.wall === w.id)) op.pos += ds;
-        w.th += add; Finish.setClad(w, kind, target, g);
-        // предметы и концы трасс на фасаде (в полосе 60 см снаружи) — наружу вместе с гранью
-        const n = shift.get(w), L = Model.wallLen(w);
-        const onFace = (p) => { const s = G.dot(G.sub(p, w.a), Model.wallDir(w)), k = G.dot(G.sub(p, G.mid(w.a, w.b)), n); return s > -40 && s < L + 40 && k > (w.th - add) / 2 - 20 - Math.max(0, -add) && k < (w.th - add) / 2 + 60; };
-        for (const it of d.items) if ((it.floor || d.floors[0].id) === f.id && !BLD_HOLLOW.has(catItem(it.key).shape) && !moved.includes(it) && onFace(it)) { it.x += n.x * add; it.y += n.y * add; moved.push(it); }
-        for (const l of d.lines) if ((l.floor || d.floors[0].id) === f.id) for (const p of l.pts) if (onFace(p) && !moved.includes(p)) { p.x += n.x * add; p.y += n.y * add; moved.push(p); }
-      }
+      Finish.growExt(f, ext, add, (w) => Finish.setClad(w, kind, target, g), moved);
     }
     // постройки с облицовкой «как у дома» — тот же материал
     for (const it of d.items) if (it.clad > 0) { if (target > 0) { it.clad = target - g; it.gap = g; } else { delete it.clad; delete it.gap; } }
+    return moved.length;
+  },
+  /** Утолщить наружные стены этажа f наружу на add см (внутренние грани, проёмы и комнаты на месте): оси сдвигаются на add/2,
+   *  углы пересчитываются пересечением новых осей; предметы и концы трасс у фасада — наружу вместе с гранью */
+  growExt(f, ext, add, mutate, moved = []) {
+    const d = App.doc, fd = (App.floorData || []).find(x => x.floor.id === f.id), inside = (p) => fd && fd.outlines.some(o => G.pointInPoly(p, o.outer));
+    const shift = new Map(ext.map(w => { const u = Model.wallDir(w); let n = G.perp(u); if (inside(G.add(G.mid(w.a, w.b), G.mul(n, w.th / 2 + 10)))) n = G.mul(n, -1); return [w, n]; }));
+    const line = (w) => { const n = shift.get(w); return [G.add(w.a, G.mul(n, add / 2)), G.add(w.b, G.mul(n, add / 2))]; };
+    const newPt = new Map();
+    for (const w of ext) for (const key of ['a', 'b']) {
+      const p = w[key], other = ext.find(x => x !== w && (G.dist(x.a, p) < 1 || G.dist(x.b, p) < 1));
+      const [a1, b1] = line(w);
+      let q = key === 'a' ? a1 : b1;
+      if (other) { const [a2, b2] = line(other), x = G.lineInter(a1, b1, a2, b2); if (x) q = { x: x.x, y: x.y }; }
+      newPt.set(w.id + key, q);
+    }
+    for (const w of ext) {
+      const u0 = Model.wallDir(w), a0 = { ...w.a };
+      w.a = newPt.get(w.id + 'a'); w.b = newPt.get(w.id + 'b');
+      const ds = G.dot(G.sub(a0, w.a), u0);
+      for (const op of d.openings.filter(x => x.wall === w.id)) op.pos += ds;
+      w.th += add; mutate(w);
+      // предметы и концы трасс на фасаде (в полосе 60 см снаружи) — наружу вместе с гранью
+      const n = shift.get(w), L = Model.wallLen(w);
+      const onFace = (p) => { const s = G.dot(G.sub(p, w.a), Model.wallDir(w)), k = G.dot(G.sub(p, G.mid(w.a, w.b)), n); return s > -40 && s < L + 40 && k > (w.th - add) / 2 - 20 - Math.max(0, -add) && k < (w.th - add) / 2 + 60; };
+      for (const it of d.items) if ((it.floor || d.floors[0].id) === f.id && !BLD_HOLLOW.has(catItem(it.key).shape) && !moved.includes(it) && onFace(it)) { it.x += n.x * add; it.y += n.y * add; moved.push(it); }
+      for (const l of d.lines) if ((l.floor || d.floors[0].id) === f.id) for (const p of l.pts) if (onFace(p) && !moved.includes(p)) { p.x += n.x * add; p.y += n.y * add; moved.push(p); }
+    }
+    return moved;
+  },
+  /** Добавить утеплитель наружным стенам (всем этажам) на add см — наружу, как облицовка */
+  addIns(add) {
+    const d = App.doc, moved = [];
+    for (const f of d.floors) { const ext = d.walls.filter(w => (w.floor || d.floors[0].id) === f.id && w.kind === 'ext'); if (ext.length) Finish.growExt(f, ext, add, (w) => { w.ins = (w.ins || 0) + add; }, moved); }
     return moved.length;
   },
   /** Поля облицовки стены: total — облицовка + зазор */

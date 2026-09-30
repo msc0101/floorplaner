@@ -256,12 +256,13 @@ const FENCE_MATERIALS = {
 const INSULATION_LAM = 0.045;
 function wallMaterial(w) { return (w.kind === 'fence' ? FENCE_MATERIALS : WALL_MATERIALS)[w.mat] || null; }
 function materialsFor(kind) { return kind === 'fence' ? FENCE_MATERIALS : WALL_MATERIALS; }
-/** Сопротивление теплопередаче стены, м²·°C/Вт (с учётом сопротивлений поверхностей 0.158) */
+/** Сопротивление теплопередаче стены, м²·°C/Вт (с учётом сопротивлений поверхностей 0.158).
+ *  Облицовка за вентзазором теплозащиту не даёт (СП 50.13330 п. Е.6) — считаются только кладка и утеплитель */
 function wallR(w) {
   const m = WALL_MATERIALS[w.mat];
   if (!m) return null;
-  const ins = Math.max(0, Math.min(w.ins || 0, w.th));
-  return (w.th - ins) / 100 / m.lam + ins / 100 / INSULATION_LAM + 0.158;
+  const ins = Math.max(0, Math.min(w.ins || 0, w.th)), core = Math.max(0, w.th - ins - (w.clad > 0 ? w.clad + (w.gap || 0) : 0));
+  return core / 100 / m.lam + ins / 100 / INSULATION_LAM + 0.158;
 }
 
 /* Виды площадных объектов */

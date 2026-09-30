@@ -238,8 +238,17 @@ const Roof = {
       span, half, L, pitch: U.deg(a), step, n, nRaft, rafterL, b: pick.b, h: pick.h, sig: pick.sig, f: pick.f, fmax: pick.fmax, R,
       snow: { district: cl.snow, Sg, mu, s0, sD }, gRoof, q, len, slope, bat: BAT[0], batStep: BAT[1], batM, counter: slope / step, osb: r.mat === 'soft' ? slope : 0,
       membrane: slope * 1.15, mauerlat: 2 * len, anchors: Math.ceil(2 * len) + 2, woodV, S,
-      attic: mans ? { ins: pick.h + 50, mansard: true, vent: 0 } : { ins: 200, vent: (S.v1 - S.v0) * (S.u1 - S.u0) / 1e4 / 300 },   // мансарда: утеплитель между стропилами + 50 мм поперёк, вентзазор над мембраной
+      attic: mans ? { ins: pick.h + 50, mansard: true, vent: 0, R: Roof.insR(pick.b, pick.h, step, pick.h + 50), need: Climate.Rreq('roof') }   // мансарда: утеплитель между стропилами + 50 мм поперёк, вентзазор над мембраной
+        : (() => { const need = Climate.Rreq('attic'), ins = U.isNum(r.atticIns) ? r.atticIns : [200, 250, 300, 350, 400, 450].find(t => Roof.insR(pick.b, pick.h, step, t) >= need * 1.1) || 450;
+          return { ins, auto: !U.isNum(r.atticIns), R: Roof.insR(pick.b, pick.h, step, ins), need, vent: (S.v1 - S.v0) * (S.u1 - S.u0) / 1e4 / 300 }; })(),
     };
+  },
+  /** Сопротивление теплопередаче утеплённого перекрытия / ската с деревянными балками (мостики холода — параллельными путями):
+   *  балки b×h мм с шагом step м, минвата ins мм (сначала между балками, остальное — поперёк); поверхности 0,115 + 0,083 */
+  insR(b, h, step, ins) {
+    const T = ins / 1000, H = h / 1000, f = Math.min(0.5, b / 1000 / step), RS = 0.198;
+    const Rw = (T >= H ? H / 0.18 + (T - H) / INSULATION_LAM : T / 0.18) + RS, Ri = T / INSULATION_LAM + RS;
+    return Math.round(1 / (f / Rw + (1 - f) / Ri) * 100) / 100;
   },
 
   /* ------------------------------ план ----------------------------------- */
