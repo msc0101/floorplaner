@@ -15612,6 +15612,24 @@ const Analysis = {
         if (gap < 49.5) add('warn', 'Гараж', `${name(st)}: до машины ${m(Math.max(0, gap))} — оставьте проход ≥ 0,5 м (дверь, багажник, пройти с инструментом)`, 'эргономика гаража (проход вдоль машины ≥ 0,5 м)', st, st.id);
       }
     }
+    // кондиционер: струя (вперёд от блока, ±20°) не должна упираться в высокую мебель — сдувает пыль, срывает поток —
+    // и дуть в упор на кровать, диван, рабочее место
+    for (const ac of d.items.filter(o => o.key === 'ac')) {
+      const fl = ac.floor || f1, zb = U.isNum(ac.z0) ? ac.z0 : 225, fwd = G.unit(G.sub(G.toWorld({ x: 0, y: 1 }, ac.x, ac.y, ac.rot || 0), ac));
+      const src = G.toWorld({ x: 0, y: ac.d / 2 }, ac.x, ac.y, ac.rot || 0);
+      const inJet = (p, L) => { const v = G.sub(p, src), a = G.dot(v, fwd); return a > 0 && a < L && Math.abs(G.cross(fwd, v)) <= a * Math.tan(U.rad(20)) + ac.w / 2; };
+      for (const o of d.items.filter(x => x !== ac && (x.floor || f1) === fl)) {
+        const od = catItem(o.key), sh = od.shape, top = o.h || od.h || 0;
+        if (od.sym || od.layer === 'siteobj') continue;
+        const pts = [o, ...Model.itemPts(o)];
+        const tall = od.layer === 'furniture' && top >= zb - 40 && pts.some(p => inJet(p, 150));
+        // блок над самим изголовьем — струя идёт под потолком над головой, это допустимое место
+        const above = G.distPoly(src, Model.itemPts(o)) < 30;
+        const rest = !above && ['bed', 'sofa', 'sofaL', 'armchair', 'desk', 'deskL', 'officeChair'].includes(sh) && pts.filter(p => inJet(p, 250)).length >= 2;
+        if (tall) add('warn', 'Кондиционер', `${name(ac)}: струя упирается в «${name(o)}» (${m(top)} высотой) ближе 1,5 м — сдувает пыль, воздух не расходится по комнате; перевесьте блок или передвиньте мебель`, 'инструкция производителя: свободное пространство перед блоком', ac, ac.id);
+        else if (rest) add('warn', 'Кондиционер', `${name(ac)}: дует на «${name(o)}» ближе 2,5 м — направьте струю вдоль комнаты (над дверью, мимо мест отдыха и работы)`, 'СП 60.13330.2020 (скорость воздуха в зоне пребывания)', ac, ac.id);
+      }
+    }
     for (const it of d.items) {
       const sh = catItem(it.key).shape;
       if (!['stoveHeat', 'fireplace', 'fireplaceCorner', 'stoveMetal'].includes(sh)) continue;
