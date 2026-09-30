@@ -128,8 +128,9 @@ const UI = {
     // выход из полноэкранного браузера (Esc) — снять и наш режим
     document.addEventListener('fullscreenchange', () => {
       if (document.fullscreenElement) return;
-      if (document.body.classList.contains('fs')) UI.toggleFull(false, true);
-      if ($('dlgPreview').classList.contains('full')) UI.togglePvFull(false, true);
+      const by = UI._fsBy; UI._fsBy = null;           // выход из полноэкранного режима браузера (Esc) — снять режим того, кто его включал
+      if (by === 'plan' && document.body.classList.contains('fs')) UI.toggleFull(false, true);
+      if (by === 'pv' && $('dlgPreview').classList.contains('full')) UI.togglePvFull(false, true);
     });
     $('pvPrint').onclick = () => { $('dlgPreview').close(); if (Sheets._kit) Sheets.build(Sheets._o); IO.doPrint(); };
     $('dlgPrint').addEventListener('close', () => {
@@ -152,9 +153,11 @@ const UI = {
     on = on ?? !document.body.classList.contains('fs');
     document.body.classList.toggle('fs', on);
     $('btnFsExit').hidden = !on;
+    let keep = false; try { keep = localStorage.getItem('fp:p3d') === '1'; } catch { /* нет хранилища */ }
+    $('panel3d').classList.toggle('collapsed', on || keep);                 // во весь экран панель 3D свёрнута в заголовок
     if (!fromBrowser) try {
-      if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
-      else if (!on && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().then(() => { UI._fsBy = 'plan'; }, () => {});
+      else if (!on && document.fullscreenElement && UI._fsBy === 'plan') document.exitFullscreen().catch(() => {});
     } catch { /* без Fullscreen API — только скрытие панелей */ }
     requestAnimationFrame(() => { App.resize(); if (View3D.active) { View3D.dirty = true; View3D.redraw(); } });
   },
@@ -166,8 +169,8 @@ const UI = {
     dlg.classList.toggle('full', on);
     $('pvFull').textContent = on ? '⤡ Обычный размер' : '⛶ Во весь экран';
     if (!fromBrowser) try {
-      if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
-      else if (!on && document.fullscreenElement && document.exitFullscreen && !document.body.classList.contains('fs')) document.exitFullscreen().catch(() => {});
+      if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().then(() => { UI._fsBy = 'pv'; }, () => {});
+      else if (!on && document.fullscreenElement && UI._fsBy === 'pv') document.exitFullscreen().catch(() => {});
     } catch { /* нет Fullscreen API */ }
     if (dlg.open && Sheets._o) requestAnimationFrame(() => Sheets.preview(Sheets._o));
   },
