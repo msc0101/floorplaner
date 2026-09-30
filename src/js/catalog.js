@@ -259,6 +259,38 @@ function wallMaterial(w) { return (w.kind === 'fence' ? FENCE_MATERIALS : WALL_M
 function materialsFor(kind) { return kind === 'fence' ? FENCE_MATERIALS : WALL_MATERIALS; }
 /** Сопротивление теплопередаче стены, м²·°C/Вт (с учётом сопротивлений поверхностей 0.158).
  *  Облицовка за вентзазором теплозащиту не даёт (СП 50.13330 п. Е.6) — считаются только кладка и утеплитель */
+/** Раскладка душа (общая для плана и 3D): стороны в локальных координатах (перед — +d/2), у каких стоит стена,
+ *  сторона со стойкой и трапом, стеклянные экраны и проход ~65 см (у кабины прохода нет — дверь) */
+function showerLayout(it) {
+  const W = it.w / 2, D = it.d / 2, fx = it.flip ? -1 : 1, H = it.h || 0, cabin = H >= 150;
+  const L = (x, y) => G.toWorld({ x: x * fx, y }, it.x, it.y, it.rot || 0);
+  const fl = it.floor || (App.doc.floors[0] || {}).id;
+  const walls = App.doc.walls.filter(q => q.kind !== 'fence' && (q.floor || App.doc.floors[0].id) === fl);
+  const nearW = (x, y) => { const p = L(x, y); return walls.some(q => G.distSeg(p, q.a, q.b) <= q.th / 2 + 8); };
+  const sides = [{ k: 'back', y: -D, len: it.w }, { k: 'front', y: D, len: it.w }, { k: 'left', x: -W, len: it.d }, { k: 'right', x: W, len: it.d }].map(sd => {
+    const pts = sd.y !== undefined ? [[-W + 6, sd.y], [0, sd.y], [W - 6, sd.y]] : [[sd.x, -D + 6], [sd.x, 0], [sd.x, D - 6]];
+    return { ...sd, wall: pts.every(([x, y]) => nearW(x, y)) };
+  });
+  const wallSide = sides.find(q => q.k === 'back' && q.wall) || sides.find(q => q.wall) || sides[0];
+  const open = sides.filter(q => !q.wall);
+  const entry = cabin ? null : (open.find(q => q.k === 'front') || open.slice().sort((p, q) => q.len - p.len)[0]);
+  const panes = [];
+  for (const sd of open) {
+    const half = sd.y !== undefined ? W : D;
+    if (sd !== entry) { panes.push({ sd, a0: -half, a1: half }); continue; }
+    // стекло от угла со стеной (или с соседним стеклом), проход у другого края
+    const touchLo = sd.y !== undefined ? sides.find(q => q.k === 'left') : sides.find(q => q.k === 'back');
+    const gap = Math.min(65, sd.len * 0.55);
+    if (touchLo.wall || !sides.find(q => q.k === (sd.y !== undefined ? 'right' : 'front')).wall) panes.push({ sd, a0: -half, a1: half - gap, entry: [half - gap, half] });
+    else panes.push({ sd, a0: -half + gap, a1: half, entry: [-half, -half + gap] });
+  }
+  // линейный трап — вдоль стены со стойкой, в 6–12 см от неё
+  const inw = wallSide.y !== undefined ? -Math.sign(wallSide.y) : -Math.sign(wallSide.x);
+  const drain = wallSide.y !== undefined ? { x0: -W + 10, x1: W - 10, y0: Math.min(wallSide.y + inw * 6, wallSide.y + inw * 12), y1: Math.max(wallSide.y + inw * 6, wallSide.y + inw * 12) }
+    : { y0: -D + 10, y1: D - 10, x0: Math.min(wallSide.x + inw * 6, wallSide.x + inw * 12), x1: Math.max(wallSide.x + inw * 6, wallSide.x + inw * 12) };
+  return { W, D, cabin, sides, wallSide, open, entry, panes, drain };
+}
+
 function wallR(w) {
   const m = WALL_MATERIALS[w.mat];
   if (!m) return null;
@@ -1316,9 +1348,47 @@ const Painters = (() => {
     circle(P, -w / 2 + 25, -d / 2 + 25, 3, false);
   };
   S.shower = (P, w, d) => {
-    box(P, -w / 2, -d / 2, w, d, 2); thin(P);
-    line(P, [-w / 2, -d / 2, w / 2, d / 2]); line(P, [w / 2, -d / 2, -w / 2, d / 2]);
-    P.ctx.fillStyle = P.C.itemFill; circle(P, 0, 0, 4);
+    if ((P.it.h || 0) > 0 || !P.it.key || !App.doc) {                                                   // поддон / кабина — условное обозначение
+      box(P, -w / 2, -d / 2, w, d, 2); thin(P);
+      line(P, [-w / 2, -d / 2, w / 2, d / 2]); line(P, [w / 2, -d / 2, -w / 2, d / 2]);
+      P.ctx.fillStyle = P.C.itemFill; circle(P, 0, 0, 4);
+      return;
+    }
+    // душ с трапом: плитка вровень с полом, линейный трап у стены, уклон к нему, стеклянные экраны, проход, лейка
+    const c = P.ctx, Ly = showerLayout({ ...P.it, w, d }), { W, D, drain: dr, wallSide: ws } = Ly;
+    box(P, -W, -D, w, d, 0); thin(P);
+    c.save(); c.setLineDash([3 * P.px, 2.5 * P.px]);
+    const far = ws.y !== undefined ? [[-W, -ws.y], [W, -ws.y]] : [[-ws.x, -D], [-ws.x, D]];                // «конверт» уклона к трапу
+    const ends = ws.y !== undefined ? [[dr.x0, (dr.y0 + dr.y1) / 2], [dr.x1, (dr.y0 + dr.y1) / 2]] : [[(dr.x0 + dr.x1) / 2, dr.y0], [(dr.x0 + dr.x1) / 2, dr.y1]];
+    line(P, [far[0][0], far[0][1], ends[0][0], ends[0][1]]); line(P, [far[1][0], far[1][1], ends[1][0], ends[1][1]]);
+    c.restore();
+    const m = [(far[0][0] + far[1][0]) / 2 * 0.45 + (ends[0][0] + ends[1][0]) / 2 * 0.55, (far[0][1] + far[1][1]) / 2 * 0.45 + (ends[0][1] + ends[1][1]) / 2 * 0.55];
+    const dir = [((ends[0][0] + ends[1][0]) / 2 - m[0]), ((ends[0][1] + ends[1][1]) / 2 - m[1])], dl = Math.hypot(...dir) || 1, u = [dir[0] / dl * 9, dir[1] / dl * 9];
+    line(P, [m[0] - u[0], m[1] - u[1], m[0] + u[0], m[1] + u[1]]);                                        // стрелка уклона
+    line(P, [m[0] + u[0] - u[1] * 0.4 - u[0] * 0.4, m[1] + u[1] + u[0] * 0.4 - u[1] * 0.4, m[0] + u[0], m[1] + u[1], m[0] + u[0] + u[1] * 0.4 - u[0] * 0.4, m[1] + u[1] - u[0] * 0.4 - u[1] * 0.4]);
+    text(P, 'i=1,5%', m[0] - u[1] * 1.3, m[1] + u[0] * 1.3, 5);
+    P.ctx.fillStyle = P.C.itemFill; box(P, dr.x0, dr.y0, dr.x1 - dr.x0, dr.y1 - dr.y0, 0.5);              // линейный трап
+    const along = ws.y !== undefined;
+    for (let t = 4; t < (along ? dr.x1 - dr.x0 : dr.y1 - dr.y0) - 2; t += 4) along ? line(P, [dr.x0 + t, dr.y0 + 1.2, dr.x0 + t, dr.y1 - 1.2]) : line(P, [dr.x0 + 1.2, dr.y0 + t, dr.x1 - 1.2, dr.y0 + t]);
+    for (const p of Ly.panes) {                                                                         // стекло 8 мм — жирная линия с профилями
+      c.save(); lw(P, 2.6);
+      const q = p.sd.y !== undefined ? [p.a0, p.sd.y, p.a1, p.sd.y] : [p.sd.x, p.a0, p.sd.x, p.a1];
+      line(P, q); c.restore();
+      if (p.entry) {                                                                                    // проход — дуга-стрелка внутрь
+        const e0 = p.entry[0], e1 = p.entry[1], mid = (e0 + e1) / 2;
+        c.save(); c.setLineDash([2 * P.px, 2 * P.px]);
+        if (p.sd.y !== undefined) line(P, [e0, p.sd.y, e1, p.sd.y]); else line(P, [p.sd.x, e0, p.sd.x, e1]);
+        c.restore();
+        const s = p.sd.y !== undefined ? -Math.sign(p.sd.y) : -Math.sign(p.sd.x);
+        if (p.sd.y !== undefined) line(P, [mid - 4, p.sd.y + s * 4, mid, p.sd.y + s * 9, mid + 4, p.sd.y + s * 4]);
+        else line(P, [p.sd.x + s * 4, mid - 4, p.sd.x + s * 9, mid, p.sd.x + s * 4, mid + 4]);
+      }
+    }
+    const inw = ws.y !== undefined ? [0, -Math.sign(ws.y)] : [-Math.sign(ws.x), 0], b0 = ws.y !== undefined ? [0, ws.y] : [ws.x, 0];
+    const hx = b0[0] + inw[0] * 26, hy = b0[1] + inw[1] * 26;                                           // тропическая лейка
+    circle(P, hx, hy, 11, false);
+    for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; circle(P, hx + Math.cos(a) * 6, hy + Math.sin(a) * 6, 0.7); }
+    line(P, [b0[0] + inw[0] * 2, b0[1] + inw[1] * 2, hx - inw[0] * 11, hy - inw[1] * 11]);
   };
   S.toilet = (P, w, d) => {
     const tank = Math.min(18, d * 0.3);

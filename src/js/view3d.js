@@ -1438,34 +1438,24 @@ const View3D = {
       // Стёкла ставим только на стороны, где нет стены; на одной из открытых — проход; стойка с лейкой — на стене
       const cabin = H >= 150, tray = cabin ? 15 : H > 0 ? Math.min(H, 20) : 1.5, z = e + tray, top = e + (cabin ? H : 200);
       const glass = [0.72, 0.86, 0.94], prof = [0.75, 0.77, 0.8];
-      const walls = App.V.walls.filter(q => q.kind !== 'fence');
-      const nearW = (x, y) => { const p = L(x, y); return walls.some(q => G.distSeg(p, q.a, q.b) <= q.th / 2 + 8); };
-      // стороны в локальных координатах: [ось, координата, длина]; «стена», если вдоль стороны есть стена
-      const sides = [
-        { k: 'back', y: -D, len: w }, { k: 'front', y: D, len: w }, { k: 'left', x: -W, len: d }, { k: 'right', x: W, len: d },
-      ].map(sd => {
-        const pts = sd.y !== undefined ? [[-W + 6, sd.y], [0, sd.y], [W - 6, sd.y]] : [[sd.x, -D + 6], [sd.x, 0], [sd.x, D - 6]];
-        return { ...sd, wall: pts.every(([x, y]) => nearW(x, y)) };
-      });
+      const Ly = showerLayout(it), { open, wallSide } = Ly;
       if (H > 0) {
         bx(-W, -D, W, D, e, z - 3, [0.95, 0.96, 0.96]);
         bx(-W, -D, W, D, z - 3, z, [0.97, 0.97, 0.97]);
         bx(-W + 5, -D + 5, W - 5, D - 5, z, z + 0.2, [0.88, 0.9, 0.92]);
         cy(0, 0, 4, z + 0.2, z + 0.5, [0.55, 0.57, 0.6], 12);
       } else {
-        bx(-W, -D, W, D, e, z, [0.5, 0.56, 0.63]);                                                     // плитка душевой зоны
-        for (let x = -W + 30; x < W - 5; x += 30) bx(x - 0.3, -D, x + 0.3, D, z, z + 0.1, [0.42, 0.47, 0.53]);   // швы
-        for (let y = -D + 30; y < D - 5; y += 30) bx(-W, y - 0.3, W, y + 0.3, z, z + 0.1, [0.42, 0.47, 0.53]);
+        // плитка душевой зоны (керамогранит 30×30, швы), линейный трап: лоток в раме, решётка с прорезями, выпуск
+        bx(-W, -D, W, D, e, z, [0.55, 0.6, 0.66]);
+        for (let x = -W + 30; x < W - 5; x += 30) bx(x - 0.25, -D, x + 0.25, D, z, z + 0.08, [0.44, 0.49, 0.55]);
+        for (let y = -D + 30; y < D - 5; y += 30) bx(-W, y - 0.25, W, y + 0.25, z, z + 0.08, [0.44, 0.49, 0.55]);
+        const dr = Ly.drain, along = wallSide.y !== undefined;
+        bx(dr.x0 - 0.8, dr.y0 - 0.8, dr.x1 + 0.8, dr.y1 + 0.8, z, z + 0.25, [0.16, 0.17, 0.19]);               // щель вокруг решётки
+        bx(dr.x0, dr.y0, dr.x1, dr.y1, z + 0.05, z + 0.35, [0.78, 0.8, 0.83]);                                 // решётка (нерж.)
+        const len = along ? dr.x1 - dr.x0 : dr.y1 - dr.y0;
+        for (let t = 3; t < len - 2; t += 3) along ? bx(dr.x0 + t - 0.35, dr.y0 + 1.2, dr.x0 + t + 0.35, dr.y1 - 1.2, z + 0.35, z + 0.4, [0.2, 0.21, 0.23])
+          : bx(dr.x0 + 1.2, dr.y0 + t - 0.35, dr.x1 - 1.2, dr.y0 + t + 0.35, z + 0.35, z + 0.4, [0.2, 0.21, 0.23]);
       }
-      const wallSide = sides.find(q => q.k === 'back' && q.wall) || sides.find(q => q.wall) || sides[0];
-      // трап — вдоль стены со стойкой
-      if (!(H > 0)) {
-        const t = wallSide.y !== undefined ? [-W + 10, wallSide.y - Math.sign(wallSide.y) * 12, W - 10, wallSide.y - Math.sign(wallSide.y) * 6] : [wallSide.x - Math.sign(wallSide.x) * 12, -D + 10, wallSide.x - Math.sign(wallSide.x) * 6, D - 10];
-        bx(Math.min(t[0], t[2]), Math.min(t[1], t[3]), Math.max(t[0], t[2]), Math.max(t[1], t[3]), z, z + 0.3, [0.72, 0.74, 0.77]);
-      }
-      const open = sides.filter(q => !q.wall);
-      // проход: на фронте, если он открыт, иначе на самой длинной открытой стороне
-      const entry = cabin ? null : (open.find(q => q.k === 'front') || open.slice().sort((p, q) => q.len - p.len)[0]);
       const pane = (sd, a0, a1) => {
         if (a1 - a0 < 5) return;
         const r = sd.y !== undefined ? [a0, sd.y - 0.6, a1, sd.y + 0.6] : [sd.x - 0.6, a0, sd.x + 0.6, a1];
@@ -1475,15 +1465,7 @@ const View3D = {
         bx(r[0] - 0.4, r[1] - 0.4, r[2] + 0.4, r[3] + 0.4, top - 2, top, prof);                                 // верхний профиль
         bx(r[0] - 0.4, r[1] - 0.4, r[2] + 0.4, r[3] + 0.4, z, z + 1.5, prof);                                   // нижний профиль
       };
-      for (const sd of open) {
-        const half = sd.y !== undefined ? W : D;
-        if (sd !== entry) { pane(sd, -half, half); continue; }
-        // стекло от угла со стеной (или с соседним стеклом), проход ~65 см у другого края
-        const touchLo = sd.y !== undefined ? sides.find(q => q.k === 'left') : sides.find(q => q.k === 'back');
-        const gap = Math.min(65, sd.len * 0.55);
-        if (touchLo.wall || !sides.find(q => q.k === (sd.y !== undefined ? 'right' : 'front')).wall) pane(sd, -half, half - gap);
-        else pane(sd, -half + gap, half);
-      }
+      for (const p of Ly.panes) pane(p.sd, p.a0, p.a1);
       if (cabin) {
         const fr = open.find(q => q.k === 'front') || open[0];
         if (fr) { const hx = fr.y !== undefined ? [0, fr.y + Math.sign(fr.y) * 1.5] : [fr.x + Math.sign(fr.x) * 1.5, 0]; bx(hx[0] - 1, hx[1] - 1, hx[0] + 1, hx[1] + 1, z + 90, z + 125, chrome); }   // ручка двери
