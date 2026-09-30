@@ -617,6 +617,11 @@ const kit = await page.evaluate(() => {
     Finish.applyFacade(o0 === 'none' ? 'none' : o0); if (o0 === 'none') Finish.applyFacade('none'); Model.commit();
     const b = document.createElement('div'); UI.propsWall(b, ext[0]);
     r.facade = thick && pl && Math.abs(App.rooms.reduce((a, q) => a + q.areaFloor, 0) - A0) < 500 && !!b.querySelector('select[data-field=facade]') || 'th ' + th0 + ' → ' + ext.map(w => w.th).join(); }
+  // тяжёлая печь с кирпичной трубой — свой фундамент (масса > 750 кг), замечание с размерами
+  { const st = Model.add('items', { key: 'stoveBrick', x: 9500, y: 8000, w: 102, d: 89, h: 210, rot: 0 }), ch = Model.add('items', { key: 'chimney', x: 9500, y: 8000, w: 25, d: 25, h: 700, rot: 0 }); Model.commit();
+    const P = Struct.stovePads().find(q => q.it.id === st.id);
+    r.stovePad = !!P && P.mass > 3000 && P.w === 122 && Analysis.run().issues.some(x => x.id === st.id && /Фундамент под печь/.test(x.group)) || JSON.stringify(P && { m: P.mass, w: P.w });
+    Model.remove([st.id, ch.id]); Model.commit(); }
   // тёплый пол: контур без подводки к коллектору — замечание (касание соседнего контура — не подключение)
   { const m = Model.add('items', { key: 'manifoldWF', x: 9000, y: 9000, w: 60, d: 12, h: 60, rot: 0 });
     const loop = Model.add('lines', { kind: 'warmfloor', pts: [{ x: 9300, y: 9300 }, { x: 9500, y: 9300 }, { x: 9500, y: 9312 }, { x: 9310, y: 9312 }], dia: 16, depth: 0, label: 'ТП тест' });
@@ -639,7 +644,7 @@ const kit = await page.evaluate(() => {
   return r;
 });
 console.log('kit', JSON.stringify(kit));
-if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain || !kit.sys3d || !kit.mounts || !kit.tees || !kit.storage || kit.mansard !== true || !kit.views || kit.facade !== true || !kit.wfloop || !kit.nightZones) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
+if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain || !kit.sys3d || !kit.mounts || !kit.tees || !kit.storage || kit.mansard !== true || !kit.views || kit.facade !== true || !kit.wfloop || !kit.nightZones || kit.stovePad !== true) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

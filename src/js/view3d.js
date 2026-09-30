@@ -699,6 +699,17 @@ const View3D = {
         }
       }
     }
+    // фундаменты под тяжёлые печи: бетон, две сетки Ø12, песчаная подушка; от плиты пола — шов
+    for (const P of Struct.stovePads()) {
+      const z0 = e - P.bottom * 100, z1 = e - P.top * 100, it = P.it, rot = it.rot || 0, L = (x, y) => G.toWorld({ x, y }, it.x, it.y, rot);
+      prism(G.rectPts(it.x, it.y, P.w + 20, P.d + 20, rot), z0 - 15, z0, sand);
+      prism(P.pts, z0, z1, con, { glass: detailed });
+      if (!detailed) continue;
+      for (const z of [z0 + 5, z1 - 5]) {
+        for (let x = -P.w / 2 + 5; x <= P.w / 2 - 5 + 0.1; x += 15) { const a = L(x, -P.d / 2 + 5), b = L(x, P.d / 2 - 5); wire([a.x, a.y, z], [b.x, b.y, z], 0.6, red); }
+        for (let y = -P.d / 2 + 5; y <= P.d / 2 - 5 + 0.1; y += 15) { const a = L(-P.w / 2 + 5, y), b = L(P.w / 2 - 5, y); wire([a.x, a.y, z + 1.2], [b.x, b.y, z + 1.2], 0.6, red); }
+      }
+    }
     // пол по грунту: песок, XPS 100, плита 100 с сеткой (прозрачно)
     if (detailed && fd) for (const o of fd.outlines) {
       const inner = G.offsetPoly(o.outer, -40).length >= 3 ? G.offsetPoly(o.outer, -40) : o.outer;

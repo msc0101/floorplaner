@@ -83,6 +83,12 @@ const Estimate = {
       add(g, k + ':xps', `Утепление фундамента XPS 50–100 мм${who}`, 'м²', F.xps, 'found:xps');
       if (F.piles) add(g, k + ':pile', `Сваи с монтажом${who}`, 'шт.', F.piles, 'found:pile');
     }
+    for (const P of Struct.stovePads()) {
+      const g = 'Фундамент, перекрытия, полы', k = 'found:stove:' + P.it.id, who = ` под печь (${P.name.toLowerCase()})`;
+      add(g, k + ':concrete', `Фундамент${who} — бетон B20 с работой`, 'м³', P.concrete, 'found:concrete');
+      add(g, k + ':rebar', `Арматура фундамента${who}, 2 сетки Ø12`, 'кг', P.rebar, 'found:rebar');
+      add(g, k + ':sand', `Песчаная подушка${who}`, 'м³', P.sand, 'found:sand');
+    }
     if (Fd) {
       const ms = Struct.masonry();
       add('Стены и перегородки', 'wall:rebar', 'Армирование кладки (штробы, сетка)', 'кг', ms.reduce((a, r) => a + r.rebar, 0));

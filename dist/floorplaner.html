@@ -1656,13 +1656,13 @@ const CATALOG = [
     { key: 'boilerFlat', name: 'Водонагреватель плоский', shape: 'labelbox', w: 55, d: 30, h: 90, label: 'ВН' },
   ]},
   { id: 'heating', name: 'Отопление, печи, камины', layer: 'heating', items: [
-    { key: 'stoveRus', name: 'Печь русская', shape: 'stoveHeat', w: 150, d: 200, h: 220 },
-    { key: 'stoveBrick', name: 'Печь отопительная (кирпич)', shape: 'stoveHeat', w: 102, d: 89, h: 210 },
+    { key: 'stoveRus', name: 'Печь русская', shape: 'stoveHeat', w: 150, d: 200, h: 220, mass: 5000 },
+    { key: 'stoveBrick', name: 'Печь отопительная (кирпич)', shape: 'stoveHeat', w: 102, d: 89, h: 210, mass: 2300 },
     { key: 'woodRack', name: 'Дровница у печи (металлическая, на 2–3 закладки)', kw: 'дрова дровница поленница печь камин', shape: 'woodRack', w: 45, d: 35, h: 80 },
-    { key: 'stoveKitchen', name: 'Печь отопит.-варочная', shape: 'stoveHeat', w: 128, d: 89, h: 200 },
-    { key: 'fireplace', name: 'Камин с порталом', shape: 'fireplace', w: 150, d: 55, h: 120 },
-    { key: 'fireplaceCorner', name: 'Камин угловой', shape: 'fireplaceCorner', w: 110, d: 110, h: 120 },
-    { key: 'stoveMetal', name: 'Печь металлическая', shape: 'stoveMetal', w: 50, d: 70, h: 80 },
+    { key: 'stoveKitchen', name: 'Печь отопит.-варочная', shape: 'stoveHeat', w: 128, d: 89, h: 200, mass: 2800 },
+    { key: 'fireplace', name: 'Камин с порталом', shape: 'fireplace', w: 150, d: 55, h: 120, mass: 1300 },
+    { key: 'fireplaceCorner', name: 'Камин угловой', shape: 'fireplaceCorner', w: 110, d: 110, h: 120, mass: 1100 },
+    { key: 'stoveMetal', name: 'Печь металлическая', shape: 'stoveMetal', w: 50, d: 70, h: 80, mass: 120 },
     { key: 'saunaStove', name: 'Печь банная', shape: 'stoveMetal', w: 50, d: 85, h: 90 },
     { key: 'chimney', name: 'Дымоход / труба', kw: 'дымоход труба печь камин котёл', shape: 'chimney', w: 25, d: 25, h: 600, stack: 'smoke' },
     { key: 'gasBoilerWall', name: 'Газовый котёл настенный', shape: 'labelbox', w: 40, d: 30, h: 70, label: 'КГ' },
@@ -5623,6 +5623,36 @@ const Struct = {
     out.bottom = type === 'pile' ? 0.4 : depth;
     return out;
   },
+  /** Тяжёлые печи и камины (с кирпичной трубой ≥ 750 кг) — на свой фундамент, не связанный с плитой пола и лентами:
+   *  подушка шире печи на 10 см с каждой стороны, верх на 15 см ниже чистого пола (два ряда кладки), низ — на 0,5 м ниже земли
+   *  на песчаной подушке 150 мм; две сетки Ø12 шаг 150; шов 50 мм от плиты и лент */
+  stovePads() {
+    const d = App.doc, f1 = d.floors[0], o = Struct.opt(), H = Struct.foundation(), out = [];
+    for (const it of d.items) {
+      const def = catItem(it.key);
+      if (!def.mass || (it.floor || f1.id) !== f1.id) continue;
+      const poly = Model.itemPts(it);
+      // кирпичная труба над печью: 380×510 с каналом 140×270 ≈ 280 кг/м, от верха печи до оголовка
+      let chim = 0;
+      for (const c of d.items) {
+        const cd = catItem(c.key);
+        if (cd.shape !== 'chimney' || (c.floor || f1.id) !== f1.id || !G.pointInPoly(c, poly)) continue;
+        chim += Math.max(0, (c.z0 || 0) + Checks.stackH(c) - it.h) / 100 * 280;
+      }
+      const own = def.mass * (it.w * it.d * it.h) / (def.w * def.d * def.h), mass = own + chim;
+      if (mass < 750) continue;
+      const w = it.w + 20, dd = it.d + 20, pts = G.rectPts(it.x, it.y, w, dd, it.rot || 0), A = w * dd / 1e4;
+      const clear = H && H.type !== 'slab' && H.type !== 'pile' ? Math.min(...H.segs.map(sg => Struct._polySegDist(pts, sg))) / 100 - H.width / 2 : 1;
+      // печь у несущей стены: отдельный фундамент не помещается — уширение ленты под печь, подошва на отметке ленты, общее армирование
+      const joined = clear < 0.05;
+      const bottom = Math.max(o.plinth / 100 + 0.5, joined ? o.plinth / 100 + H.bottom : 0), top = 0.15, Hh = bottom - top;   // от чистого пола, м
+      const G0 = mass * 9.81 / 1000 * 1.1, Gp = 24 * A * Hh, p = (G0 + Gp) / A;
+      const S = Struct.soilAt(bottom - o.plinth / 100), R = S.R0 * (o.survey ? 1 : 0.8);
+      const nb = (Math.floor(w / 15) + 1) * dd / 100 + (Math.floor(dd / 15) + 1) * w / 100;     // стержней на сетку, м
+      out.push({ it, name: it.label || def.name, mass, own, chim, pts, w, d: dd, A, bottom, top, H: Hh, p, R, clear, joined, concrete: A * Hh, rebar: nb * 2 * 1.05 * REBAR_KG[12], sand: (w + 20) * (dd + 20) / 1e4 * 0.15 });
+    }
+    return out;
+  },
   /** Кладка и армирование: по каждой паре «материал, толщина» наружных и несущих стен */
   masonry() {
     const d = App.doc, rows = new Map();
@@ -5687,6 +5717,16 @@ const Struct = {
       const dd = Math.round((F.bottom - Hs.bottom) * 100);
       add('note', 'Фундамент: ' + F.name.toLowerCase(), `примыкает к дому: между фундаментами и стенами — деформационный шов 20–30 мм (ленты арматурой не связывать — нагрузки и осадки разные); кровлю — с компенсатором` + (Math.abs(dd) >= 5 ? `. Подошвы отличаются на ${m(Math.abs(dd))} — у примыкания на длине ≥ 1 м ${dd > 0 ? 'заглубите ленту дома' : 'заглубите ленту постройки'} до общей отметки ${m(Math.max(F.bottom, Hs.bottom) * 100)}, иначе более глубокий котлован подрежет основание соседней ленты` : ''), 'СП 22.13330.2016 п. 5.5.9, 6.13; СП 70.13330', { x: F.item.x, y: F.item.y }, F.id);
     }
+    // печи и камины: свой фундамент (масса с трубой), давление на грунт, шов от лент
+    for (const P of Struct.stovePads()) {
+      const t = (x) => (x / 1000).toFixed(1).replace('.', ','), src = 'СП 7.13130.2013 разд. 5 (печное отопление); СП 22.13330.2016 п. 5.6; СП 63.13330.2018', at = { x: P.it.x, y: P.it.y };
+      const head = `${P.name} ≈ ${t(P.mass)} т (печь ${t(P.own)} т${P.chim ? ` + кирпичная труба ${t(P.chim)} т` : ''}) — на плиту пола 100 мм по утеплителю ставить нельзя`;
+      const body = `${m(P.w)} × ${m(P.d)}, низ на ${m(P.bottom * 100)} ниже чистого пола на песчаной подушке 150 мм, верх — на 15 см ниже чистого пола (дальше 2 ряда кирпича и 2 слоя гидроизоляции); бетон B20 ${P.concrete.toFixed(2).replace('.', ',')} м³, две сетки Ø12 А500 шаг 150 (${P.rebar.toFixed(0)} кг); давление ${P.p.toFixed(0)} из ${P.R.toFixed(0)} кПа`;
+      add('note', 'Фундамент под печь', P.joined
+        ? `${head}: печь у несущей стены — уширение ленты под печь ${body}; подошва — на отметке ленты, бетонировать вместе с лентой, сетки завести в ленту (выпуски Ø12 шаг 300) — осадки печи и стены одинаковые; от плиты пола — шов 50 мм (демпферная лента)`
+        : `${head}: отдельный фундамент ${body}; от плиты пола и лент — шов 50 мм (песок, демпферная лента), арматурой не связывать`, src, at, P.it.id);
+      if (P.p > P.R * 1.001) add('bad', 'Фундамент под печь', `${P.name}: давление под подошвой ${P.p.toFixed(0)} кПа больше сопротивления грунта ${P.R.toFixed(0)} кПа — увеличьте подошву`, src, at, P.it.id);
+    }
     // ячеистые блоки: опирание перемычек и армопояс под крышу
     for (const w of App.doc.walls) {
       const R = WALL_REINF[w.mat];
@@ -5750,6 +5790,11 @@ const Struct = {
     ctx.save();
     ctx.strokeStyle = col; ctx.lineWidth = 1.8 * px; ctx.setLineDash([10 * px, 5 * px]);
     ctx.fillStyle = 'rgba(107, 91, 69, 0.05)';
+    // фундаменты под печи — сплошной контур с подписью
+    for (const P of Struct.stovePads()) {
+      ctx.save(); ctx.setLineDash([]); ctx.fillStyle = 'rgba(107, 91, 69, 0.14)'; Render.polyPath(ctx, P.pts, true); ctx.fill(); ctx.stroke(); ctx.restore();
+      Render.label(env, `${P.joined ? 'Уширение ленты под печь' : 'Фундамент печи'} ${(P.w / 100).toFixed(2).replace('.', ',')}×${(P.d / 100).toFixed(2).replace('.', ',')}, низ −${P.bottom.toFixed(2).replace('.', ',')} м`, { x: P.it.x, y: P.it.y + P.d / 2 + 18 }, 0, { size: 10, color: col, bg: true, pad: 2, prio: 5 });
+    }
     for (const F of A) {
       if (F.type === 'slab') {
         for (const pts of F.slabs) { Render.polyPath(ctx, pts, true); ctx.fill(); ctx.stroke(); }
@@ -7777,6 +7822,17 @@ const View3D = {
           const q2 = G.add(m, G.mul(no, bw / 2 + 70));
           box(q2.x, q2.y, L + bw + 140, 120, ang, e - 35, e - 30, xps);
         }
+      }
+    }
+    // фундаменты под тяжёлые печи: бетон, две сетки Ø12, песчаная подушка; от плиты пола — шов
+    for (const P of Struct.stovePads()) {
+      const z0 = e - P.bottom * 100, z1 = e - P.top * 100, it = P.it, rot = it.rot || 0, L = (x, y) => G.toWorld({ x, y }, it.x, it.y, rot);
+      prism(G.rectPts(it.x, it.y, P.w + 20, P.d + 20, rot), z0 - 15, z0, sand);
+      prism(P.pts, z0, z1, con, { glass: detailed });
+      if (!detailed) continue;
+      for (const z of [z0 + 5, z1 - 5]) {
+        for (let x = -P.w / 2 + 5; x <= P.w / 2 - 5 + 0.1; x += 15) { const a = L(x, -P.d / 2 + 5), b = L(x, P.d / 2 - 5); wire([a.x, a.y, z], [b.x, b.y, z], 0.6, red); }
+        for (let y = -P.d / 2 + 5; y <= P.d / 2 - 5 + 0.1; y += 15) { const a = L(-P.w / 2 + 5, y), b = L(P.w / 2 - 5, y); wire([a.x, a.y, z + 1.2], [b.x, b.y, z + 1.2], 0.6, red); }
       }
     }
     // пол по грунту: песок, XPS 100, плита 100 с сеткой (прозрачно)
@@ -15143,6 +15199,12 @@ const Estimate = {
       if (F.sand) add(g, k + ':sand', `Песчаная подушка с трамбованием${who}`, 'м³', F.sand, 'found:sand');
       add(g, k + ':xps', `Утепление фундамента XPS 50–100 мм${who}`, 'м²', F.xps, 'found:xps');
       if (F.piles) add(g, k + ':pile', `Сваи с монтажом${who}`, 'шт.', F.piles, 'found:pile');
+    }
+    for (const P of Struct.stovePads()) {
+      const g = 'Фундамент, перекрытия, полы', k = 'found:stove:' + P.it.id, who = ` под печь (${P.name.toLowerCase()})`;
+      add(g, k + ':concrete', `Фундамент${who} — бетон B20 с работой`, 'м³', P.concrete, 'found:concrete');
+      add(g, k + ':rebar', `Арматура фундамента${who}, 2 сетки Ø12`, 'кг', P.rebar, 'found:rebar');
+      add(g, k + ':sand', `Песчаная подушка${who}`, 'м³', P.sand, 'found:sand');
     }
     if (Fd) {
       const ms = Struct.masonry();
