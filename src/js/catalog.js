@@ -1031,9 +1031,25 @@ const Painters = (() => {
     text(P, 'Парная', (-w / 2 + x1) / 2 + 6, -d * 0.25, fs); text(P, 'Мойка', (x1 + x2) / 2, -d * 0.25, fs); text(P, 'Отдых', (x2 + w / 2) / 2, -d * 0.25, fs);
   };
   // трап: квадратная решётка в полу
+  // трап с сухим затвором: рамка из нержавейки, решётка с прорезями (два ряда), «конверт» уклона пола к трапу (1–2 %)
   S.floorDrain = (P, w, d) => {
-    box(P, -w / 2, -d / 2, w, d, 1); thin(P);
-    for (let k = -2; k <= 2; k++) line(P, [-w / 2 + 2, k * d / 6, w / 2 - 2, k * d / 6]);
+    const c = P.ctx, W = w / 2, D = d / 2;
+    c.save(); thin(P); c.setLineDash([3 * P.px, 2 * P.px]);
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) line(P, [sx * W * 3.2, sy * D * 3.2, sx * W, sy * D]);
+    c.setLineDash([]);
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {                                   // стрелки уклона — к трапу
+      const x = sx * W * 1.6, y = sy * D * 1.6, a = 2.2;
+      line(P, [x + sx * a, y, x, y, x, y + sy * a]);
+    }
+    c.restore();
+    box(P, -W, -D, w, d, 1);
+    thin(P);
+    box(P, -W + 1.6, -D + 1.6, w - 3.2, d - 3.2, 0.6, false);                                          // решётка
+    const sw = (w - 6) / 2 - 0.6;
+    for (let k = 0; k < 5; k++) {                                                                      // прорези
+      const y = -D + 3 + k * (d - 6) / 4;
+      for (const x0 of [-W + 3, 0.6]) line(P, [x0, y, x0 + sw, y]);
+    }
   };
   S.labelbox = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 0);
@@ -1242,9 +1258,16 @@ const Painters = (() => {
     P.ctx.setLineDash([4 * P.px, 3 * P.px]); box(P, -w / 2 + 6, -d / 2 + 6, w - 12, d - 12, 0, false); P.ctx.setLineDash([]);
     line(P, [-w * 0.3, d / 2 - 3, w * 0.3, d / 2 - 3]);
   };
+  // кухонная вытяжка (выше плоскости разреза — пунктир): купол-пирамида к коробу воздуховода у стены (−d/2), кнопки спереди
   S.hood = (P, w, d) => {
-    P.ctx.setLineDash([6 * P.px, 4 * P.px]); box(P, -w / 2, -d / 2, w, d, 0, false); P.ctx.setLineDash([]);
-    thin(P); box(P, -w / 4, -d / 2, w / 2, d * 0.45, 0, false); text(P, 'В', 0, d * 0.15, Math.min(w, d) * 0.3, { bold: true });
+    const W = w / 2, D = d / 2, bw = w * 0.32, bd = d * 0.5;
+    P.ctx.setLineDash([6 * P.px, 4 * P.px]); box(P, -W, -D, w, d, 2, false); P.ctx.setLineDash([]);
+    thin(P);
+    box(P, -bw / 2, -D, bw, bd, 0, false);                                                             // короб воздуховода
+    line(P, [-W + 2, D - 2, -bw / 2, -D + bd]); line(P, [W - 2, D - 2, bw / 2, -D + bd]);            // рёбра купола
+    line(P, [-W + 2, -D + 2, -bw / 2, -D]); line(P, [W - 2, -D + 2, bw / 2, -D]);
+    for (let k = 0; k < 3; k++) circle(P, W - 16 + k * 5, D - 3, 1.1, false);                          // кнопки
+    circle(P, 0, -D + bd / 2, Math.min(bw, bd) * 0.28, false);                                         // выход воздуховода Ø125
   };
   S.fridge = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 2); thin(P);
@@ -1254,11 +1277,23 @@ const Painters = (() => {
   S.fridge2 = (P, w, d) => { S.fridge(P, w, d); line(P, [0, d / 2 - 6, 0, d / 2]); };
   S.stove = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 2); burners(P, 0, 0, w - 8, d - 8); };
   S.oven = (P, w, d) => { box(P, -w / 2, -d / 2, w, d, 2); thin(P); box(P, -w / 2 + 6, -d / 2 + 6, w - 12, d - 14, 3, false); };
+  // стиральная / сушильная машина (перед — +d/2): крышка, панель управления спереди — лоток для порошка, дисплей, ручка;
+  // барабан и люк — пунктиром (под крышкой, на плане не видны), сзади — подключение шлангов
   S.washer = (P, w, d) => {
-    box(P, -w / 2, -d / 2, w, d, 3); thin(P);
-    line(P, [-w / 2, -d / 2 + 10, w / 2, -d / 2 + 10]);
-    circle(P, 0, 5, Math.min(w, d - 10) * 0.33, false);
-    circle(P, 0, 5, Math.min(w, d - 10) * 0.22, false);
+    const c = P.ctx, W = w / 2, D = d / 2, pan = Math.min(12, d * 0.2);
+    box(P, -W, -D, w, d, 3); thin(P);
+    box(P, -W + 2.5, -D + 2.5, w - 5, d - pan - 4, 2, false);                                          // крышка
+    line(P, [-W + 1, D - pan, W - 1, D - pan]);                                                        // панель
+    box(P, -W + 3, D - pan + 2, w * 0.32, pan - 4, 1, false);                                          // лоток
+    line(P, [-W + 3 + w * 0.08, D - 3.2, -W + 3 + w * 0.24, D - 3.2]);
+    box(P, -w * 0.06, D - pan + 3.5, w * 0.2, pan - 7, 0.5, false);                                    // дисплей
+    circle(P, W - 8, D - pan / 2, Math.min(4, pan * 0.32), false);                                     // ручка программ
+    line(P, [W - 8, D - pan / 2, W - 8, D - pan / 2 - Math.min(4, pan * 0.32)]);
+    const r = Math.min(w, d - pan) * 0.36, cy = (-D + D - pan) / 2;
+    c.save(); c.setLineDash([4 * P.px, 3 * P.px]);
+    circle(P, 0, cy, r, false); circle(P, 0, cy, r * 0.62, false);
+    c.restore();
+    for (const x of [-W + 9, -W + 16]) circle(P, x, -D + 3, 1.3, false);                               // шланги: залив, слив
   };
   S.fan = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 2); thin(P);
@@ -1353,8 +1388,13 @@ const Painters = (() => {
     P.ctx.fillStyle = P.C.inkSoft; box(P, -w / 2, -d / 2, w, d, 0); thin(P); P.ctx.fillStyle = P.C.itemFill;
     for (let i = 0; i < n; i++) { const x = -w / 2 + 4 + i * cw; box(P, x + (i ? 2 : 0), -d / 2 + 4, cw - (i < n - 1 ? 2 : 0) - (i ? 2 : 0), d - 8, 0); line(P, [x + 2, d / 2 - 6, x + cw - 2, -d / 2 + 6]); }
   };
+  // вентстояк: утеплитель (наружный круг), воздуховод, знак «воздух вверх» ⊙ (ГОСТ 21.602)
   S.ventPipe = (P, w, d) => {
-    circle(P, 0, 0, Math.min(w, d) / 2); thin(P); circle(P, 0, 0, Math.min(w, d) * 0.32, false); line(P, [-w * 0.22, w * 0.22, w * 0.22, -w * 0.22]);
+    const r = Math.min(w, d) / 2;
+    circle(P, 0, 0, r); thin(P);
+    P.ctx.save(); P.ctx.setLineDash([1.5 * P.px, 1.5 * P.px]); circle(P, 0, 0, r * 0.82, false); P.ctx.restore();
+    circle(P, 0, 0, r * 0.6, false);
+    P.ctx.save(); P.ctx.fillStyle = P.C.ink; circle(P, 0, 0, r * 0.14); P.ctx.restore();
     // отвод под полом из погреба к стояку у стены — пунктиром
     const f = P.it.feed;
     if (f && U.isNum(f.x)) {

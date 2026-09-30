@@ -1175,9 +1175,14 @@ const View3D = {
         return;
       }
       if (sh === 'riser') { cyl(it.x, it.y, it.w / 2, e, e + Math.max(H, 250), C('#8a5a2b'), 8); return; }
-      if (sh === 'floorDrain') {                                                // трап: рамка из нержавейки вровень с полом и прорези решётки
-        box(it.x, it.y, it.w, it.d, rot, e, e + 1.2, C('#b8bcc0'));
-        for (let k = -2; k <= 2; k++) { const q = G.toWorld({ x: 0, y: k * it.d / 6 }, it.x, it.y, rot); box(q.x, q.y, it.w - 4, 1, rot, e + 1.2, e + 1.3, C('#2c2e31')); }
+      if (sh === 'floorDrain') {
+        // трап: шов плитки вокруг, рамка из нержавейки вровень с полом, решётка чуть ниже рамки, два ряда прорезей
+        const Lw = (x, y) => G.toWorld({ x, y }, it.x, it.y, rot), W = it.w / 2, D = it.d / 2, st = C('#c3c7cb'), dk = C('#1f2124');
+        box(it.x, it.y, it.w + 3, it.d + 3, rot, e, e + 0.25, C('#6d7075'));
+        for (const [x, y, bw, bd] of [[0, -D + 0.75, it.w, 1.5], [0, D - 0.75, it.w, 1.5], [-W + 0.75, 0, 1.5, it.d - 3], [W - 0.75, 0, 1.5, it.d - 3]]) { const q = Lw(x, y); box(q.x, q.y, bw, bd, rot, e, e + 0.9, st); }
+        box(it.x, it.y, it.w - 3, it.d - 3, rot, e, e + 0.6, C('#a9aeb3'));
+        const sw = (it.w - 6) / 2 - 0.6;
+        for (let k = 0; k < 5; k++) for (const x0 of [-W + 3, 0.6]) { const q = Lw(x0 + sw / 2, -D + 3 + k * (it.d - 6) / 4); box(q.x, q.y, sw, 0.8, rot, e + 0.6, e + 0.65, dk); }
         return;
       }
       if (sh === 'lamp' || sh === 'spot') {
@@ -1772,13 +1777,32 @@ const View3D = {
       return true;
     }
     if (sh === 'washer') {
-      const top = e + (H || 85);
-      bx(-W, -D, W, D, e, top, white);
-      bx(-W, D - 0.3, W, D, top - 14, top - 2, [0.88, 0.88, 0.88]);                               // панель
-      const n = 22, R = Math.min(W, (H || 85) / 2) * 0.62, zc = e + (H || 85) * 0.45;
-      face(Array.from({ length: n }, (_, k) => { const a = k / n * Math.PI * 2; return V(Math.cos(a) * R, D + 0.4, zc + Math.sin(a) * R); }), [0.55, 0.57, 0.6], V(0, 0, zc));
-      face(Array.from({ length: n }, (_, k) => { const a = k / n * Math.PI * 2; return V(Math.cos(a) * R * 0.72, D + 0.8, zc + Math.sin(a) * R * 0.72); }), [0.3, 0.38, 0.46], V(0, 0, zc), true);
-      cy(W * 0.55, D - 4, 3, top - 11, top - 5, [0.6, 0.6, 0.62], 10);
+      // корпус на цоколе, крышка со швом, панель: лоток для порошка, дисплей, ручка программ;
+      // люк: хромированное кольцо с бортиком, барабан с отверстиями за стеклом, ручка люка
+      const Hh = H || 85, top = e + Hh, col = it.color ? View3D.hex(it.color) : white, grey = [0.86, 0.87, 0.88], dark = [0.16, 0.17, 0.19];
+      bx(-W + 1.5, -D + 1.5, W - 1.5, D - 1.5, e, e + 3, dark);                                   // цоколь
+      bx(-W, -D, W, D, e + 3, top - 1, col);
+      bx(-W + 0.4, -D + 0.4, W - 0.4, D - 0.4, top - 1, top, col.map(v => v * 0.97));             // крышка
+      bx(-W + 0.4, D - 16, W - 0.4, D - 15.6, top - 0.05, top + 0.05, [0.7, 0.7, 0.72]);          // шов крышки
+      bx(-W, D - 0.3, W, D + 0.2, top - 14, top - 2, grey);                                          // панель
+      bx(-W + 3, D + 0.2, -W + 3 + w * 0.32, D + 0.9, top - 12.5, top - 3.5, col);                  // лоток
+      bx(-W + 3 + w * 0.06, D + 0.9, -W + 3 + w * 0.26, D + 1.1, top - 11, top - 10, dark);        // выемка лотка
+      bx(-w * 0.04, D + 0.2, w * 0.18, D + 0.35, top - 11, top - 5, [0.1, 0.16, 0.22]);             // дисплей
+      const disk = (cx, cz, r, y, col2, glass, n = 24) => face(Array.from({ length: n }, (_, k) => { const a = k / n * Math.PI * 2; return V(cx + Math.cos(a) * r, y, cz + Math.sin(a) * r); }), col2, V(cx, y - 5, cz), glass);
+      const band = (cx, cz, r, y0, y1, col2, n = 24) => { for (let k = 0; k < n; k++) { const a0 = k / n * Math.PI * 2, a1 = (k + 1) / n * Math.PI * 2; face([V(cx + Math.cos(a0) * r, y0, cz + Math.sin(a0) * r), V(cx + Math.cos(a1) * r, y0, cz + Math.sin(a1) * r), V(cx + Math.cos(a1) * r, y1, cz + Math.sin(a1) * r), V(cx + Math.cos(a0) * r, y1, cz + Math.sin(a0) * r)], col2, V(cx, (y0 + y1) / 2, cz)); } };
+      const ring = (cx, cz, r0, r1, y, col2, n = 24) => { for (let k = 0; k < n; k++) { const a0 = k / n * Math.PI * 2, a1 = (k + 1) / n * Math.PI * 2; face([V(cx + Math.cos(a0) * r0, y, cz + Math.sin(a0) * r0), V(cx + Math.cos(a1) * r0, y, cz + Math.sin(a1) * r0), V(cx + Math.cos(a1) * r1, y, cz + Math.sin(a1) * r1), V(cx + Math.cos(a0) * r1, y, cz + Math.sin(a0) * r1)], col2, V(cx, y - 5, cz)); } };
+      const kx = W - 8, kz = top - 8;                                                              // ручка программ
+      band(kx, kz, 3.2, D + 0.2, D + 2, chrome, 14); disk(kx, kz, 3.2, D + 2, [0.9, 0.91, 0.92], false, 14);
+      bx(kx - 0.3, D + 2, kx + 0.3, D + 2.2, kz, kz + 2.6, dark);
+      const R = Math.min(W - 4, (Hh - 20) / 2) * 0.86, zc = e + 3 + (Hh - 17) * 0.47;
+      disk(0, zc, R * 0.8, D + 0.1, [0.42, 0.44, 0.47]);                                             // барабан
+      for (let k = 0; k < 10; k++) { const a = k / 10 * Math.PI * 2; disk(Math.cos(a) * R * 0.5, zc + Math.sin(a) * R * 0.5, 1, D + 0.15, [0.22, 0.23, 0.25], false, 8); }
+      disk(0, zc, R * 0.22, D + 0.15, [0.55, 0.57, 0.6], false, 12);
+      band(0, zc, R, D, D + 3, chrome);                                                              // бортик люка
+      ring(0, zc, R * 0.78, R, D + 3, chrome);                                                       // кольцо люка
+      band(0, zc, R * 0.78, D + 1.5, D + 3, [0.62, 0.64, 0.67]);
+      disk(0, zc, R * 0.78, D + 2.2, [0.55, 0.66, 0.74], true);                                      // стекло
+      bx(R * 0.72, D + 3, R * 0.98, D + 4.2, zc - 5, zc + 5, [0.72, 0.74, 0.77]);                   // ручка люка
       return true;
     }
     if (sh === 'fridge' || sh === 'fridge2') {
@@ -1902,13 +1926,16 @@ const View3D = {
       const steel = [0.78, 0.8, 0.82], z0h = z0, ceil = View3D.ceilZ(it, e);
       bx(-W, -D, W, D, z0h, z0h + 4, steel);
       for (const s2 of [-1, 1]) bx(s2 * W * 0.5 - W * 0.4, -D + 5, s2 * W * 0.5 + W * 0.4, D - 5, z0h - 0.2, z0h, [0.35, 0.36, 0.38]);   // жировые фильтры
-      bx(W - 22, D, W - 4, D + 0.4, z0h + 1, z0h + 3, [0.1, 0.1, 0.12]);                                   // кнопки
-      const steps = 4;
+      bx(W - 24, D, W - 4, D + 0.4, z0h + 0.8, z0h + 3.2, [0.1, 0.1, 0.12]);                               // панель кнопок
+      for (let k = 0; k < 4; k++) bx(W - 22 + k * 4.6, D + 0.4, W - 19.5 + k * 4.6, D + 0.7, z0h + 1.4, z0h + 2.6, k === 0 ? [0.3, 0.75, 1] : [0.72, 0.74, 0.77]);
+      for (const s2 of [-1, 1]) { cy(s2 * W * 0.62, D - 6, 2.2, z0h - 0.4, z0h, View3D.GLOW, 12); }     // LED-подсветка варочной
+      const steps = 8;                                                                                      // купол — плавнее
       for (let k = 0; k < steps; k++) {
-        const t0 = k / steps, t1 = (k + 1) / steps, ww = W * (1 - 0.65 * t1), dd = D * (1 - 0.45 * t1);
-        bx(-ww, -D, ww, -D + 2 * dd, z0h + 4 + 18 * t0, z0h + 4 + 18 * t1, steel.map(x => x * (1 - 0.03 * k)));
+        const t0 = k / steps, t1 = (k + 1) / steps, ww = W * (1 - 0.65 * t1 ** 0.8), dd = D * (1 - 0.45 * t1 ** 0.8);
+        bx(-ww, -D, ww, -D + 2 * dd, z0h + 4 + 20 * t0, z0h + 4 + 20 * t1, steel.map(x => x * (1 - 0.015 * k)));
       }
-      bx(-W * 0.32, -D, W * 0.32, -D + D * 1.05, z0h + 22, ceil, steel.map(x => x * 0.95));             // декоративный короб
+      bx(-W * 0.32, -D, W * 0.32, -D + D * 1.05, z0h + 24, ceil, steel.map(x => x * 0.95));             // декоративный короб
+      bx(-W * 0.32 - 0.3, -D, W * 0.32 + 0.3, -D + D * 1.05 + 0.3, z0h + 24, z0h + 25, steel.map(x => x * 0.8));   // стык короба
       return true;
     }
     // --- дымоход и вентканал: внутри дома оштукатурен, над крышей — кирпичный оголовок с колпаком; вентстояк — с дефлектором ---
@@ -1928,11 +1955,32 @@ const View3D = {
           for (let z = e + 40; z < roofZ - 20; z += 90) bx(-W - 2, -W - 5, W + 2, -W - 2, z, z + 3, [0.5, 0.52, 0.55]);   // хомуты к стене
           return true;
         }
-        cy(0, 0, W, zb, top, [0.88, 0.89, 0.9], 14);
-        if (zb < e - 20) { bx(-W - 3, -W - 3, W + 3, W + 3, zb - 1, zb + 1, [0.6, 0.62, 0.64]); bx(-W - 1, W - 2, W + 1, W + 0.5, zb + 3, zb + 18, [0.3, 0.31, 0.33]); }   // решётка внизу
-        cy(0, 0, W + 3, Math.max(zb, roofZ - 5), top - 4, [0.55, 0.57, 0.6], 14);          // утеплённая часть над кровлей
-        for (const a of [0, 1, 2, 3]) { const q = { x: Math.cos(a * Math.PI / 2) * W, y: Math.sin(a * Math.PI / 2) * W }; cy(q.x, q.y, 0.8, top, top + 12, chrome, 4); }
-        cy(0, 0, W * 1.7, top + 12, top + 15, [0.72, 0.74, 0.77], 16);                     // дефлектор
+        // одноэтажный дом с холодным чердаком: в комнате — только вытяжной клапан на потолке; через чердак — воздуховод
+        // в утеплителе (фольга), на кровле — проходной элемент с юбкой, над крышей — утеплённая труба и дефлектор.
+        // Стояк из погреба (низ ниже пола) проходит через комнату открыто — с решёткой внизу
+        const ceil = View3D.ceilZ(it, e), white = [0.96, 0.96, 0.95], foil = [0.8, 0.81, 0.83], dark = [0.22, 0.23, 0.25];
+        if (zb < e - 20) {
+          cy(0, 0, W, zb, ceil, [0.88, 0.89, 0.9], 14);
+          bx(-W - 3, -W - 3, W + 3, W + 3, zb - 1, zb + 1, [0.6, 0.62, 0.64]); bx(-W - 1, W - 2, W + 1, W + 0.5, zb + 3, zb + 18, [0.3, 0.31, 0.33]);   // решётка внизу
+        } else if (ceil < roofZ) {
+          cy(0, 0, W + 5, ceil - 1.2, ceil, white, 20);                                      // клапан: фланец
+          cy(0, 0, W + 2, ceil - 1.3, ceil - 1.2, dark, 20);                                 // кольцевая щель
+          cy(0, 0, W * 0.75, ceil - 4, ceil - 1.3, white, 16);                               // тарелка клапана
+          cy(0, 0, 0.6, ceil - 4.6, ceil - 4, dark, 6);                                      // регулировочный винт
+        }
+        const zIn = zb < e - 20 ? ceil : Math.min(ceil, roofZ);
+        if (roofZ > zIn) cy(0, 0, W + 4, zIn, roofZ, foil, 16);                               // по чердаку — в утеплителе
+        if (st && roofZ < top) {
+          bx(-W - 8, -W - 8, W + 8, W + 8, roofZ - 2, roofZ + 0.5, [0.32, 0.34, 0.37]);    // проходной элемент (фланец по кровле)
+          cy(0, 0, W + 6, roofZ, roofZ + 10, [0.3, 0.32, 0.35], 16);                         // юбка
+        }
+        cy(0, 0, W + 3, Math.max(zIn, roofZ), top, [0.18, 0.19, 0.21], 16);                 // над кровлей — утеплённая труба в кожухе
+        cy(0, 0, W + 3.6, top - 1, top, [0.5, 0.52, 0.55], 16);
+        for (const a of [0, 1, 2, 3]) { const q = { x: Math.cos(a * Math.PI / 2 + 0.785) * (W + 1), y: Math.sin(a * Math.PI / 2 + 0.785) * (W + 1) }; cy(q.x, q.y, 0.7, top, top + 13, chrome, 4); }
+        cy(0, 0, W * 1.9, top + 3, top + 6, [0.66, 0.68, 0.71], 18);                         // дефлектор: диффузор
+        cy(0, 0, W * 2.1, top + 11, top + 12.5, [0.74, 0.76, 0.79], 18);                     // зонт — ступенями конусом
+        cy(0, 0, W * 1.5, top + 12.5, top + 14, [0.74, 0.76, 0.79], 16);
+        cy(0, 0, W * 0.8, top + 14, top + 15.5, [0.74, 0.76, 0.79], 12);
         return true;
       }
       const brick = C(sh === 'chimney' ? '#8f5a45' : '#a86a52'), plaster = C('#e8e4dc');
