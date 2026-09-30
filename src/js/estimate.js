@@ -21,7 +21,7 @@ const PRICE_DEFAULTS = {
   'found:strip': 10000, 'found:concrete': 10000, 'found:rebar': 85, 'found:sand': 1100, 'found:xps': 500, 'found:pile': 6800, 'wall:rebar': 85, 'wall:ring': 12000, 'slab:floor': 3400, 'floor:screed': 900,
   // чистовая отделка (за м² с работой)
   'fin:porcelain': 2800, 'fin:carpet': 1200, 'fin:tile': 1950, 'fin:laminate': 1400, 'fin:topping': 700, 'fin:paint': 700, 'fin:walltile': 2400,
-  'fin:stretch': 800, 'fin:gkl': 1200, 'fin:brick': 3600, 'fin:plaster': 1400,
+  'fin:stretch': 800, 'fin:gkl': 1200, 'fin:lining': 2200, 'fin:brick': 3600, 'fin:plaster': 1400,
   // окна и двери
   'win:m2': 8200, 'door:int': 11000, 'door:ext': 34000, 'door:gate': 82000, 'door:slide': 19000,
   // сети (за м)

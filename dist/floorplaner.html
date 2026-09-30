@@ -654,6 +654,13 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
 .an-h { font-size: 15px; margin: 18px 0 0; }
 .frow2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 
+/* полноэкранный режим: только план / 3D (панели скрыты), предпросмотр печати — на весь экран */
+body.fs .topbar, body.fs .rail, body.fs .library, body.fs .panel, body.fs .statusbar, body.fs .tool-opts { display: none !important; }
+.fs-exit { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 20; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 92%, transparent); color: var(--text); font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.2); cursor: pointer; }
+.fs-exit[hidden] { display: none; }
+#dlgPreview.full { width: 100vw; height: 100vh; max-width: 100vw; max-height: 100vh; margin: 0; padding: 0; border-radius: 0; }
+#dlgPreview.full .pv-dlg { width: 100vw; height: 100vh; max-width: none; border-radius: 0; padding: 8px 10px; box-sizing: border-box; }
+
 </style>
 </head>
 <body>
@@ -707,6 +714,7 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
       <button class="tb-btn zoom-val" id="btnZoomVal" title="Масштаб: клик — 1 м = 100 px">100%</button>
       <button class="icon-btn" id="btnZoomIn" title="Приблизить (+)" aria-label="Приблизить"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg></button>
       <button class="icon-btn" id="btnFit" title="Показать всё (Shift+1)" aria-label="Показать всё"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      <button class="icon-btn" id="btnFull" title="Во весь экран — план или 3D без панелей (F10, выход — Esc)" aria-label="Во весь экран"><svg viewBox="0 0 24 24"><path d="M3 8V3h5M21 8V3h-5M3 16v5h5M21 16v5h-5M8 8h8v8H8z"/></svg></button>
     </div>
 
     <div class="tb-group">
@@ -780,6 +788,7 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
     <!-- =============================== ХОЛСТ ================================ -->
     <main class="stage" id="stage">
       <div class="tool-opts" id="toolOpts"></div>
+      <button class="fs-exit" id="btnFsExit" type="button" hidden title="Выйти из полноэкранного режима (Esc, F10)">✕ Обычный вид</button>
       <canvas id="canvas" aria-label="План"></canvas>
       <canvas id="canvas3d" aria-label="3D-вид"></canvas>
       <canvas id="hud3d" aria-hidden="true"></canvas>
@@ -866,7 +875,7 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
 
 <dialog class="modal" id="dlgPreview">
   <div class="modal-card pv-dlg">
-    <div class="pv-head"><h3 id="pvTitle">Предпросмотр печати</h3><div class="modal-actions"><button id="pvClose">Закрыть</button><button class="primary" id="pvPrint">Печать / PDF</button></div></div>
+    <div class="pv-head"><h3 id="pvTitle">Предпросмотр печати</h3><div class="modal-actions"><button id="pvFull" title="Предпросмотр во весь экран (F10)">⛶ Во весь экран</button><button id="pvClose">Закрыть</button><button class="primary" id="pvPrint">Печать / PDF</button></div></div>
     <div class="pv-body" id="pvBody"></div>
   </div>
 </dialog>
@@ -947,6 +956,10 @@ body.mode-3d.walking .walk-cross { display: block; position: absolute; left: 50%
           <tr><td>Точное расстояние до стены (у выделенного объекта или проёма)</td><td>клик по синей цифре</td></tr>
           <tr><td>Отменить / Повторить</td><td><kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd></td></tr>
           <tr><td>Показать всё</td><td><kbd>Shift+1</kbd></td></tr>
+          <tr><td>Во весь экран — план, 3D или предпросмотр печати</td><td><kbd>F10</kbd>, выход — <kbd>Esc</kbd></td></tr>
+          <tr><td>Смета</td><td><kbd>Ctrl+Alt+S</kbd></td></tr>
+          <tr><td>Сохранить / Открыть / Печать</td><td><kbd>Ctrl+S</kbd> / <kbd>Ctrl+O</kbd> / <kbd>Ctrl+P</kbd></td></tr>
+          <tr><td>Новый проект</td><td><kbd>Ctrl+Alt+N</kbd></td></tr>
           <tr><td>Масштаб / панорама</td><td>колесо / ПКМ-перетаскивание</td></tr>
         </table>
       </div>
@@ -1390,6 +1403,7 @@ function itemLinks(it) {
   if (k === 'barrelSauna') return [L.W, L.E, L.D];
   if (['boiler50', 'boiler80', 'boilerFlat'].includes(k)) return [L.W, L.H, L.E];
   if (k === 'indirect') return [L.W, L.H, L.T];
+  if (k === 'saunaHeater') return [L.E];
   if (['stoveHeat', 'stoveMetal', 'fireplace', 'fireplaceCorner'].includes(sh) && k !== 'saunaStove') return [L.A];
   if (k === 'towel') return [L.TE];
   if (sh === 'radiator' || k === 'expansionTank') return [L.T];
@@ -1548,6 +1562,7 @@ const OPENING_TYPES = {
   door2:   { cat: 'door', name: 'Дверь двустворчатая', w: 140, h: 210, sill: 0 },
   door15:  { cat: 'door', name: 'Дверь полуторная', w: 120, h: 210, sill: 0 },
   slide:   { cat: 'door', name: 'Дверь раздвижная / купе', w: 90, h: 210, sill: 0 },
+  saunaDoor: { cat: 'door', name: 'Дверь в парную (закалённое стекло, открывание наружу)', w: 70, h: 190, sill: 0 },
   arch:    { cat: 'door', name: 'Проём / арка (без двери)', w: 90, h: 210, sill: 0 },
   gate:    { cat: 'door', name: 'Ворота гаражные', w: 270, h: 220, sill: 0 },
   win1:    { cat: 'window', name: 'Окно одностворчатое', w: 60, h: 60, sill: 110 },
@@ -1665,6 +1680,8 @@ const CATALOG = [
     { key: 'fireplaceCorner', name: 'Камин угловой', shape: 'fireplaceCorner', w: 110, d: 110, h: 120, mass: 1100 },
     { key: 'stoveMetal', name: 'Печь металлическая', shape: 'stoveMetal', w: 50, d: 70, h: 80, mass: 120 },
     { key: 'saunaStove', name: 'Печь банная', shape: 'stoveMetal', w: 50, d: 85, h: 90 },
+    { key: 'saunaHeater', name: 'Электрокаменка 6 кВт с выносным пультом и термоограничителем', kw: 'баня сауна парная каменка электропечь парилка', shape: 'stoveMetal', w: 45, d: 35, h: 75, layer: 'plumbing' },
+    { key: 'saunaBench', name: 'Полок двухъярусный (липа / абаш)', kw: 'баня сауна парная полок лавка парилка', shape: 'saunaBench', w: 180, d: 100, h: 95, layer: 'furniture' },
     { key: 'chimney', name: 'Дымоход / труба', kw: 'дымоход труба печь камин котёл', shape: 'chimney', w: 25, d: 25, h: 600, stack: 'smoke' },
     { key: 'gasBoilerWall', name: 'Газовый котёл настенный', shape: 'labelbox', w: 40, d: 30, h: 70, label: 'КГ' },
     { key: 'boilerFloor', name: 'Котёл напольный', shape: 'labelbox', w: 50, d: 60, h: 85, label: 'К' },
@@ -2591,6 +2608,13 @@ const Painters = (() => {
     c.beginPath(); c.moveTo(-w / 2, -d / 2); c.lineTo(w / 2, -d / 2); c.lineTo(w / 2, -d / 2 + 30); c.lineTo(-w / 2 + 30, d / 2); c.lineTo(-w / 2, d / 2); c.closePath(); c.fill(); c.stroke();
     thin(P);
     c.beginPath(); c.moveTo(-w / 2 + 15, -d / 2 + 15); c.lineTo(w / 2 - 35, -d / 2 + 15); c.lineTo(-w / 2 + 15, d / 2 - 35); c.closePath(); c.stroke();
+  };
+  // полок: нижний ярус (узкий, спереди +d/2) и верхний — доски вдоль
+  S.saunaBench = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d * 0.6, 2); thin(P);
+    box(P, -w / 2, -d / 2 + d * 0.6, w, d * 0.4, 2, false);
+    for (let y = -d / 2 + 10; y < -d / 2 + d * 0.6 - 4; y += 10) line(P, [-w / 2 + 3, y, w / 2 - 3, y]);
+    for (let y = -d / 2 + d * 0.6 + 10; y < d / 2 - 4; y += 10) line(P, [-w / 2 + 3, y, w / 2 - 3, y]);
   };
   S.stoveMetal = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 4); thin(P);
@@ -6549,7 +6573,7 @@ const Render = {
       ctx.beginPath(); ctx.arc(H.x, H.y, len, a0, a0 + d, d < 0); ctx.stroke(); ctx.restore();
     };
     const h = op.hinge ? 1 : 0;
-    if (type === 'door') h ? leaf(W, 0) : leaf(0, W);
+    if (type === 'door' || type === 'saunaDoor') h ? leaf(W, 0) : leaf(0, W);
     else if (type === 'door2') { leaf(0, W / 2); leaf(W, W / 2); }
     else if (type === 'door15') { const k = W * 2 / 3; if (h) { leaf(W, W - k); leaf(0, W - k); } else { leaf(0, k); leaf(W, k); } }
     else if (type === 'slide') {
@@ -7619,7 +7643,7 @@ const View3D = {
               const seam = op.type === 'door2' ? W2 / 2 : op.type === 'door15' ? (op.hinge ? W2 / 3 : W2 * 2 / 3) : null;
               const leaves = seam == null ? [[5, W2 - 5]] : [[5, seam - 0.4], [seam + 0.4, W2 - 5]];
               const panel = leafCol.map(x => Math.min(1, x * 1.12)), frost = [0.82, 0.87, 0.9];
-              const glassy = op.type === 'door2' && w.kind !== 'ext';                  // межкомнатная двустворчатая — со стеклом
+              const glassy = (op.type === 'door2' && w.kind !== 'ext') || op.type === 'saunaDoor';   // межкомнатная двустворчатая и дверь в парную — со стеклом
               for (const [s0, s1] of leaves) {
                 prism(rect(s0, s1, -2, 2), z0 + 1, z1 - 5, leafCol);
                 if (op.type === 'slide') continue;
@@ -9148,12 +9172,21 @@ const View3D = {
       bx(-fw / 2 - 6, D, fw / 2 + 6, D + 2, e + 8 + fh, e + 14 + fh, stone.map(v => v * 0.85));
       return true;
     }
+    if (sh === 'saunaBench') {                                                                      // полок: верхний ярус у стены, нижний — ступенью впереди
+      const wood = C('#d9b98a'), dark = C('#b8935e'), yb = -D + d * 0.6, hTop = H || 95, hLow = hTop * 0.47;
+      for (const [y0, y1, z] of [[-D, yb, hTop], [yb, D, hLow]]) {
+        for (const x of [-W + 3, W - 7]) bx(x, y0 + 3, x + 4, y1 - 3, e, e + z - 4, dark);                       // опоры
+        for (let y = y0 + 1; y < y1 - 2; y += 9.5) bx(-W, y, W, Math.min(y + 8, y1), e + z - 4, e + z, wood);   // доски с зазором
+      }
+      bx(-W, -D, W, -D + 3, e + hTop, e + hTop + 35, wood);                                                     // спинка
+      return true;
+    }
     if (sh === 'stoveMetal') {
       const top = e + (H || 80), fw = Math.min(w - 10, 36);
       for (const [px, py] of [[-W + 4, -D + 4], [W - 4, -D + 4], [W - 4, D - 4], [-W + 4, D - 4]]) bx(px - 2, py - 2, px + 2, py + 2, e, e + 12, iron);
       bx(-W, -D, W, D, e + 12, top, [0.2, 0.2, 0.21]);
       door(-fw / 2, fw / 2, e + 22, e + 22 + Math.min(40, (H || 80) * 0.45), true);
-      if (it.key === 'saunaStove') { bx(-W + 3, -D + 3, W - 3, D - 3, top, top + 25, [0.26, 0.26, 0.27]); for (let k = 0; k < 7; k++) cy(-W / 2 + (k % 3) * W / 2, -D / 2 + Math.floor(k / 3) * D / 2, 7, top + 18, top + 30, [0.45, 0.43, 0.41], 7); }
+      if (it.key === 'saunaStove' || it.key === 'saunaHeater') { bx(-W + 3, -D + 3, W - 3, D - 3, top, top + 25, [0.26, 0.26, 0.27]); for (let k = 0; k < 7; k++) cy(-W / 2 + (k % 3) * W / 2, -D / 2 + Math.floor(k / 3) * D / 2, 7, top + 18, top + 30, [0.45, 0.43, 0.41], 7); }
       sheet(70);
       return true;
     }
@@ -12627,7 +12660,16 @@ const UI = {
     UI.buildLibrary();
     // печать
     { const dp = $('dlgPrint'), show = dp.showModal.bind(dp); dp.showModal = () => { UI.fillPrintSys(); show(); }; }
-    $('pvClose').onclick = () => { $('dlgPreview').close(); $('printArea').textContent = ''; };
+    $('pvClose').onclick = () => { UI.togglePvFull(false); $('dlgPreview').close(); $('printArea').textContent = ''; };
+    $('btnFull').onclick = () => UI.toggleFull();
+    $('btnFsExit').onclick = () => UI.toggleFull(false);
+    $('pvFull').onclick = () => UI.togglePvFull();
+    // выход из полноэкранного браузера (Esc) — снять и наш режим
+    document.addEventListener('fullscreenchange', () => {
+      if (document.fullscreenElement) return;
+      if (document.body.classList.contains('fs')) UI.toggleFull(false, true);
+      if ($('dlgPreview').classList.contains('full')) UI.togglePvFull(false, true);
+    });
     $('pvPrint').onclick = () => { $('dlgPreview').close(); if (Sheets._kit) Sheets.build(Sheets._o); IO.doPrint(); };
     $('dlgPrint').addEventListener('close', () => {
       const v = $('dlgPrint').returnValue;
@@ -12643,6 +12685,30 @@ const UI = {
     $('panel').addEventListener('focusout', () => { if (UI._pending) setTimeout(() => { if (UI._pending) { UI._pending = false; UI.refresh(); } }, 0); });
     UI.showTab('props');
     UI.syncTheme();
+  },
+  /** Полноэкранный режим плана / 3D: панели скрыты, холст на весь экран (и браузер — во весь экран, если разрешено) */
+  toggleFull(on, fromBrowser) {
+    on = on ?? !document.body.classList.contains('fs');
+    document.body.classList.toggle('fs', on);
+    $('btnFsExit').hidden = !on;
+    if (!fromBrowser) try {
+      if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+      else if (!on && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    } catch { /* без Fullscreen API — только скрытие панелей */ }
+    requestAnimationFrame(() => { App.resize(); if (View3D.active) { View3D.dirty = true; View3D.redraw(); } });
+  },
+  /** Предпросмотр печати на весь экран: окно на весь экран, листы перекладываются по новой ширине */
+  togglePvFull(on, fromBrowser) {
+    const dlg = $('dlgPreview');
+    on = on ?? !dlg.classList.contains('full');
+    if (on === dlg.classList.contains('full')) return;
+    dlg.classList.toggle('full', on);
+    $('pvFull').textContent = on ? '⤡ Обычный размер' : '⛶ Во весь экран';
+    if (!fromBrowser) try {
+      if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+      else if (!on && document.fullscreenElement && document.exitFullscreen && !document.body.classList.contains('fs')) document.exitFullscreen().catch(() => {});
+    } catch { /* нет Fullscreen API */ }
+    if (dlg.open && Sheets._o) requestAnimationFrame(() => Sheets.preview(Sheets._o));
   },
   printOpts() {
     const sys = {};
@@ -15162,7 +15228,7 @@ const PRICE_DEFAULTS = {
   'found:strip': 10000, 'found:concrete': 10000, 'found:rebar': 85, 'found:sand': 1100, 'found:xps': 500, 'found:pile': 6800, 'wall:rebar': 85, 'wall:ring': 12000, 'slab:floor': 3400, 'floor:screed': 900,
   // чистовая отделка (за м² с работой)
   'fin:porcelain': 2800, 'fin:carpet': 1200, 'fin:tile': 1950, 'fin:laminate': 1400, 'fin:topping': 700, 'fin:paint': 700, 'fin:walltile': 2400,
-  'fin:stretch': 800, 'fin:gkl': 1200, 'fin:brick': 3600, 'fin:plaster': 1400,
+  'fin:stretch': 800, 'fin:gkl': 1200, 'fin:lining': 2200, 'fin:brick': 3600, 'fin:plaster': 1400,
   // окна и двери
   'win:m2': 8200, 'door:int': 11000, 'door:ext': 34000, 'door:gate': 82000, 'door:slide': 19000,
   // сети (за м)
@@ -16066,12 +16132,13 @@ const Analysis = {
         const exh = inR.filter(it => EXH.has(it.key)), sup = inR.filter(it => it.key === 'ventSupply' || it.key === 'recuperator');
         const wins = Rooms.windowsOf(r).length;
         const gasBoiler = inR.some(it => /gasBoiler/.test(it.key));
-        const stove = inR.find(it => ['stoveHeat', 'fireplace', 'fireplaceCorner', 'stoveMetal'].includes(catItem(it.key).shape));
+        const stove = inR.find(it => ['stoveHeat', 'fireplace', 'fireplaceCorner', 'stoveMetal'].includes(catItem(it.key).shape) && it.key !== 'saunaHeater');
         const kitchen = /кухн/.test(nm), wc = /сануз|с\/у|туалет|уборн/.test(nm), bath = /ванн|душ/.test(nm) || inR.some(it => ['bath', 'bathCorner', 'shower'].includes(catItem(it.key).shape));
         const living = !!(r.tag && r.tag.living) || /спальн|гостин|детск|кабинет|комнат/.test(nm);
         const hood = inR.some(it => it.key === 'hood'), gasStove = inR.find(it => (/gas/i.test(it.key) && catItem(it.key).shape === 'stove') || (KITCHEN_SHAPES.has(catItem(it.key).shape) && it.hob === 'gas'));
         let q = 0, why = '';
         if (kitchen) { q = gasStove ? 90 : 60; why = gasStove ? 'кухня с газовой плитой — 90 м³/ч' : 'кухня — 60 м³/ч (с газовой плитой — 90)'; }
+        else if (/парн|саун/.test(nm)) { q = Math.ceil(5 * A * H); why = `парная — 5 объёмов в час (${q} м³/ч): приток низко у каменки, вытяжка — под потолком с противоположной стороны`; }
         else if (gasBoiler || /котельн|топочн/.test(nm)) { q = Math.ceil(3 * A * H); why = `котельная — 3 объёма в час (${q} м³/ч)`; }
         else if (wc && bath) { q = 50; why = 'совмещённый санузел — 50 м³/ч'; }
         else if (wc || bath) { q = 25; why = (bath ? 'ванная' : 'туалет') + ' — 25 м³/ч'; }
@@ -16144,7 +16211,7 @@ const Analysis = {
     }
     for (const it of d.items) {
       const sh = catItem(it.key).shape;
-      if (!['stoveHeat', 'fireplace', 'fireplaceCorner', 'stoveMetal'].includes(sh)) continue;
+      if (!['stoveHeat', 'fireplace', 'fireplaceCorner', 'stoveMetal'].includes(sh) || it.key === 'saunaHeater') continue;   // электрокаменке дымоход не нужен
       const fl = it.floor || f1, poly = Model.itemPts(it);
       const flue = d.items.find(o => catItem(o.key).stack === 'smoke' && (o.floor || f1) === fl && near(o, poly, 60));
       if (!flue) add('bad', 'Печь', `${name(it)}: нет дымохода — поставьте «Дымоход / труба» над печью или вплотную к ней`, 'СП 7.13130.2013', it, it.id);
@@ -16795,10 +16862,12 @@ const FIN_WALLS = {
   paint: { name: 'Обои под покраску (флизелин), краска матовая светлая', short: 'Покраска светлая', color: '#e7e0d4', price: 'fin:paint' },
   tile:  { name: 'Керамическая плитка светлая 300×600 мм (мокрые зоны) по гидроизоляции', short: 'Плитка', color: '#dfe4e6', price: 'fin:walltile' },
   plaster: { name: 'Цементная штукатурка, покраска фасадной краской', short: 'Штукатурка', color: '#d6d3cc', price: 'fin:paint' },
+  wood:  { name: 'Вагонка липа / абаш по обрешётке, фольгированная пароизоляция, минвата 50 мм', short: 'Вагонка', color: '#e2c79c', price: 'fin:lining' },
 };
 const FIN_CEIL = {
   stretch: { name: 'Натяжной потолок ПВХ, матовый белый', short: 'Натяжной', color: '#fbfbfa', price: 'fin:stretch' },
   gkl:     { name: 'ГКЛ по каркасу, покраска', short: 'ГКЛ', color: '#f6f6f4', price: 'fin:gkl' },
+  wood:    { name: 'Вагонка липа по фольге и минвате 100 мм (парная)', short: 'Вагонка', color: '#e2c79c', price: 'fin:lining' },
 };
 // th — толщина облицовки, gap — вентзазор по умолчанию, course — ряд кладки (лицо + шов), perM2 — штук на 1 м² стены
 const FIN_FACADE = {
@@ -16819,11 +16888,11 @@ const Finish = {
   /** Отделка помещения по его назначению (или заданная у помещения вручную) */
   room(r) {
     const o = Finish.opt(), nm = (r.name || '').toLowerCase(), own = (o.rooms || {})[r.name] || {};
-    const wet = /сануз|ванн|туалет|душ|с\/у/.test(nm), tech = /котел|котёл|кладов|гардероб/.test(nm), sleep = /спальн|детск|кабинет/.test(nm);
+    const sauna = /парн|саун/.test(nm), wet = sauna || /сануз|ванн|туалет|душ|с\/у/.test(nm), tech = /котел|котёл|кладов|гардероб/.test(nm), sleep = /спальн|детск|кабинет/.test(nm);
     return {
       floor: own.floor || (wet ? o.wet : sleep ? o.living : o.floor),
-      walls: own.walls || (wet ? o.wetWalls : o.walls),
-      ceil: own.ceil || (Finish.mansard() ? 'gkl' : o.ceil),                 // мансарда: скаты — ГКЛ по обрешётке (натяжной на скате не делают)
+      walls: own.walls || (sauna ? 'wood' : wet ? o.wetWalls : o.walls),
+      ceil: own.ceil || (sauna ? 'wood' : Finish.mansard() ? 'gkl' : o.ceil),                 // мансарда: скаты — ГКЛ по обрешётке (натяжной на скате не делают)
       wet, tech, sleep,
     };
   },
@@ -18534,6 +18603,9 @@ const App = {
     const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
     const dlgOpen = document.querySelector('dialog[open]');
     if (e.key === 'F1') { e.preventDefault(); if (!dlgOpen) $('dlgHelp').showModal(); return; }
+    // F10 — во весь экран: план / 3D или предпросмотр печати; Esc в полноэкранном плане — выход
+    if (e.key === 'F10') { e.preventDefault(); if (dlgOpen && dlgOpen.id === 'dlgPreview') UI.togglePvFull(); else if (!dlgOpen) UI.toggleFull(); return; }
+    if (e.key === 'Escape' && !dlgOpen && !View3D.active && document.body.classList.contains('fs') && !typing) { e.preventDefault(); UI.toggleFull(false); return; }
     if (View3D.active && !dlgOpen && !typing) {
       if (!(e.ctrlKey || e.metaKey) && Walk.key(e, true)) { e.preventDefault(); return; }   // прогулка: WASD, стрелки…
       if (e.key === 'Escape' && View3D.camView) { View3D.setCamView(null); e.preventDefault(); return; }

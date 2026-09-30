@@ -487,6 +487,9 @@ const App = {
     const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
     const dlgOpen = document.querySelector('dialog[open]');
     if (e.key === 'F1') { e.preventDefault(); if (!dlgOpen) $('dlgHelp').showModal(); return; }
+    // F10 — во весь экран: план / 3D или предпросмотр печати; Esc в полноэкранном плане — выход
+    if (e.key === 'F10') { e.preventDefault(); if (dlgOpen && dlgOpen.id === 'dlgPreview') UI.togglePvFull(); else if (!dlgOpen) UI.toggleFull(); return; }
+    if (e.key === 'Escape' && !dlgOpen && !View3D.active && document.body.classList.contains('fs') && !typing) { e.preventDefault(); UI.toggleFull(false); return; }
     if (View3D.active && !dlgOpen && !typing) {
       if (!(e.ctrlKey || e.metaKey) && Walk.key(e, true)) { e.preventDefault(); return; }   // прогулка: WASD, стрелки…
       if (e.key === 'Escape' && View3D.camView) { View3D.setCamView(null); e.preventDefault(); return; }

@@ -129,6 +129,7 @@ function itemLinks(it) {
   if (k === 'barrelSauna') return [L.W, L.E, L.D];
   if (['boiler50', 'boiler80', 'boilerFlat'].includes(k)) return [L.W, L.H, L.E];
   if (k === 'indirect') return [L.W, L.H, L.T];
+  if (k === 'saunaHeater') return [L.E];
   if (['stoveHeat', 'stoveMetal', 'fireplace', 'fireplaceCorner'].includes(sh) && k !== 'saunaStove') return [L.A];
   if (k === 'towel') return [L.TE];
   if (sh === 'radiator' || k === 'expansionTank') return [L.T];
@@ -287,6 +288,7 @@ const OPENING_TYPES = {
   door2:   { cat: 'door', name: 'Дверь двустворчатая', w: 140, h: 210, sill: 0 },
   door15:  { cat: 'door', name: 'Дверь полуторная', w: 120, h: 210, sill: 0 },
   slide:   { cat: 'door', name: 'Дверь раздвижная / купе', w: 90, h: 210, sill: 0 },
+  saunaDoor: { cat: 'door', name: 'Дверь в парную (закалённое стекло, открывание наружу)', w: 70, h: 190, sill: 0 },
   arch:    { cat: 'door', name: 'Проём / арка (без двери)', w: 90, h: 210, sill: 0 },
   gate:    { cat: 'door', name: 'Ворота гаражные', w: 270, h: 220, sill: 0 },
   win1:    { cat: 'window', name: 'Окно одностворчатое', w: 60, h: 60, sill: 110 },
@@ -404,6 +406,8 @@ const CATALOG = [
     { key: 'fireplaceCorner', name: 'Камин угловой', shape: 'fireplaceCorner', w: 110, d: 110, h: 120, mass: 1100 },
     { key: 'stoveMetal', name: 'Печь металлическая', shape: 'stoveMetal', w: 50, d: 70, h: 80, mass: 120 },
     { key: 'saunaStove', name: 'Печь банная', shape: 'stoveMetal', w: 50, d: 85, h: 90 },
+    { key: 'saunaHeater', name: 'Электрокаменка 6 кВт с выносным пультом и термоограничителем', kw: 'баня сауна парная каменка электропечь парилка', shape: 'stoveMetal', w: 45, d: 35, h: 75, layer: 'plumbing' },
+    { key: 'saunaBench', name: 'Полок двухъярусный (липа / абаш)', kw: 'баня сауна парная полок лавка парилка', shape: 'saunaBench', w: 180, d: 100, h: 95, layer: 'furniture' },
     { key: 'chimney', name: 'Дымоход / труба', kw: 'дымоход труба печь камин котёл', shape: 'chimney', w: 25, d: 25, h: 600, stack: 'smoke' },
     { key: 'gasBoilerWall', name: 'Газовый котёл настенный', shape: 'labelbox', w: 40, d: 30, h: 70, label: 'КГ' },
     { key: 'boilerFloor', name: 'Котёл напольный', shape: 'labelbox', w: 50, d: 60, h: 85, label: 'К' },
@@ -1330,6 +1334,13 @@ const Painters = (() => {
     c.beginPath(); c.moveTo(-w / 2, -d / 2); c.lineTo(w / 2, -d / 2); c.lineTo(w / 2, -d / 2 + 30); c.lineTo(-w / 2 + 30, d / 2); c.lineTo(-w / 2, d / 2); c.closePath(); c.fill(); c.stroke();
     thin(P);
     c.beginPath(); c.moveTo(-w / 2 + 15, -d / 2 + 15); c.lineTo(w / 2 - 35, -d / 2 + 15); c.lineTo(-w / 2 + 15, d / 2 - 35); c.closePath(); c.stroke();
+  };
+  // полок: нижний ярус (узкий, спереди +d/2) и верхний — доски вдоль
+  S.saunaBench = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d * 0.6, 2); thin(P);
+    box(P, -w / 2, -d / 2 + d * 0.6, w, d * 0.4, 2, false);
+    for (let y = -d / 2 + 10; y < -d / 2 + d * 0.6 - 4; y += 10) line(P, [-w / 2 + 3, y, w / 2 - 3, y]);
+    for (let y = -d / 2 + d * 0.6 + 10; y < d / 2 - 4; y += 10) line(P, [-w / 2 + 3, y, w / 2 - 3, y]);
   };
   S.stoveMetal = (P, w, d) => {
     box(P, -w / 2, -d / 2, w, d, 4); thin(P);

@@ -104,6 +104,7 @@
       <button class="tb-btn zoom-val" id="btnZoomVal" title="Масштаб: клик — 1 м = 100 px">100%</button>
       <button class="icon-btn" id="btnZoomIn" title="Приблизить (+)" aria-label="Приблизить"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg></button>
       <button class="icon-btn" id="btnFit" title="Показать всё (Shift+1)" aria-label="Показать всё"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      <button class="icon-btn" id="btnFull" title="Во весь экран — план или 3D без панелей (F10, выход — Esc)" aria-label="Во весь экран"><svg viewBox="0 0 24 24"><path d="M3 8V3h5M21 8V3h-5M3 16v5h5M21 16v5h-5M8 8h8v8H8z"/></svg></button>
     </div>
 
     <div class="tb-group">
@@ -177,6 +178,7 @@
     <!-- =============================== ХОЛСТ ================================ -->
     <main class="stage" id="stage">
       <div class="tool-opts" id="toolOpts"></div>
+      <button class="fs-exit" id="btnFsExit" type="button" hidden title="Выйти из полноэкранного режима (Esc, F10)">✕ Обычный вид</button>
       <canvas id="canvas" aria-label="План"></canvas>
       <canvas id="canvas3d" aria-label="3D-вид"></canvas>
       <canvas id="hud3d" aria-hidden="true"></canvas>
@@ -263,7 +265,7 @@
 
 <dialog class="modal" id="dlgPreview">
   <div class="modal-card pv-dlg">
-    <div class="pv-head"><h3 id="pvTitle">Предпросмотр печати</h3><div class="modal-actions"><button id="pvClose">Закрыть</button><button class="primary" id="pvPrint">Печать / PDF</button></div></div>
+    <div class="pv-head"><h3 id="pvTitle">Предпросмотр печати</h3><div class="modal-actions"><button id="pvFull" title="Предпросмотр во весь экран (F10)">⛶ Во весь экран</button><button id="pvClose">Закрыть</button><button class="primary" id="pvPrint">Печать / PDF</button></div></div>
     <div class="pv-body" id="pvBody"></div>
   </div>
 </dialog>
@@ -344,6 +346,10 @@
           <tr><td>Точное расстояние до стены (у выделенного объекта или проёма)</td><td>клик по синей цифре</td></tr>
           <tr><td>Отменить / Повторить</td><td><kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd></td></tr>
           <tr><td>Показать всё</td><td><kbd>Shift+1</kbd></td></tr>
+          <tr><td>Во весь экран — план, 3D или предпросмотр печати</td><td><kbd>F10</kbd>, выход — <kbd>Esc</kbd></td></tr>
+          <tr><td>Смета</td><td><kbd>Ctrl+Alt+S</kbd></td></tr>
+          <tr><td>Сохранить / Открыть / Печать</td><td><kbd>Ctrl+S</kbd> / <kbd>Ctrl+O</kbd> / <kbd>Ctrl+P</kbd></td></tr>
+          <tr><td>Новый проект</td><td><kbd>Ctrl+Alt+N</kbd></td></tr>
           <tr><td>Масштаб / панорама</td><td>колесо / ПКМ-перетаскивание</td></tr>
         </table>
       </div>

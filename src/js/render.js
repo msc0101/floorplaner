@@ -706,7 +706,7 @@ const Render = {
       ctx.beginPath(); ctx.arc(H.x, H.y, len, a0, a0 + d, d < 0); ctx.stroke(); ctx.restore();
     };
     const h = op.hinge ? 1 : 0;
-    if (type === 'door') h ? leaf(W, 0) : leaf(0, W);
+    if (type === 'door' || type === 'saunaDoor') h ? leaf(W, 0) : leaf(0, W);
     else if (type === 'door2') { leaf(0, W / 2); leaf(W, W / 2); }
     else if (type === 'door15') { const k = W * 2 / 3; if (h) { leaf(W, W - k); leaf(0, W - k); } else { leaf(0, k); leaf(W, k); } }
     else if (type === 'slide') {

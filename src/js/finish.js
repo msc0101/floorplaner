@@ -19,10 +19,12 @@ const FIN_WALLS = {
   paint: { name: 'Обои под покраску (флизелин), краска матовая светлая', short: 'Покраска светлая', color: '#e7e0d4', price: 'fin:paint' },
   tile:  { name: 'Керамическая плитка светлая 300×600 мм (мокрые зоны) по гидроизоляции', short: 'Плитка', color: '#dfe4e6', price: 'fin:walltile' },
   plaster: { name: 'Цементная штукатурка, покраска фасадной краской', short: 'Штукатурка', color: '#d6d3cc', price: 'fin:paint' },
+  wood:  { name: 'Вагонка липа / абаш по обрешётке, фольгированная пароизоляция, минвата 50 мм', short: 'Вагонка', color: '#e2c79c', price: 'fin:lining' },
 };
 const FIN_CEIL = {
   stretch: { name: 'Натяжной потолок ПВХ, матовый белый', short: 'Натяжной', color: '#fbfbfa', price: 'fin:stretch' },
   gkl:     { name: 'ГКЛ по каркасу, покраска', short: 'ГКЛ', color: '#f6f6f4', price: 'fin:gkl' },
+  wood:    { name: 'Вагонка липа по фольге и минвате 100 мм (парная)', short: 'Вагонка', color: '#e2c79c', price: 'fin:lining' },
 };
 // th — толщина облицовки, gap — вентзазор по умолчанию, course — ряд кладки (лицо + шов), perM2 — штук на 1 м² стены
 const FIN_FACADE = {
@@ -43,11 +45,11 @@ const Finish = {
   /** Отделка помещения по его назначению (или заданная у помещения вручную) */
   room(r) {
     const o = Finish.opt(), nm = (r.name || '').toLowerCase(), own = (o.rooms || {})[r.name] || {};
-    const wet = /сануз|ванн|туалет|душ|с\/у/.test(nm), tech = /котел|котёл|кладов|гардероб/.test(nm), sleep = /спальн|детск|кабинет/.test(nm);
+    const sauna = /парн|саун/.test(nm), wet = sauna || /сануз|ванн|туалет|душ|с\/у/.test(nm), tech = /котел|котёл|кладов|гардероб/.test(nm), sleep = /спальн|детск|кабинет/.test(nm);
     return {
       floor: own.floor || (wet ? o.wet : sleep ? o.living : o.floor),
-      walls: own.walls || (wet ? o.wetWalls : o.walls),
-      ceil: own.ceil || (Finish.mansard() ? 'gkl' : o.ceil),                 // мансарда: скаты — ГКЛ по обрешётке (натяжной на скате не делают)
+      walls: own.walls || (sauna ? 'wood' : wet ? o.wetWalls : o.walls),
+      ceil: own.ceil || (sauna ? 'wood' : Finish.mansard() ? 'gkl' : o.ceil),                 // мансарда: скаты — ГКЛ по обрешётке (натяжной на скате не делают)
       wet, tech, sleep,
     };
   },

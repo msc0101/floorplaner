@@ -473,7 +473,7 @@ const View3D = {
               const seam = op.type === 'door2' ? W2 / 2 : op.type === 'door15' ? (op.hinge ? W2 / 3 : W2 * 2 / 3) : null;
               const leaves = seam == null ? [[5, W2 - 5]] : [[5, seam - 0.4], [seam + 0.4, W2 - 5]];
               const panel = leafCol.map(x => Math.min(1, x * 1.12)), frost = [0.82, 0.87, 0.9];
-              const glassy = op.type === 'door2' && w.kind !== 'ext';                  // межкомнатная двустворчатая — со стеклом
+              const glassy = (op.type === 'door2' && w.kind !== 'ext') || op.type === 'saunaDoor';   // межкомнатная двустворчатая и дверь в парную — со стеклом
               for (const [s0, s1] of leaves) {
                 prism(rect(s0, s1, -2, 2), z0 + 1, z1 - 5, leafCol);
                 if (op.type === 'slide') continue;
@@ -2002,12 +2002,21 @@ const View3D = {
       bx(-fw / 2 - 6, D, fw / 2 + 6, D + 2, e + 8 + fh, e + 14 + fh, stone.map(v => v * 0.85));
       return true;
     }
+    if (sh === 'saunaBench') {                                                                      // полок: верхний ярус у стены, нижний — ступенью впереди
+      const wood = C('#d9b98a'), dark = C('#b8935e'), yb = -D + d * 0.6, hTop = H || 95, hLow = hTop * 0.47;
+      for (const [y0, y1, z] of [[-D, yb, hTop], [yb, D, hLow]]) {
+        for (const x of [-W + 3, W - 7]) bx(x, y0 + 3, x + 4, y1 - 3, e, e + z - 4, dark);                       // опоры
+        for (let y = y0 + 1; y < y1 - 2; y += 9.5) bx(-W, y, W, Math.min(y + 8, y1), e + z - 4, e + z, wood);   // доски с зазором
+      }
+      bx(-W, -D, W, -D + 3, e + hTop, e + hTop + 35, wood);                                                     // спинка
+      return true;
+    }
     if (sh === 'stoveMetal') {
       const top = e + (H || 80), fw = Math.min(w - 10, 36);
       for (const [px, py] of [[-W + 4, -D + 4], [W - 4, -D + 4], [W - 4, D - 4], [-W + 4, D - 4]]) bx(px - 2, py - 2, px + 2, py + 2, e, e + 12, iron);
       bx(-W, -D, W, D, e + 12, top, [0.2, 0.2, 0.21]);
       door(-fw / 2, fw / 2, e + 22, e + 22 + Math.min(40, (H || 80) * 0.45), true);
-      if (it.key === 'saunaStove') { bx(-W + 3, -D + 3, W - 3, D - 3, top, top + 25, [0.26, 0.26, 0.27]); for (let k = 0; k < 7; k++) cy(-W / 2 + (k % 3) * W / 2, -D / 2 + Math.floor(k / 3) * D / 2, 7, top + 18, top + 30, [0.45, 0.43, 0.41], 7); }
+      if (it.key === 'saunaStove' || it.key === 'saunaHeater') { bx(-W + 3, -D + 3, W - 3, D - 3, top, top + 25, [0.26, 0.26, 0.27]); for (let k = 0; k < 7; k++) cy(-W / 2 + (k % 3) * W / 2, -D / 2 + Math.floor(k / 3) * D / 2, 7, top + 18, top + 30, [0.45, 0.43, 0.41], 7); }
       sheet(70);
       return true;
     }

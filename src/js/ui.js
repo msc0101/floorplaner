@@ -121,7 +121,16 @@ const UI = {
     UI.buildLibrary();
     // печать
     { const dp = $('dlgPrint'), show = dp.showModal.bind(dp); dp.showModal = () => { UI.fillPrintSys(); show(); }; }
-    $('pvClose').onclick = () => { $('dlgPreview').close(); $('printArea').textContent = ''; };
+    $('pvClose').onclick = () => { UI.togglePvFull(false); $('dlgPreview').close(); $('printArea').textContent = ''; };
+    $('btnFull').onclick = () => UI.toggleFull();
+    $('btnFsExit').onclick = () => UI.toggleFull(false);
+    $('pvFull').onclick = () => UI.togglePvFull();
+    // выход из полноэкранного браузера (Esc) — снять и наш режим
+    document.addEventListener('fullscreenchange', () => {
+      if (document.fullscreenElement) return;
+      if (document.body.classList.contains('fs')) UI.toggleFull(false, true);
+      if ($('dlgPreview').classList.contains('full')) UI.togglePvFull(false, true);
+    });
     $('pvPrint').onclick = () => { $('dlgPreview').close(); if (Sheets._kit) Sheets.build(Sheets._o); IO.doPrint(); };
     $('dlgPrint').addEventListener('close', () => {
       const v = $('dlgPrint').returnValue;
@@ -137,6 +146,30 @@ const UI = {
     $('panel').addEventListener('focusout', () => { if (UI._pending) setTimeout(() => { if (UI._pending) { UI._pending = false; UI.refresh(); } }, 0); });
     UI.showTab('props');
     UI.syncTheme();
+  },
+  /** Полноэкранный режим плана / 3D: панели скрыты, холст на весь экран (и браузер — во весь экран, если разрешено) */
+  toggleFull(on, fromBrowser) {
+    on = on ?? !document.body.classList.contains('fs');
+    document.body.classList.toggle('fs', on);
+    $('btnFsExit').hidden = !on;
+    if (!fromBrowser) try {
+      if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+      else if (!on && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    } catch { /* без Fullscreen API — только скрытие панелей */ }
+    requestAnimationFrame(() => { App.resize(); if (View3D.active) { View3D.dirty = true; View3D.redraw(); } });
+  },
+  /** Предпросмотр печати на весь экран: окно на весь экран, листы перекладываются по новой ширине */
+  togglePvFull(on, fromBrowser) {
+    const dlg = $('dlgPreview');
+    on = on ?? !dlg.classList.contains('full');
+    if (on === dlg.classList.contains('full')) return;
+    dlg.classList.toggle('full', on);
+    $('pvFull').textContent = on ? '⤡ Обычный размер' : '⛶ Во весь экран';
+    if (!fromBrowser) try {
+      if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+      else if (!on && document.fullscreenElement && document.exitFullscreen && !document.body.classList.contains('fs')) document.exitFullscreen().catch(() => {});
+    } catch { /* нет Fullscreen API */ }
+    if (dlg.open && Sheets._o) requestAnimationFrame(() => Sheets.preview(Sheets._o));
   },
   printOpts() {
     const sys = {};
