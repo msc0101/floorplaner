@@ -73,7 +73,9 @@ const Analysis = {
     for (const f of fd) Drawing.onFloor(f.floor.id, () => {
       for (const r of f.rooms) {
         const nm = (r.name || '').toLowerCase();
-        const ws = Rooms.windowsOf(r), glass = ws.reduce((a, w) => a + w.op.w * w.op.h, 0);
+        // окна в стенах + мансардные окна в скате над комнатой (свет по площади окна)
+        const rw = d.items.filter(it => catItem(it.key).shape === 'roofWindow' && (it.floor || d.floors[0].id) === f.floor.id && G.pointInPoly(it, r.floor || r.axis));
+        const ws = [...Rooms.windowsOf(r), ...rw.map(it => ({ op: { w: it.w, h: it.d }, roof: true }))], glass = ws.reduce((a, w) => a + w.op.w * w.op.h, 0);
         const living = !!(r.tag && r.tag.living) || /спальн|гостин|детск|кабинет|комнат/.test(nm);
         const kitchen = /кухн/.test(nm);
         const at = G.polyCentroid(r.floor || r.axis);
@@ -90,6 +92,17 @@ const Analysis = {
           big.w = Math.round(Math.min(Math.max(big.w, room), big.w + Math.ceil(need / big.h / 5) * 5));
           Model.commit();
         });
+        // мансарда: высота до потолка (по скату / ригелям) — жилым комнатам и кухне ≥ 2,5 м не менее чем на половине площади
+        {
+          const MH = Roof.roomHeights(r.floor || r.axis, f.floor);
+          if (MH) {
+            const { hi, lo15 } = MH, H = [MH.min, MH.max];
+            r._mans = MH;
+            if ((living || kitchen) && hi < 0.5) add('bad', 'Мансарда', `${r.name}: высота ≥ 2,5 м только на ${Math.round(hi * 100)} % площади — нужно не меньше половины (поднимите кнеевую стену или уклон)`, 'СП 55.13330.2016 п. 6.2; СП 54.13330.2022 п. 5.12', at);
+            else if (/коридор|холл/.test(nm) && Math.max(...H) < 210) add('bad', 'Мансарда', `${r.name}: высота меньше 2,1 м`, 'СП 55.13330.2016 п. 6.2', at);
+            add('note', 'Мансарда', `${r.name}: высота ${(r._mans.min / 100).toFixed(2)}…${(r._mans.max / 100).toFixed(2)} м, ≥ 2,5 м — ${Math.round(hi * 100)} % площади${lo15 > 0 ? `, ниже 1,5 м — ${Math.round(lo15 * 100)} % (в площадь с коэффициентом 0,7)` : ''}`, 'СП 54.13330.2022, прил. А', at);
+          }
+        }
         // минимальные площади
         const minA = /спальн|детск/.test(nm) ? [80000, 'спальни — 8 м²'] : /гостин|общ.*комнат/.test(nm) ? [120000, 'общей комнаты — 12 м²'] : kitchen && !/гостин/.test(nm) ? [60000, 'кухни — 6 м²'] : null;
         if (minA && r.areaFloor < minA[0] - 50) add('bad', 'Помещения', `${r.name}: ${m2(r.areaFloor)} — меньше минимума (${minA[1]})`, 'СП 55.13330.2016 п. 5.7', at);
@@ -103,6 +116,7 @@ const Analysis = {
     });
     // высота этажей
     for (const f of d.floors) {
+      if (d.roofs.some(r => r.floor === f.id && Roof.living(r))) continue;                  // мансарда: высоты — по помещениям под скатами (выше)
       const hs = d.walls.filter(w => w.floor === f.id && w.kind !== 'fence').map(w => w.h);
       if (hs.length && Math.max(...hs) < 250) add('bad', 'Помещения', `${f.name}: высота стен ${m(Math.max(...hs))} — жилым помещениям нужно не меньше 2,5 м`, 'СП 55.13330.2016 п. 6.2');
     }
@@ -122,6 +136,29 @@ const Analysis = {
 
     // ---------------- подключения: приборам — их трассы, концы трасс — не в воздухе ----------------
     Analysis.links(d, add);
+    // этажи: на верхний этаж с помещениями — лестница с нижнего; ступени — по СП (подъём ≤ 20 см, уклон ≤ 1:1,25, у винтовой проступь в середине ≥ 18 см)
+    d.floors.forEach((f, i) => {
+      if (i === 0) return;
+      const fdi = (App.floorData || []).find(x => x.floor.id === f.id), lower = d.floors[i - 1];
+      if (!fdi || !fdi.rooms.length) return;
+      const st = d.items.filter(it => (it.floor || d.floors[0].id) === lower.id && ['stairs', 'stairsL', 'stairsSpiral'].includes(catItem(it.key).shape));
+      if (!st.length) { add('bad', 'Лестница', `${f.name}: нет лестницы с нижнего этажа`, 'СП 55.13330.2016 п. 6.9', fdi.rooms[0].label || G.polyCentroid(fdi.rooms[0].floor), null); return; }
+      const H = f.elev - lower.elev;
+      for (const it of st) {
+        const sh = catItem(it.key).shape, nm = it.label || catItem(it.key).name;
+        if (!fdi.rooms.some(q => G.pointInPoly(it, q.floor || q.axis))) add('bad', 'Лестница', `${nm}: наверху выход не в помещение — проверьте положение проёма`, '', it, it.id);
+        if (sh === 'stairsSpiral') {
+          const S2 = spiralGeom(it, H);
+          if (S2.mid < 18) add('bad', 'Лестница', `${nm}: проступь в середине ${m(S2.mid)} — нужно ≥ 0,18 м (увеличьте диаметр)`, 'СП 55.13330.2016 п. 6.9', it, it.id);
+          if (S2.rise > 20.5) add('bad', 'Лестница', `${nm}: подъём ступени ${S2.rise.toFixed(1)} см — не выше 20 см`, 'СП 55.13330.2016 п. 6.9', it, it.id);
+          if (S2.head < 200) add('bad', 'Лестница', `${nm}: над ступенью через виток ${m(S2.head)} — высота прохода должна быть ≥ 2,0 м`, 'СП 55.13330.2016 п. 6.9', it, it.id);
+        } else {
+          const n = Math.max(3, Math.round(H / 17.5)), going = (sh === 'stairs' ? it.d : it.d + it.w - Math.min(it.w / 2, 100)) / n;
+          if ((H / n) / going > 1 / 1.25 + 0.01) add('warn', 'Лестница', `${nm}: уклон 1:${(going / (H / n)).toFixed(2)} — круче 1:1,25; удлините марш`, 'СП 55.13330.2016 п. 6.9', it, it.id);
+          if (Math.min(it.w, sh === 'stairs' ? it.w : 100) < 89.5) add('warn', 'Лестница', `${nm}: ширина марша ${m(Math.min(it.w, 100))} — нужно ≥ 0,9 м`, 'СП 55.13330.2016 п. 6.9', it, it.id);
+        }
+      }
+    });
 
     // ---------------- скважина / колодец у границы с соседом: его септик может оказаться рядом ----------------
     Analysis.wellsBound(d, add, m);
@@ -219,7 +256,8 @@ const Analysis = {
       if (dev > 0.005 && dev < 1) add('info', 'Чертёж', `Стена почти по оси, но с перекосом ${dev.toFixed(2)}° (${(Model.wallLen(w) * Math.sin(U.rad(dev))).toFixed(1)} см на длину) — выровняйте`, '', G.mid(w.a, w.b), w.id);
     }
     const seen = [];
-    for (const w of W) for (const e of ['a', 'b']) for (const o of W) if (o !== w) for (const f of ['a', 'b']) {
+    const fl = (w) => w.floor || d.floors[0].id;
+    for (const w of W) for (const e of ['a', 'b']) for (const o of W) if (o !== w && fl(o) === fl(w)) for (const f of ['a', 'b']) {                   // стыки — только на одном этаже
       const g = G.dist(w[e], o[f]);
       if (g > 0.05 && g < 5 && !seen.some(q => G.dist(q, w[e]) < 6)) { seen.push(w[e], o[f]); add('info', 'Чертёж', `Концы стен почти сходятся, но не совпадают (зазор ${g.toFixed(1)} см)`, '', w[e], w.id); }
     }
@@ -503,7 +541,7 @@ const Analysis = {
     const rows = [];
     for (const l of groups) {
       const sec = parseFloat(String(l.section || '').replace(',', '.').split('×').pop()), nums = String(l.breaker || '').match(/\d+(?:[.,]\d+)?/g), amp = nums ? parseFloat(nums[nums.length - 1].replace(',', '.')) : NaN;   // «3P C25» → 25
-      const devs = d.items.filter(it => catItem(it.key).sym && l.pts.some(p => G.dist(it, p) < 5));   // точки, через которые проведена линия
+      const devs = d.items.filter(it => catItem(it.key).sym && (it.floor || d.floors[0].id) === (l.floor || d.floors[0].id) && l.pts.some(p => G.dist(it, p) < 5));   // точки линии — на её этаже
       const socks = devs.filter(it => SOCK.has(catItem(it.key).shape));
       rows.push([l.label || 'Линия', `${l.breaker || '—'}${l.rcd ? ' + УЗО ' + l.rcd : ''} · ${l.section || ''}${devs.length ? ` · ${devs.length} точ.` : ''}`]);
       const REC = { 1.5: 'C10', 2.5: 'C16', 4: 'C25', 6: 'C32', 10: 'C40', 16: 'C50', 25: 'C63' };

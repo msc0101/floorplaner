@@ -49,9 +49,10 @@ const Sheets = {
     if (house && typeof Detail !== 'undefined') out.push({ key: 'section', kind: 'detail', detail: 'section', fid: g.id, title: 'Разрез 1-1', sub: 'Фундамент, стены, перекрытие, крыша — отметки и узлы', panel: (sp) => Detail.sectionPanel(sp) });
     if (d.roofs.some(r => Roof.frame(r)) && typeof Detail !== 'undefined') {
       out.push({ key: 'roof', kind: 'detail', detail: 'roofPlan', fid: g.id, title: 'Кровля: стропильная система', sub: 'Стропила, обрешётка, мауэрлат, снеговая нагрузка', panel: () => Sheets.roofPanel() });
-      out.push({ key: 'roof-node', kind: 'detail', detail: 'roofNode', fid: g.id, title: 'Узел: карниз и опирание стропил', sub: 'Армопояс, опорный брус, стропило, утепление, кровельный пирог', fixedN: 10, panel: (sp) => Detail.nodePanel(sp, 'Узел карниза', null, Detail.EAVE_NOTES) });
+      out.push({ key: 'roof-node', kind: 'detail', detail: 'roofNode', fid: g.id, title: 'Узел: карниз и опирание стропил', sub: 'Армопояс, опорный брус, стропило, утепление, кровельный пирог', fixedN: 10, panel: (sp) => Detail.nodePanel(sp, 'Узел карниза', null, Detail.model().mz ? Detail.EAVE_NOTES_M : Detail.EAVE_NOTES) });
     }
-    if (house && typeof Finish !== 'undefined') out.push({ key: 'finish', kind: 'finish', fid: g.id, title: 'План отделки', sub: 'Полы, стены, потолки по помещениям', bbox: () => Sheets.wallsBox(g.id), toggles: { dims: ['Размеры', false], furniture: ['Мебель', false] }, panel: () => Finish.panel() });
+    if (house && typeof Finish !== 'undefined') out.push({ key: 'finish', kind: 'finish', fid: g.id, title: 'План отделки', sub: 'Полы, стены, потолки по помещениям', bbox: () => Sheets.wallsBox(g.id), toggles: { dims: ['Размеры', false], furniture: ['Мебель', false] }, panel: () => Finish.panel(d.floors.length > 1 ? g.id : null) });
+    if (house && typeof Finish !== 'undefined') for (const f of d.floors.slice(1)) if (Model.viewOf(f.id).walls.some(w => w.kind !== 'fence')) out.push({ key: 'finish:' + f.id, kind: 'finish', fid: f.id, title: 'План отделки — ' + f.name.toLowerCase(), sub: 'Полы, стены, потолки по помещениям', bbox: () => Sheets.wallsBox(f.id), toggles: { dims: ['Размеры', false], furniture: ['Мебель', false] }, panel: () => Finish.panel(f.id) });
     // сети: внутри дома и снаружи — отдельными листами, у каждого свой масштаб
     const onG = (o) => (o.floor || g.id) === g.id, hb = Sheets.pad(house, 150);
     for (const id of Object.keys(SYSTEMS)) {
@@ -67,6 +68,19 @@ const Sheets = {
         toggles: { dims: ['Размеры', true], fixtures: ['Сантехника и приборы', true] }, panel: () => Sheets.sysPanel(id, inner, inItems, 'в доме') });
       if (outer.length || outItems.length) out.push({ key: 'sys-out:' + id, kind: 'sys', sys: id, outdoor: true, lineSet: new Set(outer.map(l => l.id)), fid: g.id, title: 'Сети на участке: ' + S.name.toLowerCase(), sub: 'Наружные сети, глубины, колодцы', bbox: () => { let b = Sheets.wallsBoxAll(g.id); for (const l of outer) b = G.bboxUnion(b, G.bbox(l.pts)); for (const it of outItems) b = G.bboxUnion(b, G.bbox(Model.itemPts(it))); return Sheets.pad(b, 150); },
         toggles: { dims: ['Размеры дома', false] }, panel: () => Sheets.sysPanel(id, outer, outItems, 'на участке') });
+    }
+    // верхние этажи (мансарда): свои листы внутренних сетей
+    for (const f of d.floors.slice(1)) {
+      const fb = Sheets.wallsBox(f.id);
+      if (!fb) continue;
+      for (const id of Object.keys(SYSTEMS)) {
+        const lines = d.lines.filter(l => sysOfLine(l) === id && l.floor === f.id), items = d.items.filter(it => sysOf(it) === id && it.floor === f.id);
+        if (!lines.length && !items.length) continue;
+        const S = SYSTEMS[id], where = f.name.toLowerCase();
+        out.push({ key: 'sys-in:' + id + ':' + f.id, kind: 'sys', sys: id, lineSet: new Set(lines.map(l => l.id)), fid: f.id, title: `Сети: ${S.name.toLowerCase()} — ${where}`, sub: 'Внутренние сети, ' + where,
+          bbox: () => { let b = fb; for (const l of lines) b = G.bboxUnion(b, G.bbox(l.pts)); return Sheets.pad(b, 60); },
+          toggles: { dims: ['Размеры', true], fixtures: ['Сантехника и приборы', true] }, panel: () => Sheets.sysPanel(id, lines, items, where) });
+      }
     }
     out.push({ key: 'report', kind: 'report', title: 'Ведомости', sub: 'Экспликация, сети, оборудование' });
     return out;
@@ -245,11 +259,15 @@ const Sheets = {
   },
   explPanel(f) {
     const fd = (App.floorData || []).find(x => x.floor.id === f.id);
-    const rows = (fd ? fd.rooms : []).map((r, i) => [String(i + 1), r.name, (r.areaFloor / 1e4).toFixed(2)]);
-    const s = rows.reduce((a, r) => a + +r[2], 0);
-    rows.push(['', 'Итого', s.toFixed(2)]);
-    return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Экспликация помещений'), Sheets.T(['№', 'Помещение', 'м²'], rows),
-      U.el('div', { class: 'norm' }, '§ СП 55.13330.2016; СП 54.13330.2022'));
+    // мансарда: высота по скату (от — до) и доля площади ≥ 2,5 м; часть ниже 1,5 м — с коэффициентом 0,7 (СП 54.13330.2022, прил. А)
+    const hs = (fd ? fd.rooms : []).map(r => Roof.roomHeights(r.floor || r.axis, f)), mans = hs.some(Boolean);
+    const rows = (fd ? fd.rooms : []).map((r, i) => { const h = hs[i]; const a = r.areaFloor / 1e4, ak = h ? a * (1 - h.lo15 * 0.3) : a;
+      return [String(i + 1), r.name, a.toFixed(2), ...(mans ? [h ? `${(h.min / 100).toFixed(2)}…${(h.max / 100).toFixed(2)} (${Math.round(h.hi * 100)} %)` : '', ak.toFixed(2)] : [])]; });
+    const s = rows.reduce((a, r) => a + +r[2], 0), sk = mans ? rows.reduce((a, r) => a + +r[4], 0) : 0;
+    rows.push(['', 'Итого', s.toFixed(2), ...(mans ? ['', sk.toFixed(2)] : [])]);
+    return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Экспликация помещений'), Sheets.T(mans ? ['№', 'Помещение', 'м²', 'h, м (≥ 2,5 м)', 'м² с коэф.'] : ['№', 'Помещение', 'м²'], rows),
+      mans ? U.el('div', { class: 'tb-note' }, 'Мансарда: высота под скатом — от кнеевой стены до плоского потолка; площадь с высотой ниже 1,5 м — с коэффициентом 0,7') : null,
+      U.el('div', { class: 'norm' }, '§ СП 55.13330.2016; СП 54.13330.2022' + (mans ? ', прил. А' : '')));
   },
   sysPanel(id, lines, items, where) {
     const S = SYSTEMS[id], len = lines.reduce((a, l) => a + G.polyPerimeter(l.pts, false), 0), kinds = [...new Set(lines.map(l => l.kind))];

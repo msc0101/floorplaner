@@ -229,7 +229,7 @@ const UI = {
       case 'roofs': {
         const P = Roof.params(o), F = Roof.frame(o);
         return { title: 'Крыша: ' + ROOF_TYPES[o.type].name.toLowerCase(), lines: [`Кровля ${U.fmtArea(P.area)} · ${(ROOF_MATERIALS[o.mat] || {}).name || ''}`, o.type !== 'flat' ? `Уклон ${Math.round(o.pitch)}°, конёк на ${L(P.top)}` : '',
-          F ? `${F.scheme === 'truss' ? 'Фермы на МЗП' : 'Стропила'} ${F.b}×${F.h} мм, шаг ${Math.round(F.step * 100)} см` : '', F ? `Основание: ${F.bat}` : '', F ? `Снеговой район ${F.snow.district}: Sg = ${F.snow.Sg} кПа` : '', F ? `Утеплитель чердака ${F.attic.ins} мм` : '', ...tail].filter(Boolean), norms: F ? 'СП 20.13330.2016, СП 64.13330.2017, СП 17.13330.2017' : '' };
+          F ? `${F.scheme === 'truss' ? 'Фермы на МЗП' : F.scheme === 'mansard' ? 'Стропила с ригелями' : 'Стропила'} ${F.b}×${F.h} мм, шаг ${Math.round(F.step * 100)} см` : '', F ? `Основание: ${F.bat}` : '', F ? `Снеговой район ${F.snow.district}: Sg = ${F.snow.Sg} кПа` : '', F ? (F.attic.mansard ? `Мансарда: утеплитель по стропилам ${F.attic.ins} мм, вентзазор над мембраной` : `Утеплитель чердака ${F.attic.ins} мм`) : '', ...tail].filter(Boolean), norms: F ? 'СП 20.13330.2016, СП 64.13330.2017, СП 17.13330.2017' : '' };
       }
       case 'dims': return { title: 'Размер', lines: [o.text || L(G.dist(o.a, o.b))] };
       case 'texts': return { title: 'Надпись', lines: [String(o.text || '').slice(0, 80)] };
@@ -272,7 +272,7 @@ const UI = {
     const head = U.el('button', { type: 'button', class: 'p3d-head', title: 'Свернуть / развернуть панель' }, '3D-вид');
     head.onclick = () => { p.classList.toggle('collapsed'); try { localStorage.setItem('fp:p3d', p.classList.contains('collapsed') ? '1' : ''); } catch (e) { /* нет хранилища */ } };
     try { p.classList.toggle('collapsed', localStorage.getItem('fp:p3d') === '1'); } catch (e) { /* нет хранилища */ }
-    p.append(head,
+    p.append(...[head,                                                           // null (нет сетей / камер) — пропустить, иначе append вставит текст «null»
       chk('Этажи выше текущего', 'upper'),
       F.select('Крыша', o.mode === 'roofFrame' ? 'frame' : o.roof === false ? 'none' : o.roofView || 'full', [['full', 'Кровля (стропила и чердак внутри)'], ['frame', 'Стропила, обрешётка и чердак — без кровли'], ['none', 'Без крыши и потолков — комнаты сверху']], (v) => {
         o.roofView = v; o.roof = v !== 'none'; if (o.mode === 'roofFrame') o.mode = 'all'; View3D.dirty = true; UI.render3dPanel(); View3D.redraw();
@@ -318,7 +318,7 @@ const UI = {
         ? (Walk.ghost ? 'Призрак: WASD — лететь куда смотришь, ЛКМ + мышь — осмотреться, Space — вверх, C — вниз, Shift — быстрее, F — пешком, Esc — выйти.'
           : 'WASD — ходить, ↑↓ — вперёд/назад, ←→ — поворот, ЛКМ + мышь — осмотреться, Shift — бегом, Space — прыжок, C — присесть, PgUp/PgDn — этаж, N — сквозь стены, F — призрак, Esc — выйти.')
         : 'ЛКМ — вращать, ПКМ / Shift — сдвиг, колесо — масштаб. WASD или стрелки — прогулка. Esc — к плану.'),
-      U.el('button', { type: 'button', class: 'primary', onclick: () => View3D.toggle(false) }, '← К плану'));
+      U.el('button', { type: 'button', class: 'primary', onclick: () => View3D.toggle(false) }, '← К плану')].filter(Boolean));
   },
 
   /* -------------------------------- этажи --------------------------------- */

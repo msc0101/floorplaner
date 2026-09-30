@@ -595,10 +595,21 @@ const kit = await page.evaluate(() => {
     const T = Render.lineTees([a, b, c]); r.tees = T.length === 1 && T[0].box; }
   // хранение в гараже: предметы есть в каталоге и строятся в 3D
   r.storage = ['garageRack', 'workbench', 'tireRack', 'wallShelf', 'ceilRack'].every(k => catItem(k) && catItem(k).key === k);
+  // мансарда: крыша над вторым этажом — жилой объём, разрез с плитой перекрытия и коленом, потолок под скатом
+  { const rf = App.doc.roofs[0], f2 = App.doc.floors[1];
+    if (rf && f2) {
+      const save = rf.floor; rf.floor = f2.id;
+      try {
+        const L = Roof.living(rf), M = Detail.model(), c = Roof.ceilAt({ x: rf.x, y: rf.y }, f2.id);
+        Detail.render({ detail: 'section' }, 800, 600, 50, 2); Detail.render({ detail: 'roofNode' }, 800, 600, 10, 2);
+        r.mansard = !!L && !!M.mz && M.lv.wallTop === L.e - 25 && M.lv.plate > L.e && c != null && c <= L.ceil;
+      } catch (e) { r.mansard = 'err: ' + e.message; } finally { rf.floor = save; }
+    } else r.mansard = true;
+  }
   return r;
 });
 console.log('kit', JSON.stringify(kit));
-if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain || !kit.sys3d || !kit.mounts || !kit.tees || !kit.storage) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
+if (!kit.links || !/plan/.test(kit.kinds) || !/detail/.test(kit.kinds) || !(kit.sheets >= 5) || !kit.auto || !kit.clip || !kit.tip || !kit.hob || !kit.drain || !kit.sys3d || !kit.mounts || !kit.tees || !kit.storage || kit.mansard !== true) errors.push('Комплект / 3D-режимы: ' + JSON.stringify(kit));
 // сохранение / загрузка
 const rt = await page.evaluate(() => { const s = IO.serialize(); const d = Model.normalize(JSON.parse(s)); return [d.walls.length === App.doc.walls.length, d.items.length === App.doc.items.length, d.notes.length]; });
 console.log('roundtrip', rt);

@@ -165,6 +165,19 @@ const View3D = {
         face([V3(pts[i], z0), V3(pts[j], z0), V3(pts[j], zs[j]), V3(pts[i], zs[i])], col, ref);
       }
     };
+    /** Потолок переменной высоты (мансарда): поверхность над pts на высоте zf(p), нормаль вниз — видна из комнаты */
+    const ceilSurf = (pts, zf, col) => {
+      if (pts.length < 3) return;
+      const ids = earcut2(pts), zs = pts.map(zf);
+      for (let i = 0; i < ids.length; i += 3) {
+        const [a, b, c] = [ids[i], ids[i + 1], ids[i + 2]];
+        const va = V3(pts[a], zs[a]), vb = V3(pts[b], zs[b]), vc = V3(pts[c], zs[c]);
+        const u1 = [vb[0] - va[0], vb[1] - va[1], vb[2] - va[2]], u2 = [vc[0] - va[0], vc[1] - va[1], vc[2] - va[2]];
+        let nn = [u1[1] * u2[2] - u1[2] * u2[1], u1[2] * u2[0] - u1[0] * u2[2], u1[0] * u2[1] - u1[1] * u2[0]];
+        const l = Math.hypot(...nn) || 1; nn = nn.map(x => x / l); if (nn[1] > 0) nn = nn.map(x => -x);
+        tri(va, vb, vc, col, nn);
+      }
+    };
     /** Прямоугольный блок: центр (x,y), размеры w×d, поворот rot°, высоты z0..z1 */
     const box = (x, y, w, d, rot, z0, z1, col, opt) => prism(G.rectPts(x, y, w, d, rot || 0), z0, z1, col, opt);
     const ring = (cx, cy, rx, ry, n = 12, rot = 0) => Array.from({ length: n }, (_, i) => { const a = i / n * Math.PI * 2; return G.toWorld({ x: Math.cos(a) * rx, y: Math.sin(a) * ry }, cx, cy, rot); });
@@ -210,7 +223,7 @@ const View3D = {
       const mid = [(a[0] + b[0]) / 200, (a[2] + b[2]) / 200, (a[1] + b[1]) / 200];
       for (let i = 0; i < n; i++) face([P3(a, i), P3(a, i + 1), P3(b, i + 1), P3(b, i)], col, mid);
     };
-    View3D._g = { face, prism, box, cyl, cone, blob, ring, wire, tri, V3 };
+    View3D._g = { face, prism, box, cyl, cone, blob, ring, wire, tri, V3, ceilSurf };
     const d = App.doc, active = Model.floorIdx(App.floor);
     // габарит того, что реально нарисовано у каждого предмета (см, оси плана) — по нему подсказки в 3D
     const IB = new Map();
@@ -300,22 +313,42 @@ const View3D = {
         View3D.nets3d(f, e);
         return;
       }
+      // проёмы в перекрытии: лестница с нижнего этажа (сверху — дыра в полу), своя лестница наверх (снизу — дыра в потолке)
+      const fi = d.floors.indexOf(f), below = fi > 0 ? d.floors[fi - 1] : null, above = d.floors[fi + 1];
+      const STAIR = new Set(['stairs', 'stairsL', 'stairsSpiral']);
+      const hole = (it) => { const poly = Model.itemPts(it); return { poly, bb: G.bbox(poly) }; };
+      const holesUp = below ? d.items.filter(it => it.floor === below.id && STAIR.has(catItem(it.key).shape)).map(hole) : [];
+      const holesDn = above ? d.items.filter(it => (it.floor || d.floors[0].id) === f.id && STAIR.has(catItem(it.key).shape)).map(hole) : [];
+      const mansRoofs = d.roofs.filter(r => r.floor === f.id && Roof.living(r));
       if (fd) {
-        for (const o of fd.outlines) prism(o.outer, e - (first ? 0 : 25), e + 2, View3D.hex(first ? '#b9b4ab' : '#d8d2c6'), { noSides: first });
+        for (const o of fd.outlines) prism(o.outer, e - (first ? 0 : 25), e + 2, View3D.hex(first ? '#b9b4ab' : '#d8d2c6'), { noSides: first, holes: holesUp });
+        // торцы проёма (обвязка перекрытия)
+        for (const h of holesUp) for (let i = 0; i < h.poly.length; i++) { const a = h.poly[i], b = h.poly[(i + 1) % h.poly.length]; prism(View3D.lineQuad(a, b, 1), e - 25, e + 2, View3D.hex('#cfc8bb')); }
         // отмостка вокруг дома и построек
         if (first) for (const b of Model.blindAreas()) for (const q of b.quads) prism(q, e, e + 6, View3D.hex('#bdbab2'));
         const FO = Finish.opt(), finOn = App.doc.settings.layers.finish !== false;
         for (const r of fd.rooms) {
           // чистовой пол по отделке: керамогранит со швами раскладки, ковролин, плитка
           const F = Finish.room(r), M = FIN_FLOORS[F.floor] || FIN_FLOORS.porcelain;
-          prism(r.floor, e + 2, e + 3, View3D.hex(M.color), { noSides: true });
+          prism(r.floor, e + 2, e + 3, View3D.hex(M.color), { noSides: true, holes: holesUp });
           if (finOn && M.tile) {
             const b = G.bbox(r.floor), [tw, th2] = M.tile, cx = (b.x0 + b.x1) / 2, cyy = (b.y0 + b.y1) / 2, gc = View3D.hex(M.color).map(x => x * 0.82);
             for (let x = cx - Math.ceil((cx - b.x0) / tw) * tw; x <= b.x1; x += tw) for (const seg of View3D.clipLine(r.floor, { x, y: b.y0 - 1 }, { x, y: b.y1 + 1 })) prism(View3D.lineQuad(seg[0], seg[1], 0.25), e + 3, e + 3.08, gc, { noSides: true });
             for (let y = cyy - Math.ceil((cyy - b.y0) / th2) * th2; y <= b.y1; y += th2) for (const seg of View3D.clipLine(r.floor, { x: b.x0 - 1, y }, { x: b.x1 + 1, y })) prism(View3D.lineQuad(seg[0], seg[1], 0.25), e + 3, e + 3.08, gc, { noSides: true });
           }
           // натяжной потолок — когда крыша включена (изнутри, в режиме прогулки); сверху при снятой крыше не мешает
-          if (View3D.opts.roof && finOn) prism(r.floor, e + (f.h || 300) - 10, e + (f.h || 300) - 9.5, View3D.hex((FIN_CEIL[F.ceil] || FIN_CEIL.stretch).color), { noSides: true });
+          const cCol = View3D.hex((FIN_CEIL[F.ceil] || FIN_CEIL.stretch).color);
+          if (View3D.opts.roof && finOn && mansRoofs.length) {
+            // мансарда: потолок по скатам (обшивка по стропилам) и плоский — по ригелям; режем полосами вдоль конька по изломам
+            for (const rr of mansRoofs) {
+              const L = Roof.living(rr), ra = U.rad(rr.rot || 0), vd = { x: -Math.sin(ra), y: Math.cos(ra) }, c0 = { x: rr.x, y: rr.y };
+              const t = Math.tan(U.rad(rr.pitch || 0)), Dh = rr.d / 2, vf = Dh - (L.ceil + L.lining - (rr.base || 0)) / Math.max(t, 0.01);
+              const vs = r.floor.map(p => G.dot(G.sub(p, c0), vd)), lo = Math.min(...vs), hi = Math.max(...vs);
+              const cuts = [lo, hi, 0, vf, -vf].filter(v => v >= lo && v <= hi).sort((a, b) => a - b);
+              const zf = (p) => Roof.ceilAt(p, f.id) ?? L.ceil;
+              for (let i = 0; i + 1 < cuts.length; i++) if (cuts[i + 1] - cuts[i] > 0.5) ceilSurf(View3D.clipSlab(r.floor, c0, vd, cuts[i], cuts[i + 1]), zf, cCol);
+            }
+          } else if (View3D.opts.roof && finOn) prism(r.floor, e + (f.h || 300) - 10, e + (f.h || 300) - 9.5, cCol, { noSides: true, holes: holesDn });
         }
         void FO;
       }
@@ -335,10 +368,10 @@ const View3D = {
         // крыши этого этажа: верх стены не выше ската (стены мансарды не протыкают кровлю)
         const wRoofs = d.roofs.filter(r => (r.floor || f1id) === (w.floor || f1id));
         const roofTop = (p) => { let z = Infinity; for (const r of wRoofs) { const h = Roof.zAt(r, p); if (h !== null) z = Math.min(z, h - 3); } return z; };
-        const body = (poly, z0, z1) => {
+        const body = (poly, z0, z1, c = col) => {
           if (z0 < e + plinthH) { prism(poly, z0, Math.min(z1, e + plinthH), plinth, { topK: 0.9 }); z0 = e + plinthH; }
           if (!(z1 > z0)) return;
-          if (!wRoofs.length || !poly.some(p => roofTop(p) < z1 - 1)) { prism(poly, z0, z1, col, { topK: 0.85 }); return; }
+          if (!wRoofs.length || !poly.some(p => roofTop(p) < z1 - 1)) { prism(poly, z0, z1, c, { topK: 0.85 }); return; }
           // режем кусок стены поперёк на полосы ≤ 40 см, у каждой — верх по скату
           const u = Model.wallDir(w), ss = poly.map(p => G.dot(G.sub(p, w.a), u)), s0 = Math.min(...ss), s1 = Math.max(...ss);
           const n = Math.max(1, Math.ceil((s1 - s0) / 40));
@@ -347,14 +380,14 @@ const View3D = {
             const strip = View3D.clipSlab(poly, w.a, u, a, b);
             // грани по внутренним разрезам не рисуем — иначе на стене видны швы
             const cut = (p, q) => [a, b].some(c => (i > 0 || c === b) && (i < n - 1 || c === a) && Math.abs(G.dot(G.sub(p, w.a), u) - c) < 0.01 && Math.abs(G.dot(G.sub(q, w.a), u) - c) < 0.01);
-            if (strip.length >= 3) prismTop(strip, z0, (p) => Math.max(z0, Math.min(z1, roofTop(p))), col, cut);
+            if (strip.length >= 3) prismTop(strip, z0, (p) => Math.max(z0, Math.min(z1, roofTop(p))), c, cut);
           }
         };
         for (const poly0 of Render.wallPieces(w, cache)) {
           if (mode === 'masonry') {                                             // кладка без отделки: блоки со швами, утеплитель, без облицовки
             const mOut = G.mid(w.a, w.b), core = View3D.clipSlab(poly0, mOut, nOut, -w.th / 2 - 1, w.th / 2 - wallClad(w) - (w.ins || 0));
             if (core.length >= 3) { body(core, e, top); View3D.joints3d(w, core, e, top, nOut); }
-            if (w.ins > 0) { const ins = View3D.clipSlab(poly0, mOut, nOut, w.th / 2 - wallClad(w) - w.ins, w.th / 2 - wallClad(w)); if (ins.length >= 3) prism(ins, e + 5, top - 5, View3D.hex('#f2dc6a')); }
+            if (w.ins > 0) { const ins = View3D.clipSlab(poly0, mOut, nOut, w.th / 2 - wallClad(w) - w.ins, w.th / 2 - wallClad(w)); if (ins.length >= 3) body(ins, e + 5, top - 5, View3D.hex('#f2dc6a')); }
             continue;
           }
           if (!(w.clad > 0)) { body(poly0, e, top); continue; }
@@ -362,12 +395,18 @@ const View3D = {
           const mOut = G.mid(w.a, w.b), inner = View3D.clipSlab(poly0, mOut, nOut, -w.th / 2 - 1, w.th / 2 - cl), brick = View3D.clipSlab(poly0, mOut, nOut, w.th / 2 - w.clad, w.th / 2 + 1);
           if (inner.length >= 3) body(inner, e, top);
           if (brick.length >= 3) {
-            prism(brick, e + (first ? 45 : 0), top, brickC, { topK: 0.9 });
             if (first) prism(brick, e, e + 45, plinth, { topK: 0.9 });
+            body(brick, e + (first ? 45 : 0), top, brickC);                    // облицовка — тоже до ската (фронтон мансарды)
             const ks = brick.map(p => G.dot(G.sub(p, mOut), nOut)), kmax = Math.max(...ks), fpts = brick.filter((p, i) => ks[i] > kmax - 0.5);
             if (fpts.length >= 2) {
               const u = Model.wallDir(w), ss = fpts.map(p => G.dot(p, u)), a = fpts[ss.indexOf(Math.min(...ss))], b2 = fpts[ss.indexOf(Math.max(...ss))], o2 = G.mul(nOut, 0.15), mort = brickC.map(x => Math.min(1, x * 1.35));
-              for (let z = e + 45 + 7.7; z < top - 2; z += 7.7) face([V3(G.add(a, o2), z - 0.5), V3(G.add(b2, o2), z - 0.5), V3(G.add(b2, o2), z + 0.5), V3(G.add(a, o2), z + 0.5)], mort, V3(G.sub(G.mid(a, b2), G.mul(nOut, 20)), z));
+              // растворные швы: под скатом — только там, где стена ещё есть (фронтон сужается кверху)
+              const NS = 24, smp = wRoofs.length ? Array.from({ length: NS + 1 }, (_, k) => { const p = G.add(a, G.mul(G.sub(b2, a), k / NS)); return { p, z: roofTop(p) }; }) : null;
+              for (let z = e + 45 + 7.7; z < top - 2; z += 7.7) {
+                let pa = a, pb = b2;
+                if (smp) { const ins = smp.filter(q => q.z > z + 1); if (!ins.length) break; pa = ins[0].p; pb = ins[ins.length - 1].p; if (G.dist(pa, pb) < 5) continue; }
+                face([V3(G.add(pa, o2), z - 0.5), V3(G.add(pb, o2), z - 0.5), V3(G.add(pb, o2), z + 0.5), V3(G.add(pa, o2), z + 0.5)], mort, V3(G.sub(G.mid(pa, pb), G.mul(nOut, 20)), z));
+              }
             }
           }
         }
@@ -543,7 +582,7 @@ const View3D = {
     View3D.gutters(r);
     if (r.snowGuard && r.type !== 'flat') View3D.snowGuards(r);
     if (framed) View3D.roofFrame3d(r, true);
-    if (framed && r.type === 'gable') View3D.gableEnds(r);                  // стропильная система под кровлей — видна с чердака и в «призраке»
+    if (framed && r.type === 'gable' && !Roof.living(r)) View3D.gableEnds(r);   // у мансарды фронтоны — это её стены с окнами
   },
   /** Трассы в 3D: подземные — на своей глубине (видны при «прозрачной земле»), в доме — трубы у пола, тёплый пол в стяжке,
    *  проводка и слаботочка — под потолком со спусками к приборам, фреон — под потолком */
@@ -795,7 +834,9 @@ const View3D = {
   cableTop(p, fid, e, top) {
     const f1 = App.doc.floors[0].id;
     const b = App.doc.items.find(it => (it.floor || f1) === fid && BLD_HOLLOW.has(catItem(it.key).shape) && G.pointInPoly(p, Model.itemPts(it)));
-    return b ? Math.min(top, e + bldWallH(b) - 25) : top;
+    if (b) return Math.min(top, e + bldWallH(b) - 25);
+    const mc = Roof.ceilAt(p, fid);
+    return mc != null ? Math.min(top, mc - 20) : top;                                          // мансарда: проводка под скатом
   },
   /** Точка (см) внутри дома или постройки с крышей, ниже её кровли — для «комнатного» освещения на прогулке */
   indoorAt(x, y, z) {
@@ -881,10 +922,13 @@ const View3D = {
     const zr = (v) => base + t * (Dh - Math.abs(v)) - (under ? 15.5 : 0);   // под покрытием — ниже толщины ската (OSB + кровля)
     const hb = fr.h / 10, hr = fr.h / 10 / Math.cos(U.rad(r.pitch || 0)), bb = fr.b / 10;
     const A0 = S.v0, A1 = S.v1, span = A1 - A0, mid = (A0 + A1) / 2;
-    for (const v of [A0, A1]) View3D.beam3(T(S.u0 - 10, v, base + 2.5), T(S.u1 + 10, v, base + 2.5), 15, 5, woodD);   // опорный лежень
+    // мансарда: мауэрлат — на кнеевой стене под стропилом, ригели — над плоским потолком, затяжки у карниза нет (там комнаты)
+    const LV = Roof.living(r), zc = LV ? LV.ceil + 10 : 0, vc = LV ? Dh - (zc + hr + 15.5 - base) / Math.max(t, 0.05) : 0;
+    for (const v of [A0, A1]) View3D.beam3(T(S.u0 - 10, v, LV ? zr(v) - hr - 8 : base + 2.5), T(S.u1 + 10, v, LV ? zr(v) - hr - 8 : base + 2.5), 15, LV ? 15 : 5, woodD);   // мауэрлат / опорный лежень
     for (let u = S.u0; u <= S.u1 + 1; u += fr.step * 100) {
       const zb = base + 5 + hb / 2;
-      View3D.beam3(T(u, A0 - 12, zb), T(u, A1 + 12, zb), bb, hb, wood);                                 // нижний пояс / затяжка
+      if (LV) { if (vc > 10) View3D.beam3(T(u, -vc, zc + hb / 2), T(u, vc, zc + hb / 2), bb, hb, wood); }   // ригель
+      else View3D.beam3(T(u, A0 - 12, zb), T(u, A1 + 12, zb), bb, hb, wood);                            // нижний пояс / затяжка
       for (const sg of r.type === 'shed' ? [1] : [-1, 1]) View3D.beam3(T(u, sg * Dh, zr(sg * Dh) - hr / 2), T(u, 0, zr(0) - hr / 2), bb, fr.h / 10, wood);   // верхний пояс / стропило
       if (fr.scheme === 'truss') {
         const B1 = A0 + span / 3, B2 = A0 + 2 * span / 3, T1 = A0 + span / 4, T2 = A0 + 3 * span / 4, zc = base + 5 + hb;
@@ -898,6 +942,7 @@ const View3D = {
       // у карниза скат низко — утеплитель отступает от наружных стен, чтобы не протыкать кровлю
       const inset = (poly, k) => { const a = G.offsetPoly(poly, -k); return Math.abs(G.polyArea(a)) < Math.abs(G.polyArea(poly)) ? a : G.offsetPoly(poly, k); };   // внутрь при любом обходе контура
       const ra = U.rad(r.rot || 0), vd = { x: -Math.sin(ra), y: Math.cos(ra) }, vmax = Dh - (hb + 42) / Math.max(t, 0.05);   // полоса, где под скатом хватает высоты
+      if (LV) { if (fd && vc > 10) for (const o of fd.outlines) { const p = View3D.clipSlab(o.outer, { x: r.x, y: r.y }, vd, -vc, vc); if (p.length >= 3) prism(p, zc + hb, zc + hb + 20, View3D.hex('#f2dc6a')); } return; }   // утеплитель над ригелями
       if (fd) for (const o of fd.outlines) { const p = View3D.clipSlab(inset(o.outer, S.th || 40), { x: r.x, y: r.y }, vd, -vmax, vmax); if (p.length >= 3) prism(p, base + 5 + hb, base + 5 + hb + 20, View3D.hex('#f2dc6a')); }
       return;
     }
@@ -1115,16 +1160,9 @@ const View3D = {
     if (sh === 'filterfield' || sh === 'ground') return;
     if (sh === 'car') { View3D.car(it, e); return; }
     if (sh === 'gateSlide' || sh === 'gateSwing' || sh === 'wicket') { View3D.gate(it, def, e); return; }
-    if (sh === 'stairs' || sh === 'stairsL') {
-      const steps = Math.max(3, Math.round(it.d / 28));
-      const rise = H / steps;
-      if (sh === 'stairs') for (let i = 0; i < steps; i++) {
-        // подъём от «фронта» (+d/2) к «спинке» (−d/2)
-        const q = G.toWorld({ x: 0, y: it.d / 2 - (i + 0.5) * it.d / steps }, it.x, it.y, rot);
-        box(q.x, q.y, it.w, it.d / steps, rot, e + i * rise, e + (i + 1) * rise, wood.map(x => x * (i % 2 ? 0.95 : 1)));
-      } else box(it.x, it.y, it.w, it.d, rot, e, e + H * 0.5, wood);
-      return;
-    }
+    if (sh === 'stairs' || sh === 'stairsL' || sh === 'stairsSpiral') { View3D.stairs3d(it, sh, e, H); return; }
+    if (sh === 'roofWindow') { View3D.roofWindow(it, e); return; }
+    if (sh === 'shaftRiser') { box(it.x, it.y, it.w, it.d, rot, e + 3, View3D.ceilZ(it, e), C('#ece8e0')); return; }   // короб стояка до потолка
     if (['round', 'boiler', 'roundtable', 'columnRound', 'pump'].includes(sh)) {
       prism(View3D._g.ring(it.x, it.y, it.w / 2, it.d / 2, 16, rot), e, e + Math.max(3, H), def.layer === 'furniture' ? wood : white, { topK: 0.9 });
       return;
@@ -2490,6 +2528,8 @@ const View3D = {
     // внутри гаража / постройки — под её карнизом
     const b = App.doc.items.find(o => (o.floor || f1) === fl && BLD_HOLLOW.has(catItem(o.key).shape) && catItem(o.key).key !== 'house' && G.pointInPoly(it, Model.itemPts(o)));
     if (b) return e + bldWallH(b) - 5;
+    const mc = Roof.ceilAt(it, fl);
+    if (mc != null) return mc;                                                                   // мансарда: потолок по скату / ригелям
     const hs = App.doc.walls.filter(w => (w.floor || f1) === fl && (w.kind === 'int' || w.kind === 'part')).map(w => w.h);
     // натяжной потолок висит на 10 см ниже перекрытия — светильники на нём, а не над ним
     const stretch = View3D.opts.roof && App.doc.settings.layers.finish !== false && (App.floorData || []).some(fd => fd.floor.id === fl && fd.rooms.some(r => G.pointInPoly(it, r.floor || r.axis))) ? 10 : 0;
@@ -2836,6 +2876,88 @@ const View3D = {
     cyl(cq.x, cq.y, 8, zb + H + 40, zb + H + 140, C('#b4b8bd'), 14);
     View3D._g.cone(cq.x, cq.y, 18, 4, zb + H + 146, zb + H + 158, C('#9aa1a8'), 14);
     for (let z = zb + H + 140; z < zb + H + 147; z += 3) cyl(cq.x, cq.y, 1.5, z, z + 1, C('#9aa1a8'), 6);
+  },
+  /** Лестница на верхний этаж: высота — до пола следующего этажа; ступени, косоуры, поручень с балясинами;
+   *  наверху — ограждение проёма (кроме стороны выхода). Винтовая — стойка, ступени-секторы по кругу, выход — к +y */
+  stairs3d(it, sh, e, H) {
+    const { box, prism, cyl, wire } = View3D._g, C = View3D.hex, rot = it.rot || 0, d = App.doc;
+    const fi = d.floors.findIndex(f => f.id === (it.floor || d.floors[0].id)), up = d.floors[fi + 1];
+    const Ht = up ? up.elev - e : H, top = e + Ht;
+    const tread = C('#b8875a'), stringer = C('#8a6038'), steel = C('#2f3236'), rail = C('#6b4a30');
+    const L = (x, y) => G.toWorld({ x, y }, it.x, it.y, rot);
+    if (sh === 'stairsSpiral') {
+      const { R, n, rise, da } = spiralGeom(it, Ht);
+      const aTop = Math.PI / 2;                                                                 // последняя ступень смотрит на выход (+y)
+      cyl(it.x, it.y, 5, e, top + 95, steel, 12);                                               // центральная стойка
+      let prevRail = null;
+      for (let i = 0; i < n; i++) {
+        const a = aTop - (n - 1 - i) * da, z1 = e + (i + 1) * rise;
+        const pts = [L(Math.cos(a - da / 2) * 6, Math.sin(a - da / 2) * 6)];
+        for (let k = 0; k <= 4; k++) { const aa = a - da / 2 + da * k / 4; pts.push(L(Math.cos(aa) * R, Math.sin(aa) * R)); }
+        pts.push(L(Math.cos(a + da / 2) * 6, Math.sin(a + da / 2) * 6));
+        prism(pts, z1 - 4, z1, tread.map(x => x * (i % 2 ? 0.94 : 1)));
+        const b = L(Math.cos(a) * (R - 2), Math.sin(a) * (R - 2));
+        wire([b.x, b.y, z1], [b.x, b.y, z1 + 92], 0.9, steel);                                   // балясина
+        const hr = [b.x, b.y, z1 + 92];
+        if (prevRail) wire(prevRail, hr, 2.2, rail);                                             // поручень — по спирали
+        prevRail = hr;
+      }
+    } else if (sh === 'stairs') {
+      const n = Math.max(3, Math.round(Ht / 17.5)), rise = Ht / n, run = it.d / n;
+      for (let i = 0; i < n; i++) {
+        // подъём от «фронта» (+d/2) к «спинке» (−d/2)
+        const q = L(0, it.d / 2 - (i + 0.5) * run);
+        box(q.x, q.y, it.w - 8, run + 3, rot, e + (i + 1) * rise - 4, e + (i + 1) * rise, tread.map(x => x * (i % 2 ? 0.94 : 1)));
+      }
+      for (const sx of [-1, 1]) {                                                               // косоуры и поручень
+        const a = L(sx * (it.w / 2 - 3), it.d / 2), b = L(sx * (it.w / 2 - 3), -it.d / 2);
+        wire([a.x, a.y, e + rise / 2], [b.x, b.y, top - rise / 2], 4, stringer);
+        wire([a.x, a.y, e + 92], [b.x, b.y, top + 92], 2.2, rail);
+        for (let i = 0; i <= n; i += 2) { const q = L(sx * (it.w / 2 - 3), it.d / 2 - i * run); wire([q.x, q.y, e + i * rise], [q.x, q.y, e + i * rise + 92], 0.9, steel); }
+      }
+    } else {
+      // Г-образная: марш вдоль длинной стороны, площадка в углу, марш поперёк
+      const W = Math.min(it.w / 2, 100), n = Math.max(6, Math.round(Ht / 17.5)), rise = Ht / n, n1 = Math.round((n - 1) / 2), n2 = n - 1 - n1;
+      const run1 = (it.d - W) / n1, run2 = (it.w - W) / n2;
+      for (let i = 0; i < n1; i++) { const q = L(-it.w / 2 + W / 2, it.d / 2 - (i + 0.5) * run1); box(q.x, q.y, W - 6, run1 + 3, rot, e + (i + 1) * rise - 4, e + (i + 1) * rise, tread); }
+      const zl = e + (n1 + 1) * rise, ql = L(-it.w / 2 + W / 2, -it.d / 2 + W / 2);
+      box(ql.x, ql.y, W - 6, W - 6, rot, zl - 5, zl, tread);                                    // площадка
+      for (let i = 0; i < n2; i++) { const q = L(-it.w / 2 + W + (i + 0.5) * run2, -it.d / 2 + W / 2); box(q.x, q.y, run2 + 3, W - 6, rot, zl + (i + 1) * rise - 4, zl + (i + 1) * rise, tread); }
+      const a = L(-it.w / 2 + W - 2, it.d / 2), b = L(-it.w / 2 + W - 2, -it.d / 2 + W), c2 = L(it.w / 2, -it.d / 2 + W - 2);
+      wire([a.x, a.y, e + 92], [b.x, b.y, zl + 92], 2.2, rail); wire([b.x, b.y, zl + 92], [c2.x, c2.y, top + 92], 2.2, rail);
+    }
+    // ограждение проёма наверху: стойки, поручень, балясины через 12 см — по трём сторонам, выход (+y у винтовой, −y у прямой) свободен
+    if (up) {
+      const hw = it.w / 2 + 2, hd = it.d / 2 + 2, exit = sh === 'stairsSpiral' ? 'front' : sh === 'stairs' ? 'back' : 'right';
+      const sides = { front: [[-hw, hd], [hw, hd]], back: [[hw, -hd], [-hw, -hd]], left: [[-hw, -hd], [-hw, hd]], right: [[hw, hd], [hw, -hd]] };
+      for (const [k, [p0, p1]] of Object.entries(sides)) {
+        if (k === exit) continue;
+        const a = L(...p0), b = L(...p1), len = G.dist(a, b);
+        wire([a.x, a.y, top + 95], [b.x, b.y, top + 95], 2.4, rail);
+        for (let s2 = 0; s2 <= len; s2 += 12) { const q = G.add(a, G.mul(G.sub(b, a), s2 / len)); wire([q.x, q.y, top + 2], [q.x, q.y, top + 95], 0.8, steel); }
+      }
+    }
+  },
+  /** Мансардное окно: рама и стеклопакет по плоскости ската, откосы до обшивки, стекло со стороны комнаты (ночью светится) */
+  roofWindow(it, e) {
+    const { face } = View3D._g, C = View3D.hex;
+    let r = null, zr0 = Infinity;
+    for (const x of App.doc.roofs) { const z = Roof.zAt(x, it); if (z != null && z > e + 50 && z < zr0) { zr0 = z; r = x; } }
+    if (!r || r.type === 'flat') return;
+    const ra = U.rad(r.rot || 0), ud = { x: Math.cos(ra), y: Math.sin(ra) }, vd = { x: -Math.sin(ra), y: Math.cos(ra) };
+    const v = G.dot(G.sub(it, { x: r.x, y: r.y }), vd), sd = r.type === 'shed' ? vd : G.mul(vd, v >= 0 ? 1 : -1);   // вниз по скату
+    const a = U.rad(r.pitch || 0), L = Roof.living(r), lin = L ? L.lining : 45;
+    const rect = (hw, hl) => [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => G.add(G.add(it, G.mul(ud, i * hw)), G.mul(sd, j * hl * Math.cos(a))));
+    const P3 = (p, dz) => [p.x / 100, (Roof.zAt(r, p) + dz) / 100, p.y / 100];
+    const up = [it.x / 100, (zr0 - 200) / 100, it.y / 100], dn = [it.x / 100, (zr0 + 300) / 100, it.y / 100];
+    const fr = rect(it.w / 2 + 4, it.d / 2 + 4), gl = rect(it.w / 2 - 5, it.d / 2 - 5);
+    face(fr.map(p => P3(p, 2)), C('#3a3e44'), up);                                              // рама с окладом
+    face(gl.map(p => P3(p, 3)), [0.55, 0.68, 0.78], up, true);                                    // стеклопакет
+    face(gl.map(p => P3(p, -lin - 1)), [0.55, 0.68, 0.78], dn, true);                             // стекло со стороны комнаты
+    for (let i = 0; i < 4; i++) {                                                               // откосы через утеплитель
+      const p = gl[i], q = gl[(i + 1) % 4];
+      face([P3(p, 1), P3(q, 1), P3(q, -lin - 1), P3(p, -lin - 1)], C('#f4f2ee'), [it.x / 100, (zr0 - lin / 2) / 100, it.y / 100]);
+    }
   },
   /** Хранение в гараже: металлический стеллаж с коробами, верстак с тисками и перфопанелью, стеллаж для шин,
    *  навесная полка на кронштейнах, потолочная антресоль на подвесах (над капотом) */

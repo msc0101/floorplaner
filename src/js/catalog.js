@@ -434,9 +434,17 @@ const CATALOG = [
     { key: 'officeChair', name: 'Кресло офисное', shape: 'officechair', w: 60, d: 60, h: 110 },
     { key: 'stairs', name: 'Лестница прямая', shape: 'stairs', w: 100, d: 360, h: 280 },
     { key: 'stairsL', name: 'Лестница Г-образная', shape: 'stairsL', w: 200, d: 260, h: 280, flip: true },
+    { key: 'stairsSpiral', name: 'Лестница винтовая Ø200 (на мансарду / 2-й этаж)', kw: 'лестница винтовая спиральная мансарда второй этаж', shape: 'stairsSpiral', w: 200, d: 200, h: 300 },
     { key: 'column', name: 'Колонна', shape: 'column', w: 30, d: 30, h: 280 },
     { key: 'column', name: 'Колонна круглая', shape: 'columnRound', w: 30, d: 30, h: 280, key2: 'columnRound' },
   ]},
+  // мансарда: окна в скате (свет по площади окна, без просвета кровли), проходы сетей между этажами
+  { id: 'mansard', name: 'Мансарда', layer: 'furniture', items: [
+    { key: 'roofWindow', name: 'Окно мансардное 78×118 (в скате кровли)', kw: 'мансардное окно в крыше велюкс скат', shape: 'roofWindow', w: 78, d: 118, h: 0 },
+    { key: 'roofWindowL', name: 'Окно мансардное 94×140 (в скате кровли)', kw: 'мансардное окно в крыше большое скат', shape: 'roofWindow', w: 94, d: 140, h: 0 },
+    { key: 'roofWindowS', name: 'Окно мансардное 55×78 (санузел, кладовая)', kw: 'мансардное окно маленькое санузел', shape: 'roofWindow', w: 55, d: 78, h: 0 },
+    { key: 'shaftRiser', name: 'Стояк сетей (проход через перекрытие, короб)', kw: 'стояк короб шахта проход перекрытие сети мансарда', shape: 'shaftRiser', w: 30, d: 30, h: 280, sym: 20 },
+  ] },
   // хранение в гараже и мастерской: стеллажи вдоль глухих стен, верстак у окна, антресоль над капотом — место у машины не простаивает
   { id: 'garage', name: 'Гараж и мастерская', layer: 'furniture', items: [
     { key: 'garageRack', name: 'Стеллаж металлический 150×50, 5 полок (гараж, кладовая)', kw: 'стеллаж металлический полки гараж хранение ящики', shape: 'garageRack', w: 150, d: 50, h: 200 },
@@ -779,6 +787,12 @@ function bldWallH(it) {
 
 /* ===================== ПОСТРОЙКИ «КАК ДОМ»: стены с толщиной, внутри — пусто ===================== */
 const BLD_HOLLOW = new Set(['building', 'garage']);
+/** Винтовая лестница: ступеней на виток — так, чтобы проступь посередине (r = R/2) была ≥ 19 см; высота прохода — один виток */
+function spiralGeom(it, H) {
+  const R = Math.min(it.w, it.d) / 2 - 2, perTurn = U.clamp(Math.floor(2 * Math.PI * (R / 2) / 19), 10, 16), da = 2 * Math.PI / perTurn;
+  const n = Math.max(12, Math.round(H / 18)), rise = H / n;
+  return { R, perTurn, da, n, rise, mid: (R / 2) * da, head: perTurn * rise };
+}
 /** Отдельно стоящие постройки участка — для привязки сетей на листах наружных сетей */
 const SITE_BLD_SHAPES = new Set(['barrelSauna', 'gazebo', 'greenhouse', 'canopy', 'canopyLean', 'veranda']);
 const BLD_SIDES = { front: 'спереди (+Г)', back: 'сзади (−Г)', left: 'слева (−Ш)', right: 'справа (+Ш)' };
@@ -1435,6 +1449,30 @@ const Painters = (() => {
     lw(P, 1.2);
     line(P, [-w / 2 + W / 2, d / 2 - 10, -w / 2 + W / 2, -d / 2 + W / 2, w / 2 - 14, -d / 2 + W / 2]);
     line(P, [w / 2 - 26, -d / 2 + W / 2 - 8, w / 2 - 12, -d / 2 + W / 2, w / 2 - 26, -d / 2 + W / 2 + 8]);
+  };
+
+  // винтовая: круг, стойка, радиальные ступени, стрелка подъёма к выходу (+y)
+  S.stairsSpiral = (P, w, d) => {
+    const R = Math.min(w, d) / 2, c = P.ctx, n = spiralGeom(P.it || { w, d }, (P.it && P.it.h) || 300).perTurn;
+    circle(P, 0, 0, R); thin(P); circle(P, 0, 0, 6, false);
+    for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; line(P, [Math.cos(a) * 6, Math.sin(a) * 6, Math.cos(a) * R, Math.sin(a) * R]); }
+    lw(P, 1.2); const r = R * 0.6, a0 = Math.PI / 2 + 0.35, a1 = Math.PI / 2 + Math.PI * 2 - 0.35;
+    c.beginPath(); c.arc(0, 0, r, a0, a1); c.stroke();
+    const ex = Math.cos(a1) * r, ey = Math.sin(a1) * r;
+    line(P, [ex - 10, ey - 6, ex, ey, ex - 10, ey + 7]);
+  };
+  // окно в скате: рама, стеклопакет, «МО»; стрелка — вниз по скату (+y)
+  S.roofWindow = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d, 0); thin(P);
+    box(P, -w / 2 + 6, -d / 2 + 6, w - 12, d - 12, 0, false);
+    line(P, [-w / 2 + 6, -d / 2 + 6, w / 2 - 6, d / 2 - 6]);
+    text(P, 'МО', 0, 0, Math.min(w, d) * 0.22, { bold: true });
+    line(P, [0, d / 2 - 14, 0, d / 2 - 4]); line(P, [-4, d / 2 - 9, 0, d / 2 - 4, 4, d / 2 - 9]);
+  };
+  // стояк сетей: квадрат короба со стрелкой «вверх/вниз»
+  S.shaftRiser = (P, w, d) => {
+    box(P, -w / 2, -d / 2, w, d, 0); thin(P);
+    line(P, [-w / 2, -d / 2, w / 2, d / 2]); line(P, [-w / 2, d / 2, w / 2, -d / 2]);
   };
 
   /* --- электрика: условные графические обозначения --- */

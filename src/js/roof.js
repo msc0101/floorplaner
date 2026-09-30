@@ -91,6 +91,38 @@ const Roof = {
     if (r.type === 'shed') return b + t * Math.max(0, D - q.y);
     return b + t * Math.max(0, Math.min(W - Math.abs(q.x), D - Math.abs(q.y)));
   },
+  /** Крыша над жилым этажом (мансарда): этаж выше первого, помещения — прямо под скатами.
+   *  ceil — плоский потолок по ригелям (высота этажа − 10 см натяжного), lining — толщина «пирога» под кровлей по вертикали
+   *  (кровля с настилом 15,5 см + стропило с утеплителем + обшивка 3 см) */
+  living(r) {
+    if (!r || r.type === 'flat' || !App.doc.floors) return null;
+    const fi = Model.floorIdx(r.floor);
+    if (!(fi > 0)) return null;
+    const f = App.doc.floors[fi], a = U.rad(U.clamp(r.pitch || 0, 0, 75)), fr = Roof.frame(r);
+    return { f, e: f.elev, ceil: f.elev + (f.h || 280) - 10, lining: 15.5 + ((fr ? fr.h : 200) / 10) / Math.cos(a) + 3 };
+  },
+  /** Потолок над точкой плана на этаже fid: min(плоский потолок, скат − пирог); null — над точкой нет мансардной крыши */
+  ceilAt(p, fid) {
+    let z = null;
+    for (const r of App.doc.roofs) {
+      if (r.floor !== fid) continue;
+      const L = Roof.living(r), zr = L && Roof.zAt(r, p);
+      if (zr == null) continue;
+      const c = Math.min(L.ceil, zr - L.lining);
+      z = z == null ? c : Math.min(z, c);
+    }
+    return z;
+  },
+  /** Высоты помещения под мансардной крышей (сетка 20 см): min, max, доля площади ≥ 2,5 м и ниже 1,5 м; null — не мансарда */
+  roomHeights(poly, f) {
+    if (!App.doc.roofs.some(x => x.floor === f.id && Roof.living(x))) return null;
+    const b = G.bbox(poly), H = [], flat = (f.h || 280) - 10;
+    for (let x = b.x0 + 10; x < b.x1; x += 20) for (let y = b.y0 + 10; y < b.y1; y += 20) { const p = { x, y }; if (G.pointInPoly(p, poly)) { const c = Roof.ceilAt(p, f.id); if (c != null) H.push(c - f.elev); } }
+    if (!H.length) return null;
+    const r = App.doc.roofs.find(x => x.floor === f.id && Roof.living(x));
+    return { min: Math.min(...H), max: Math.max(...H), mean: H.reduce((a, h) => a + h, 0) / H.length, hi: H.filter(h => h >= 249.5).length / H.length, lo15: H.filter(h => h < 150).length / H.length,
+      slope: H.filter(h => h < flat - 0.5).length / H.length, cos: Math.cos(U.rad(U.clamp(r.pitch || 0, 0, 75))) };
+  },
   toWorld(r, q) { const p = G.toWorld({ x: q.u, y: q.v }, r.x, r.y, r.rot || 0); return { x: p.x, y: p.y, z: (r.base || 0) + q.z }; },
   faces(r) { return Roof.facesLocal(r).map(f => f.map(q => Roof.toWorld(r, q))); },
   /** Линии на плане: контур, коньки, рёбра */
@@ -174,8 +206,10 @@ const Roof = {
     const gRoof = heavy ? 0.65 : r.mat === 'soft' ? 0.35 : 0.25;                    // кровля + основание, кПа
     const gD = gRoof * 1.2 / Math.cos(a);
     const step = 0.6;
-    // схема: до 6,5 м — наслонные стропила с затяжкой (потолочная балка), больше — заводские фермы на МЗП
-    const truss = span > 6.5;
+    // схема: до 6,5 м — наслонные стропила с затяжкой (потолочная балка), больше — заводские фермы на МЗП;
+    // над мансардой — наслонные стропила с ригелем (под плоским потолком), без ферм: пространство между стропилами — жилое
+    const mans = Model.floorIdx(r.floor) > 0 && (App.floorData || []).some(f => f.floor.id === r.floor && f.rooms.length);
+    const truss = !mans && span > 6.5;
     const L = truss ? half / 2 : half;                                            // горизонтальный пролёт верхнего пояса / стропила между опорами
     const q = (gD + sD) * step;                                                   // кН/м по горизонтальной проекции
     const SECT = [[50, 150], [50, 200], [50, 250], [75, 200], [75, 250], [100, 250]];
@@ -200,11 +234,11 @@ const Roof = {
     const woodV = (truss ? n * (2 * rafterL + span * 1.05 + span * 0.9) : nRaft * rafterL + n * span) * pick.b * pick.h / 1e6
       + batM * 0.025 * 0.1 + slope / step * 0.05 * 0.05 + 2 * len * 0.15 * 0.15;
     return {
-      scheme: truss ? 'truss' : 'rafter', name: truss ? 'Фермы деревянные заводские на МЗП (W-образные), опора — наружные стены' : 'Наслонные стропила с затяжкой (потолочная балка), опора — мауэрлат и коньковый прогон',
+      scheme: truss ? 'truss' : mans ? 'mansard' : 'rafter', name: truss ? 'Фермы деревянные заводские на МЗП (W-образные), опора — наружные стены' : mans ? 'Наслонные стропила с ригелем (мансарда): опора — мауэрлат на кнеевой стене и коньковый прогон; утеплитель между стропилами' : 'Наслонные стропила с затяжкой (потолочная балка), опора — мауэрлат и коньковый прогон',
       span, half, L, pitch: U.deg(a), step, n, nRaft, rafterL, b: pick.b, h: pick.h, sig: pick.sig, f: pick.f, fmax: pick.fmax, R,
       snow: { district: cl.snow, Sg, mu, s0, sD }, gRoof, q, len, slope, bat: BAT[0], batStep: BAT[1], batM, counter: slope / step, osb: r.mat === 'soft' ? slope : 0,
       membrane: slope * 1.15, mauerlat: 2 * len, anchors: Math.ceil(2 * len) + 2, woodV, S,
-      attic: { ins: 200, vent: (S.v1 - S.v0) * (S.u1 - S.u0) / 1e4 / 300 },
+      attic: mans ? { ins: pick.h + 50, mansard: true, vent: 0 } : { ins: 200, vent: (S.v1 - S.v0) * (S.u1 - S.u0) / 1e4 / 300 },   // мансарда: утеплитель между стропилами + 50 мм поперёк, вентзазор над мембраной
     };
   },
 

@@ -43,10 +43,12 @@ const Finish = {
     return {
       floor: own.floor || (wet ? o.wet : sleep ? o.living : o.floor),
       walls: own.walls || (wet ? o.wetWalls : o.walls),
-      ceil: own.ceil || o.ceil,
+      ceil: own.ceil || (Finish.mansard() ? 'gkl' : o.ceil),                 // мансарда: скаты — ГКЛ по обрешётке (натяжной на скате не делают)
       wet, tech, sleep,
     };
   },
+  /** Текущий этаж — мансарда (помещения под утеплёнными скатами) */
+  mansard() { return App.doc.roofs.some(x => x.floor === App.floor && Roof.living(x)); },
   brickColor() { return (FIN_BRICK_COLORS[Finish.opt().brick] || FIN_BRICK_COLORS.red)[1]; },
 
   /* ------------------------------- план ------------------------------- */
@@ -88,11 +90,13 @@ const Finish = {
         for (const r of fd.rooms) {
           const F = Finish.room(r), A = r.areaFloor / 1e4, P = (r.perimFloor || G.polyPerimeter(r.floor || r.axis)) / 100;
           const opA = d.openings.filter(o => { const g = Model.opGeom(o); return g && G.distPoly(G.mid(g.a, g.b), r.floor || r.axis) < 30; }).reduce((a, o) => a + (o.w * (o.h || 150)) / 1e4, 0);
-          const W = Math.max(0, P * H / 100 - opA * 0.5);
+          // мансарда: стены — по средней высоте помещения, потолок — с учётом скатов (площадь ската = проекция / cos α)
+          const RH = Roof.roomHeights(r.floor || r.axis, fd.floor), Hr = RH ? RH.mean - 20 : H;
+          const W = Math.max(0, P * Hr / 100 - opA * 0.5), CA = RH ? A * (1 - RH.slope + RH.slope / RH.cos) : A;
           out.floor[F.floor] = (out.floor[F.floor] || 0) + A;
           out.walls[F.walls] = (out.walls[F.walls] || 0) + W;
-          out.ceil[F.ceil] = (out.ceil[F.ceil] || 0) + A;
-          out.rooms.push({ no: fd.rooms.indexOf(r) + 1, name: r.name, A, W, F, floorName: fd.floor.name });   // № — как в экспликации и на плане
+          out.ceil[F.ceil] = (out.ceil[F.ceil] || 0) + CA;
+          out.rooms.push({ no: fd.rooms.indexOf(r) + 1, name: r.name, A, W, CA, F, floorName: fd.floor.name, fid: fd.floor.id });   // № — как в экспликации и на плане
         }
       });
     }
@@ -143,13 +147,19 @@ const Finish = {
   },
 
   /* ------------------------------- лист ------------------------------- */
-  panel() {
+  panel(fid) {
     const Q = Finish.quantities(), o = Finish.opt();
-    const rows = Q.rooms.map(r => [String(r.no), r.name, `${(FIN_FLOORS[r.F.floor] || {}).short || r.F.floor} — ${r.A.toFixed(1)}`, `${(FIN_WALLS[r.F.walls] || {}).short || r.F.walls} — ${r.W.toFixed(1)}`, `${(FIN_CEIL[r.F.ceil] || {}).short} — ${r.A.toFixed(1)}`]);
+    const rows = Q.rooms.filter(r => !fid || r.fid === fid).map(r => [String(r.no), r.name, `${(FIN_FLOORS[r.F.floor] || {}).short || r.F.floor} — ${r.A.toFixed(1)}`, `${(FIN_WALLS[r.F.walls] || {}).short || r.F.walls} — ${r.W.toFixed(1)}`, `${(FIN_CEIL[r.F.ceil] || {}).short} — ${r.CA.toFixed(1)}`]);
+    if (fid && fid !== App.doc.floors[0].id) return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Ведомость отделки — ' + ((App.doc.floors.find(f => f.id === fid) || {}).name || '').toLowerCase()),
+      Sheets.T(['№', 'Помещение', 'Пол, м²', 'Стены, м²', 'Потолок, м²'], rows),
+      U.el('h4', {}, 'Указания'), Sheets.ul(['Скаты и потолок по ригелям — ГКЛ 12,5 мм (во влажных — ГКЛВ) по обрешётке, швы — серпянка и шпаклёвка, покраска; площадь потолка — с учётом наклона скатов',
+        'Под ГКЛ — сплошная пароизоляция с проклейкой нахлёстов и примыканий', 'Пол мансарды — плавающий: звукоизоляционный мат, стяжка, подложка, ламинат / доска; в санузле — плитка по обмазочной гидроизоляции',
+        'Материалы и сводные объёмы — на листе «План отделки» 1 этажа']),
+      U.el('div', { class: 'norm' }, '§ СП 71.13330.2017; СП 29.13330.2011; СП 163.1325800.2014 (ГКЛ)'));
     const sum = (m, T) => Object.entries(m).map(([k, v]) => [(T[k] || {}).name || k, `${v.toFixed(1)} м²`]);
     return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Ведомость отделки'),
       Sheets.T(['№', 'Помещение', 'Пол, м²', 'Стены, м²', 'Потолок, м²'], rows),
-      U.el('h4', {}, 'Материалы'), Sheets.T(null, [...sum(Q.floor, FIN_FLOORS), ...sum(Q.walls, FIN_WALLS), ...sum(Q.ceil, FIN_CEIL),
+      U.el('h4', {}, App.doc.floors.length > 1 ? 'Материалы (весь дом)' : 'Материалы'), Sheets.T(null, [...sum(Q.floor, FIN_FLOORS), ...sum(Q.walls, FIN_WALLS), ...sum(Q.ceil, FIN_CEIL),
         o.facade !== 'none' ? [`Фасад: ${FIN_FACADE[o.facade].name}, ${(FIN_BRICK_COLORS[o.brick] || [])[0] || ''}`, `${Q.facade.toFixed(0)} м², ≈ ${Q.bricks} шт.`] : null,
         ['Двери межкомнатные: массив / шпон, тон «орех средний»', `${Q.doors} шт.`], ['Окна ПВХ: снаружи антрацит (ламинация), внутри белые', `${Q.windows} шт.`]].filter(Boolean)),
       U.el('h4', {}, 'Указания'), Sheets.ul(['Плитка 600×1200 — на клей С2 с системой выравнивания, шов 2 мм, по стяжке с тёплым полом — эластичный клей', 'В санузлах — обмазочная гидроизоляция пола и стен на 200 мм (в душе — на высоту 2 м)', 'Обои под покраску — по шпаклёвке и грунту, краска матовая моющаяся', 'Натяжной потолок — после чистовой отделки стен; закладные под светильники заранее', 'Облицовка: кирпич на гибких связях 4 шт./м², вентзазор 20–40 мм, продухи внизу и вверху кладки']),

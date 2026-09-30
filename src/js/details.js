@@ -25,7 +25,20 @@ const Detail = {
     lv.ring = WALL_REINF[w0.mat] && WALL_REINF[w0.mat].ring ? 25 : 0;
     lv.ceil = top - 10;                                                        // натяжной потолок
     const fr = r ? Roof.frame(r) : null;
-    return { F, r, fr, w0, lay, lv, o, top, ext };
+    lv.plate = lv.wallTop;                                                     // верх мауэрлата / лежня (узел карниза)
+    const M = { F, r, fr, w0, lay, lv, o, top, ext };
+    // мансарда: стены 1 этажа — до низа плиты перекрытия, над ней колено (кнеевая стена) с мауэрлатом, стропила с ригелем
+    const L = Roof.living(r);
+    if (L && fr) {
+      lv.wallTop = L.e - 25; lv.ceil = lv.wallTop - 10;                       // плита 200 + стяжка 50 (как в 3D: e−25…e)
+      const C = Detail.cut(M), ex = Detail.cutWalls(M, C.u, L.f.id).filter(x => x.kind === 'ext');
+      const t = Math.tan(U.rad(r.pitch || 0)), Dh = r.d / 2, hr = fr.h / 10 / Math.cos(U.rad(r.pitch || 0)), zr = (v) => r.base + t * Math.max(0, Dh - Math.abs(v));
+      const W = ex[0] || { v: -Dh + 60, th: w0.th }, vc = Math.abs(W.v) - W.th / 2 + lay[0].th / 2;   // ось кладки колена (от середины)
+      lv.plate = Math.min(zr(vc) - hr, L.e + Math.max(...ex.map(x => x.h || 150), 100));
+      const zc = L.ceil + 10;
+      M.mz = { L, e: L.e, knee: ex, hr, zc, collarH: 15, vc: Math.max(0, Dh - (zc + hr - r.base) / t), kneeH: zr(Math.abs(W.v) - W.th / 2) - L.lining - L.e };
+    }
+    return M;
   },
   /** Слои наружной стены изнутри наружу: [{name, th, kind}] */
   layers(w) {
@@ -54,11 +67,11 @@ const Detail = {
     return { u, at: best ? best.c : { x: r.x, y: r.y } };
   },
   /** Стены, пересекающие линию разреза: положение по v, толщина, вид, проём в разрезе */
-  cutWalls(M, u) {
-    const r = M.r, out = [];
+  cutWalls(M, u, fid) {
+    const r = M.r, out = [], f0 = App.doc.floors[0].id;
     const P0 = G.toWorld({ x: u, y: -r.d }, r.x, r.y, r.rot || 0), P1 = G.toWorld({ x: u, y: r.d }, r.x, r.y, r.rot || 0);
     for (const w of App.doc.walls) {
-      if ((w.floor || App.doc.floors[0].id) !== App.doc.floors[0].id || w.kind === 'fence') continue;
+      if ((w.floor || f0) !== (fid || f0) || w.kind === 'fence') continue;
       const x = G.segInter(P0, P1, w.a, w.b);
       if (!x) continue;
       const v = G.toLocal(x, r.x, r.y, r.rot || 0).y, s = G.dist(w.a, x);
@@ -237,16 +250,23 @@ const Detail = {
       D.rect(oFace, lv.gnd - 30, oFace + out * 100, lv.gnd, P.sand, '#777', 0.15);
     }
     // 4) стены в разрезе: слои (кладка рядами, минвата, зазор, кирпич), армопояс, проём с перемычкой
+    const MZ = M.mz, hr0 = fr ? fr.h / 10 / Math.cos(U.rad(r.pitch || 0)) : 0;
+    const hi = (x, top) => MZ ? Math.min(zr(x) - hr0, lv.plate) : top;                                   // мансарда: наружные слои — до стропил
     for (const W of walls) {
-      const top = W.kind === 'ext' ? lv.wallTop : lv.fin + (W.h || 270), bot = W.kind === 'ext' ? lv.stripTop + 1 : lv.screed;
+      const top = W.kind === 'ext' ? lv.wallTop : Math.min(lv.fin + (W.h || 270), lv.wallTop), bot = W.kind === 'ext' ? lv.stripTop + 1 : lv.screed;
       const out = W.outV || 1, v0 = W.v - W.th / 2 * out;                                                    // от внутренней грани наружу
       const L = W.kind === 'ext' ? M.lay : [{ kind: 'block', th: W.th, mat: W.w.mat }];
       let at = W.kind === 'ext' ? v0 : W.v - W.th / 2, dir = W.kind === 'ext' ? out : 1;
       for (const l of L) {
         const a = at, b = at + dir * l.th;
         if (l.kind === 'block') Detail.courses(D, Math.min(a, b), Math.max(a, b), bot, top - (W.kind === 'ext' ? lv.ring : 0), l.mat, W.op && W.kind === 'ext' ? W.op : null);
-        else if (l.kind === 'ins') D.rect(a, bot + 20, b, top - 2, P.ins, '#333', 0.2);
-        else if (l.kind === 'brick') { D.rect(a, bot, b, top - 5, P.brick, '#111', 0.3); for (let z = bot + 7.7; z < top - 5; z += 7.7) D.line(a, z, b, z, '#8a4a36', 0.1); for (let z = bot + 30; z < top - 10; z += 50) D.line(at - dir * (L[0].th / 2), z, b - dir * 3, z, '#555', 0.15, [0.6, 0.4]); }
+        else if (l.kind === 'ins') D.poly([[a, bot + 20], [b, bot + 20], [b, hi(b, top) - 2], [a, hi(a, top) - 2]], P.ins, '#333', 0.2);
+        else if (l.kind === 'brick') {
+          const tb = Math.min(hi(a, top), hi(b, top)) - 5;
+          D.poly([[a, bot], [b, bot], [b, hi(b, top) - 5], [a, hi(a, top) - 5]], P.brick, '#111', 0.3);
+          for (let z = bot + 7.7; z < tb; z += 7.7) D.line(a, z, b, z, '#8a4a36', 0.1);
+          for (let z = bot + 30; z < tb - 5; z += 50) D.line(at - dir * (L[0].th / 2), z, b - dir * 3, z, '#555', 0.15, [0.6, 0.4]);
+        }
         at = b;
       }
       if (W.kind === 'ext' && lv.ring) {                                                                    // армопояс
@@ -255,10 +275,29 @@ const Detail = {
         for (const zz of [top - lv.ring + 5, top - 5]) for (const f of [0.25, 0.75]) D.dot(a + (b - a) * f, zz, 0.5, '#b00');
       }
       if (W.op && W.kind === 'ext') Detail.openingCut(D, M, W, v0, out, bot);
+      if (MZ && W.kind === 'ext') {                                                                         // колено мансарды: кладка, армопояс, мауэрлат
+        const a = v0, b = v0 + out * M.lay[0].th, z0 = lv.wallTop + 20, zm = lv.plate - 15, zrg = zm - (lv.ring || 0);
+        Detail.courses(D, Math.min(a, b), Math.max(a, b), z0, zrg, M.w0.mat, null);
+        if (lv.ring) { D.rect(a, zrg, b, zm, P.concrete, '#111', 0.35); for (const f of [0.25, 0.75]) D.dot(a + (b - a) * f, zrg + 5, 0.5, '#b00'), D.dot(a + (b - a) * f, zm - 5, 0.5, '#b00'); }
+        const c = (a + b) / 2;
+        D.rect(c - 7.5, zm, c + 7.5, lv.plate, P.wood, '#111', 0.3);
+        D.line(c - 7.5, zm - 0.5, c + 7.5, zm - 0.5, '#000', 0.6);                                          // гидроизоляция под мауэрлат
+      }
+    }
+    if (MZ) {                                                                                               // перегородки мансарды (ГКЛ по каркасу) — до потолка
+      for (const W of Detail.cutWalls(M, C.u, MZ.L.f.id)) {
+        if (W.kind === 'ext') continue;
+        const zt = Math.min(MZ.L.ceil, zr(W.v) - MZ.L.lining);
+        if (zt <= MZ.e + 30) continue;
+        D.rect(W.v - W.th / 2, MZ.e, W.v + W.th / 2, zt, '#f3f1ec', '#111', 0.3);
+        D.rect(W.v - W.th / 2 + 1.25, MZ.e, W.v + W.th / 2 - 1.25, zt, P.ins, '#555', 0.12);
+      }
     }
     // 5) чердачное перекрытие и потолок: нижний пояс ферм / затяжка, утеплитель, пароизоляция, натяжной потолок
+    if (fr && MZ) Detail.mansSection(D, M, { zr, inner, ext, Dh, hr: hr0 });
     if (fr) {
       const hb = fr.h / 10, zb = lv.wallTop + 5, a0 = ext.length ? ext[0].v : -Dh, a1 = ext.length ? ext[ext.length - 1].v : Dh;
+      if (!MZ) {
       D.rect(a0 - 7.5, lv.wallTop, a0 + 7.5, lv.wallTop + 5, P.wood, '#111', 0.25);                          // лежень / мауэрлат
       D.rect(a1 - 7.5, lv.wallTop, a1 + 7.5, lv.wallTop + 5, P.wood, '#111', 0.25);
       D.rect(a0 - 12, zb, a1 + 12, zb + hb, P.wood, '#111', 0.3);                                           // нижний пояс — на лежень над стеной
@@ -266,11 +305,14 @@ const Detail = {
       D.line(inner[0], zb - 0.5, inner[1], zb - 0.5, '#2a6', 0.4, [1, 0.6]);                               // пароизоляция
       D.line(inner[0], lv.ceil, inner[1], lv.ceil, '#555', 0.35);                                           // натяжной потолок
       for (let v = inner[0] + 100; v < inner[1] - 100; v += 200) D.rect(v, zb + hb + 20, v + 30, zb + hb + 22.5, P.wood, '#111', 0.15);   // ходовые доски
+      }
       // 6) кровля: верхние пояса (стропила), решётка фермы, свесы, пирог кровли, конёк
       const hr = fr.h / 10 / Math.cos(U.rad(r.pitch));
       const top0 = (v) => zr(v);
-      D.poly([[-Dh, top0(-Dh)], [0, top0(0)], [0, top0(0) - hr], [-Dh, top0(-Dh) - hr]], P.wood, '#111', 0.3);
-      D.poly([[Dh, top0(Dh)], [0, top0(0)], [0, top0(0) - hr], [Dh, top0(Dh) - hr]], P.wood, '#111', 0.3);
+      if (!MZ) {                                                                                            // мансарда: стропила за плоскостью разреза (контур — в mansSection)
+        D.poly([[-Dh, top0(-Dh)], [0, top0(0)], [0, top0(0) - hr], [-Dh, top0(-Dh) - hr]], P.wood, '#111', 0.3);
+        D.poly([[Dh, top0(Dh)], [0, top0(0)], [0, top0(0) - hr], [Dh, top0(Dh) - hr]], P.wood, '#111', 0.3);
+      }
       if (fr.scheme === 'truss') {                                                                          // W-образная решётка
         const A0 = a0, A1 = a1, zc = zb + hb, span = A1 - A0, mid = (A0 + A1) / 2, B1 = A0 + span / 3, B2 = A0 + 2 * span / 3, T1 = A0 + span / 4, T2 = A0 + 3 * span / 4;
         for (const [sa, za, sb, zb2] of [[T1, top0(T1) - hr, B1, zc], [B1, zc, mid, top0(mid) - hr], [mid, top0(mid) - hr, B2, zc], [B2, zc, T2, top0(T2) - hr]]) D.line(sa, za, sb, zb2, '#6b4a2a', 1.2);
@@ -295,6 +337,39 @@ const Detail = {
       D.rect(-12, off(0, 7.2), 12, off(0, 7.2) + 6, '#6f7780', '#111', 0.25);                                 // коньковый аэратор
     }
     return { C, walls, zr, inner, ext, Dh };
+  },
+  /** Мансарда в разрезе: плита перекрытия, пол мансарды, потолок 1 этажа, утеплённые скаты с обшивкой, ригели, утеплитель над ригелями */
+  mansSection(D, M, S) {
+    const { lv, r, fr } = M, P = D.pat, MZ = M.mz, L = MZ.L, { zr, inner, ext, Dh, hr } = S;
+    const core = (W) => [W.v - W.th / 2 * (W.outV || 1), W.v - W.th / 2 * (W.outV || 1) + (W.outV || 1) * M.lay[0].th];
+    const c0 = ext.length ? Math.min(...core(ext[0])) : inner[0], c1 = ext.length ? Math.max(...core(ext[ext.length - 1])) : inner[1];
+    // монолитная плита 200 мм B25 (опирание на всю толщину кладки, армопояс — в теле плиты) и пол мансарды
+    D.rect(c0, lv.wallTop, c1, lv.wallTop + 20, P.concrete, '#111', 0.4);
+    for (let v = c0 + 10; v < c1 - 5; v += 20) { D.dot(v, lv.wallTop + 3, 0.4, '#b00'); D.dot(v, lv.wallTop + 17, 0.4, '#b00'); }
+    D.rect(inner[0], lv.wallTop + 20, inner[1], MZ.e - 1.5, '#eeeeea', '#555', 0.15);                      // звукоизоляция + стяжка
+    D.line(inner[0], lv.wallTop + 22, inner[1], lv.wallTop + 22, '#2a6', 0.35, [1, 0.6]);                  // плавающий пол: мат 20 мм
+    D.rect(inner[0], MZ.e - 1.5, inner[1], MZ.e, P.wood, '#333', 0.2);                                     // ламинат / инженерная доска
+    D.line(inner[0], lv.ceil, inner[1], lv.ceil, '#555', 0.35);                                            // натяжной потолок 1 этажа
+    // скаты: утеплитель между стропилами + поперечный слой, пароизоляция, обрешётка, ГКЛ; ригели; плоский потолок
+    const cz = (v) => zr(v) - L.lining, vcl = Math.max(0, Dh - (L.ceil + L.lining - r.base) / Math.tan(U.rad(r.pitch || 0)));
+    for (const sg of [-1, 1]) {
+      const vi = sg < 0 ? inner[0] : inner[1], a = Math.abs(vi), b = vcl, pt = (v, dz) => [sg * v, zr(v) + dz];
+      // стропило за плоскостью разреза (видимое) — под утеплителем, который лежит в плоскости разреза
+      const e = Dh, top0 = (v) => zr(v);
+      D.poly([[sg * e, top0(e)], [0, top0(0)], [0, top0(0) - hr], [sg * e, top0(e) - hr]], '#efe2c8', '#6b4a2a', 0.35);
+      D.poly([pt(a, -hr), pt(b, -hr), pt(b, -hr - 10), pt(a, -hr - 10)], P.ins, '#333', 0.2);                   // минвата 100 поперёк стропил
+      D.poly([pt(a, 0), pt(MZ.vc, 0), pt(MZ.vc, -hr), pt(a, -hr)], P.ins, '#333', 0.15);                         // минвата 250 между стропилами (в плоскости разреза)
+      D.line(sg * a, zr(a) - hr - 10.3, sg * b, zr(b) - hr - 10.3, '#2a6', 0.4, [1, 0.6]);                     // пароизоляция
+      D.poly([pt(a, -L.lining + 1.25), pt(b, -L.lining + 1.25), pt(b, -L.lining), pt(a, -L.lining)], '#f3f1ec', '#111', 0.3);   // ГКЛ 12,5
+      void cz;
+    }
+    // ригель 50×150 на уровне потолка, над ним утеплитель 200 и холодная зона под коньком
+    D.rect(-MZ.vc, MZ.zc, MZ.vc, MZ.zc + MZ.collarH, P.wood, '#111', 0.3);
+    D.rect(-vcl, L.ceil, vcl, L.ceil + 1.25, '#f3f1ec', '#111', 0.3);                                      // плоский потолок — ГКЛ по ригелям
+    D.line(-vcl, L.ceil + 1.5, vcl, L.ceil + 1.5, '#2a6', 0.4, [1, 0.6]);
+    const zi = MZ.zc + MZ.collarH, vi = Math.max(0, Dh - (zi + 20 + hr - r.base) / Math.tan(U.rad(r.pitch || 0)));
+    D.poly([[-MZ.vc, zi], [MZ.vc, zi], [vi, zi + 20], [-vi, zi + 20]], P.ins, '#333', 0.2);
+    void fr;
   },
   /** Кладка в разрезе: ряды блоков (блок + шов), армированные ряды — красные точки */
   courses(D, a, b, z0, z1, mat, op) {
@@ -442,7 +517,7 @@ const Detail = {
     if (spec.detail === 'roofPlan') return { x0: -M.r.w / 2 - 120, y0: -Dh - 20, x1: M.r.w / 2 + 20, y1: Dh + 110 };
     const C = Detail.cut(M), ext = Detail.cutWalls(M, C.u).filter(w => w.kind === 'ext'), W0 = ext[0] || { v: -Dh + 50, th: 40 };
     if (spec.detail === 'foundNode') { const f = W0.v - W0.th / 2; return { x0: f - 140, y0: -(M.lv.stripTop + 110), x1: W0.v + W0.th / 2 + 140, y1: -(M.lv.cushion - 20) }; }
-    if (spec.detail === 'roofNode') { const f = W0.v - W0.th / 2; return { x0: -Dh - 40, y0: -(M.lv.wallTop + 130), x1: f + W0.th + 120, y1: -(M.lv.wallTop - 70) }; }
+    if (spec.detail === 'roofNode') { const f = W0.v - W0.th / 2; return { x0: -Dh - 40, y0: -(M.lv.plate + 130), x1: f + W0.th + 120, y1: -(M.lv.plate - (M.mz ? 110 : 70)) }; }
     return { x0: -Dh - 115, y0: -ridge - 15, x1: Dh + 65, y1: -(M.lv.cushion - 90) };
   },
   /** Нарисовать лист-деталь в канвас W×H px в масштабе 1:N */
@@ -467,7 +542,16 @@ const Detail = {
     const node = mode === 'foundNode' || mode === 'roofNode';
     const sL = node ? left - 25 : -S.Dh - 35;
     if (mode !== 'roofNode') { D.level(sL, lv.fin, 'чистый пол', true); D.level(sL, lv.gnd, 'земля', true); D.level(sL, lv.stripBot, 'низ ленты', true); }
-    if (mode !== 'foundNode') { D.level(sL, lv.wallTop, 'верх стен', true); if (lv.ring) D.level(sL, lv.wallTop - lv.ring, 'низ армопояса', true); D.level(S.inner[0] + 30, lv.ceil - D.cm(1), 'потолок', false); }
+    const MZ = M.mz;
+    if (mode !== 'foundNode') {
+      if (!MZ || mode !== 'roofNode') { D.level(sL, lv.wallTop, MZ ? 'низ плиты' : 'верх стен', true); if (lv.ring) D.level(sL, lv.wallTop - lv.ring, 'низ армопояса', true); D.level(S.inner[0] + 30, lv.ceil - D.cm(1), 'потолок', false); }
+      if (MZ) {
+        if (mode !== 'roofNode') D.level(sL, MZ.e, 'пол мансарды', true);
+        D.level(sL, lv.plate, 'верх мауэрлата', true);
+        if (lv.ring) D.level(sL, lv.plate - 15 - lv.ring, 'низ армопояса', true);
+        if (mode !== 'roofNode') D.level(-MZ.vc * 0.6, MZ.L.ceil, 'потолок мансарды', false);
+      }
+    }
     if (!node) D.level(0, Roof.params(r).top, 'конёк', false);                                          // та же отметка, что в таблице и на плане кровли
     const T = {
       floor: 'Пол по грунту: керамогранит 10 мм на клею; стяжка 50 мм с трубами тёплого пола; плита 100 мм B20, сетка Ø8 200×200; XPS 100 мм; песок 300 мм с послойным трамбованием; снять растительный слой',
@@ -484,10 +568,21 @@ const Detail = {
       attic: fr ? `Чердачное перекрытие: ${fr.scheme === 'truss' ? 'нижний пояс ферм' : 'затяжка'} ${fr.b}×${fr.h}; пароизоляция снизу; минвата 200 мм; ходовые доски; холодный чердак с продухами ≥ 1/300 площади` : '',
       ceil: 'Потолок: натяжной (ПВХ матовый) на профиле, отступ 50–100 мм от нижнего пояса',
       roof: fr ? `Кровля: ${(ROOF_MATERIALS[r.mat] || {}).name.toLowerCase()}; ${fr.bat}; контррейка 50×50 (вентзазор); гидроветрозащитная мембрана; ${fr.scheme === 'truss' ? 'ферма' : 'стропило'} ${fr.b}×${fr.h} шаг ${fr.step * 1000}` : '',
-      truss: fr ? `${fr.name}; пластины МЗП в узлах; пролёт ${fr.span.toFixed(2)} м; снег: район ${Climate.roman(fr.snow.district)} (${fr.snow.sD.toFixed(2)} кПа расчётная)` : '',
+      truss: fr ? `${fr.name}; ${fr.scheme === 'truss' ? 'пластины МЗП в узлах' : 'узлы — на болтах М12 и гвоздях, ригель — с двух сторон стропила'}; пролёт ${fr.span.toFixed(2)} м; снег: район ${Climate.roman(fr.snow.district)} (${fr.snow.sD.toFixed(2)} кПа расчётная)` : '',
       eave: 'Свес: лобовая доска, подшивка софитом с перфорацией (приток воздуха на чердак), водосточный желоб на кронштейнах',
       ridge: 'Конёк: коньковый аэратор / вентилируемый конёк (вытяжка из подкровельного пространства)',
     };
+    if (MZ) {                                                                                             // мансарда: перекрытие, колено, скаты, ригели
+      const kh = Math.round(MZ.kneeH * 10), ins = fr ? Math.round(fr.h * 1.0) : 250;
+      Object.assign(T, {
+        attic: 'Перекрытие над 1 этажом: монолитная плита 200 мм, бетон B25, сетки Ø12 А500 шаг 200 (низ и верх) по расчёту, опирание — на всю толщину кладки; пол мансарды: звукоизоляционный мат 20 мм, стяжка 50 мм, подложка, ламинат',
+        ceil: 'Потолок 1 этажа: натяжной (ПВХ матовый) на профиле, отступ 100 мм от плиты',
+        knee: `Колено мансарды (кнеевая стена) ${(MZ.knee[0] ? MZ.knee[0].h * 10 : 1500)} мм от пола — та же кладка и облицовка, что 1 этаж; в помещении высота у стены ≈ ${kh} мм; армопояс 250 мм + мауэрлат 150×150 на анкерах М12 шаг 1000`,
+        slope: `Утеплённый скат: минвата ${ins} мм между стропилами + 100 мм поперёк (обрешётка), пароизоляция с проклейкой, обрешётка 25×50, ГКЛ 12,5 мм; вентзазор под мембраной — от свеса до конька`,
+        eave: 'Свес: лобовая доска, подшивка софитом с перфорацией (приток воздуха в вентзазор утеплённого ската), водосточный желоб на кронштейнах',
+        collar: 'Ригели 50×150 на каждой паре стропил (болты М12) — каркас плоского потолка ГКЛ; над ними минвата 200 мм, выше — холодная вентилируемая зона под коньком',
+      });
+    }
     const inner0 = S.inner[0], Wv = W0 ? W0.v : -S.Dh + 50, bw = F ? F.width * 100 : 50;
     const zr = S.zr, pitchK = Math.tan(U.rad(r.pitch || 0));
     void pitchK;
@@ -504,11 +599,11 @@ const Detail = {
       D.dimV(lv.cushion, lv.stripBot, Wv + bw / 2 + 12);
       D.dimV(lv.gnd, lv.stripTop, Wv - bw / 2 - 20);
     } else if (mode === 'roofNode') {
-      const face = left, top = lv.wallTop;
-      D.callout(Wv, top - 12, face - 30, top - 40, T.ring);
-      D.callout(Wv + 5, top + 2.5, Wv + 45, top - 30, T.plate);
-      D.callout(inner0 + 40, top + 20, inner0 + 60, top + 70, T.attic);
-      D.callout(inner0 + 20, lv.ceil, inner0 + 50, lv.ceil - 30, T.ceil);
+      const face = left, top = lv.plate;
+      D.callout(Wv, top - (MZ ? 15 + lv.ring / 2 : 12), face - 30, top - 40, T.ring);
+      D.callout(Wv + 5, top - (MZ ? 7 : -2.5), Wv + 45, top - 30, T.plate);
+      if (MZ) { const v = inner0 + 50; D.callout(v, zr(v) - MZ.hr - 5, v + 30, zr(v) - MZ.hr - 60, T.slope); D.callout(inner0 - 8, top - 60, inner0 + 45, top - 90, T.knee); }
+      else { D.callout(inner0 + 40, top + 20, inner0 + 60, top + 70, T.attic); D.callout(inner0 + 20, lv.ceil, inner0 + 50, lv.ceil - 30, T.ceil); }
       D.callout(-S.Dh + 60, zr(-S.Dh + 60) + 6, -S.Dh + 30, zr(-S.Dh + 30) + 60, T.roof);
       D.callout(-S.Dh + 3, zr(-S.Dh) - 8, -S.Dh - 25, zr(-S.Dh) - 40, T.eave);
       D.callout(face + 10, top - 60, face - 30, top - 90, T.wall);
@@ -516,7 +611,9 @@ const Detail = {
       D.dimV(top, zr(face) , face - 12);
     } else {
       if (ext.length >= 2) { D.dimH(ext[0].v, ext[ext.length - 1].v, lv.cushion - D.cm(6), String(Math.round((ext[ext.length - 1].v - ext[0].v) * 10))); D.dimH(-S.Dh, S.Dh, lv.cushion - D.cm(13)); }
-      D.dimV(lv.fin, lv.wallTop, S.Dh + 45); D.dimV(lv.gnd, lv.fin, S.Dh + 45);
+      if (MZ) { D.dimV(lv.fin, MZ.e, S.Dh + 45); D.dimV(MZ.e, MZ.L.ceil, S.Dh + 45); D.dimV(MZ.e, MZ.e + MZ.kneeH, S.inner[1] - 15); }
+      else D.dimV(lv.fin, lv.wallTop, S.Dh + 45);
+      D.dimV(lv.gnd, lv.fin, S.Dh + 45);
       D.callout(20, lv.slab, 70, lv.fin + 60, T.floor);
       D.callout(Wv, lv.stripBot + 20, Wv - 80, lv.stripBot - 10, T.found);
       D.callout(left - 50, lv.gnd + 5, left - 80, lv.gnd + 60, T.blind);
@@ -524,7 +621,12 @@ const Detail = {
       D.callout(Wv, lv.wallTop - 12, left - 70, lv.wallTop - 20, T.ring);
       const lw = S.walls.find(w => w.op && w.kind === 'ext');
       if (lw) { const T0 = OPENING_TYPES[lw.op.type] || {}, zt = (lw.op.sill ?? T0.sill ?? 90) + (lw.op.h || T0.h || 150); D.callout(lw.v, zt + 8, lw.v + (lw.outV || 1) * 70, zt + 40, T.lintel); }
-      if (T.attic) D.callout(S.Dh * 0.35, lv.wallTop + 25, S.Dh * 0.35 + 40, lv.wallTop + 90, T.attic);
+      if (MZ) {
+        D.callout(S.Dh * 0.35, lv.wallTop + 10, S.Dh * 0.35 + 40, lv.wallTop + 80, T.attic);
+        D.callout(left + 15, MZ.e + 70, left - 60, MZ.e + 110, T.knee);
+        const v = -S.Dh * 0.62; D.callout(v, zr(v) - MZ.L.lining + 3, v + 60, zr(v) - MZ.L.lining - 50, T.slope);
+        D.callout(MZ.vc * 0.5, MZ.zc + MZ.collarH / 2, MZ.vc * 0.5 + 40, MZ.zc - 45, T.collar);
+      } else if (T.attic) D.callout(S.Dh * 0.35, lv.wallTop + 25, S.Dh * 0.35 + 40, lv.wallTop + 90, T.attic);
       if (T.roof) D.callout(-S.Dh * 0.55, zr(-S.Dh * 0.55) + 7, -S.Dh * 0.55 - 40, zr(-S.Dh * 0.55) + 70, T.roof);
       if (T.truss) D.callout(-S.Dh * 0.2, zr(-S.Dh * 0.2) - 30, -S.Dh * 0.05, zr(-S.Dh * 0.2) + 40, T.truss);
       D.callout(0, zr(0) + 12, 50, zr(0) + 50, T.ridge);
@@ -546,9 +648,17 @@ const Detail = {
     'Пароизоляция — под утеплителем, нахлёсты 100 мм с проклейкой, примыкания к стенам — на ленту',
     'Мембрана — с выпуском на капельник; карнизная планка — под мембраной',
     'Желоб — на кронштейнах шаг 600 мм, уклон 3–5 мм на 1 м к воронкам'],
+  /** Указания к узлу карниза мансарды: утеплённый скат, вентзазор от свеса до конька */
+  EAVE_NOTES_M: ['Мауэрлат 150×150 — по гидроизоляции на армопояс колена, анкеры М12 шаг 1000 мм; стропило — с врубкой, крепление уголком и скобой',
+    'Вентзазор 50 мм под мембраной — непрерывный от свеса до конька: приток через перфорированный софит, вытяжка через коньковый аэратор',
+    'Утеплитель скатов — без зазоров к стропилам и колену; ветрозащита минваты у мауэрлата (узел продувания)',
+    'Пароизоляция — сплошной контур: скат → потолок по ригелям → колено, нахлёсты 100 мм с проклейкой, к кладке — на ленту',
+    'Желоб — на кронштейнах шаг 600 мм, уклон 3–5 мм на 1 м к воронкам'],
   sectionPanel(spec) {
     const M = Detail.model();
-    const rows = [['Чистый пол', '±0.000'], ['Земля', ((M.lv.gnd) / 100).toFixed(3)], ['Низ ленты', (M.lv.stripBot / 100).toFixed(3)], ['Верх стен', '+' + (M.lv.wallTop / 100).toFixed(3)]];
+    const lvl = (z) => '+' + (z / 100).toFixed(3);
+    const rows = [['Чистый пол', '±0.000'], ['Земля', ((M.lv.gnd) / 100).toFixed(3)], ['Низ ленты', (M.lv.stripBot / 100).toFixed(3)], [M.mz ? 'Низ плиты перекрытия' : 'Верх стен', lvl(M.lv.wallTop)]];
+    if (M.mz) rows.push(['Чистый пол мансарды', lvl(M.mz.e)], ['Верх мауэрлата', lvl(M.lv.plate)], ['Потолок мансарды (по ригелям)', lvl(M.mz.L.ceil)]);
     if (M.r) rows.push(['Конёк', '+' + (Roof.params(M.r).top / 100).toFixed(3)]);
     return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Разрез 1-1'), Detail.posList(spec), U.el('h4', {}, 'Отметки'), Sheets.T(null, rows),
       U.el('h4', {}, 'Указания'), Sheets.ul(Sheets.notes(/Фундамент|Конструкции/).slice(0, 4)),
@@ -566,7 +676,7 @@ const Detail = {
       fr.osb ? ['OSB-3 12 мм', `${fr.osb.toFixed(0)} м²`] : null,
       [fr.scheme === 'truss' ? 'Опорный лежень' : 'Мауэрлат', `${fr.mauerlat.toFixed(1)} м, анкеры М12 — ${fr.anchors} шт.`],
       ['Пиломатериал всего', `≈ ${fr.woodV.toFixed(1)} м³`],
-      ['Утепление чердака', `минвата ${fr.attic.ins} мм по пароизоляции`], ['Продухи', `≥ ${fr.attic.vent.toFixed(2)} м² (1/300 площади)`],
+      ...(fr.attic.mansard ? [['Утепление мансарды', `минвата ${fr.attic.ins} мм между стропилами и поперёк, пароизоляция, вентзазор 50 мм над мембраной`]] : [['Утепление чердака', `минвата ${fr.attic.ins} мм по пароизоляции`], ['Продухи', `≥ ${fr.attic.vent.toFixed(2)} м² (1/300 площади)`]]),
     ].filter(Boolean);
     return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, node ? 'Узел карниза' : 'Стропильная система'), Sheets.T(null, rows),
       U.el('h4', {}, 'Указания'), Sheets.ul(['Древесина — сосна/ель 2 сорта, влажность ≤ 20 %, антисептик и антипирен', fr.scheme === 'truss' ? 'Фермы — заводские на МЗП по расчёту изготовителя; монтаж с временными связями, постоянные раскосы по нижним и верхним поясам' : 'Стропила — к мауэрлату скользящими опорами, в коньке — на болтах через накладки', 'Снегозадержатели над входами и вдоль карниза', 'Дымоход: разделка до сгораемых конструкций ≥ 130 мм (кирпич) / по паспорту', 'Люк на чердак утеплённый, 600×900']),
