@@ -3610,25 +3610,36 @@ const View3D = {
     c.tx = (B.x0 + B.x1) / 2 - Math.cos(c.yaw) * sh; c.tz = (B.z0 + B.z1) / 2 + Math.sin(c.yaw) * sh;
     c.ty = eye ? Math.min(1.6, (B.y0 + B.y1) / 2) : (B.y0 + B.y1) / 2;
   },
-  /** OBJ с цветами вершин (Blender, MeshLab, SketchUp через плагин, Twinmotion) */
-  exportOBJ() {
+  /** Wavefront OBJ + MTL по спецификации (v x y z, vn, f v//vn, usemtl / mtllib): цвета — материалами Kd, стекло — d < 1 */
+  objFiles(base = 'floorplaner') {
     const { P, N, C, GP, GN, GC } = View3D.build();
-    const L = ['# Floorplaner 3D: ' + App.doc.name, '# единицы — метры, ось Y вверх, план: X — вправо, Z — вниз по плану', 'o model'];
     const f = (v) => (Math.round(v * 1000) / 1000).toString();
+    const q = (v) => Math.round(U.clamp(v, 0, 1) * 63);            // 64 уровня на канал — палитра материалов
+    const L = ['# Floorplaner 3D model (Wavefront OBJ)', '# units: metres; Y up; plan X to the right, Z down the plan', `mtllib ${base}.mtl`, 'o model'];
+    const V = [], mats = new Map();
     let n = 0;
-    const add = (pp, nn, cc, name) => {
-      if (!pp.length) return;
-      L.push('g ' + name);
-      for (let i = 0; i < pp.length; i += 3) {
-        L.push(`v ${f(pp[i])} ${f(pp[i + 1])} ${f(pp[i + 2])} ${f(Math.min(1, cc[i]))} ${f(Math.min(1, cc[i + 1]))} ${f(Math.min(1, cc[i + 2]))}`);
-        L.push(`vn ${f(nn[i])} ${f(nn[i + 1])} ${f(nn[i + 2])}`);
+    const add = (pp, nn, cc, glass) => {
+      for (let i = 0; i < pp.length; i += 3) { L.push(`v ${f(pp[i])} ${f(pp[i + 1])} ${f(pp[i + 2])}`); V.push(`vn ${f(nn[i])} ${f(nn[i + 1])} ${f(nn[i + 2])}`); }
+      for (let i = 0; i < pp.length / 3; i += 3) {
+        const j = i * 3, key = `${glass ? 'glass' : 'm'}_${[q(cc[j]), q(cc[j + 1]), q(cc[j + 2])].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+        if (!mats.has(key)) mats.set(key, { glass, rgb: [q(cc[j]) / 63, q(cc[j + 1]) / 63, q(cc[j + 2]) / 63], faces: [] });
+        const a = n + i + 1; mats.get(key).faces.push(`f ${a}//${a} ${a + 1}//${a + 1} ${a + 2}//${a + 2}`);
       }
-      for (let i = 0; i < pp.length / 3; i += 3) { const a = n + i + 1, b = a + 1, c = a + 2; L.push(`f ${a}//${a} ${b}//${b} ${c}//${c}`); }
       n += pp.length / 3;
     };
-    add(P, N, C, 'building'); add(GP, GN, GC, 'glass');
-    U.download(IO.fileName('obj'), L.join('\n'), 'text/plain');
-    UI.toast('OBJ сохранён (метры, цвета в вершинах)');
+    add(P, N, C, false); add(GP, GN, GC, true);
+    for (const x of V) L.push(x);                                   // без spread: сотни тысяч строк
+    const M = ['# Floorplaner materials (Wavefront MTL)'];
+    for (const [name, m] of mats) {
+      L.push(`g ${m.glass ? 'glass' : 'building'}`, `usemtl ${name}`); for (const x of m.faces) L.push(x);
+      M.push('', `newmtl ${name}`, `Ka ${m.rgb.map(f).join(' ')}`, `Kd ${m.rgb.map(f).join(' ')}`, 'Ks 0 0 0', `d ${m.glass ? 0.35 : 1}`, 'illum 1');
+    }
+    return { obj: L.join('\n') + '\n', mtl: M.join('\n') + '\n', count: n };
+  },
+  exportOBJ() {
+    const { obj, mtl } = View3D.objFiles();
+    U.download(IO.fileName('obj.zip'), U.zip([{ name: 'floorplaner.obj', data: obj }, { name: 'floorplaner.mtl', data: mtl }]), 'application/zip');
+    UI.toast('OBJ сохранён: архив с моделью (.obj) и материалами (.mtl), метры — распакуйте и откройте .obj в Blender, SketchUp, 3ds Max');
   },
 
   /* ------------------------------ камера ---------------------------------- */

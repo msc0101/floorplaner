@@ -72,6 +72,30 @@ const U = {
     let t = 0;
     return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
   },
+  /** ZIP без сжатия (метод 0 «stored», APPNOTE 6.3.x): [{ name, data: строка | Uint8Array }] → Uint8Array; имена — UTF-8 (флаг 11) */
+  zip(files) {
+    const enc = new TextEncoder(), T = U._crcT || (U._crcT = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; }));
+    const crc = (b) => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = T[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+    const d = new Date(), time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const parts = [], cen = []; let off = 0;
+    const hdr = (sig, n) => { const b = new DataView(new ArrayBuffer(n)); b.setUint32(0, sig, true); return b; };
+    for (const f of files) {
+      const name = enc.encode(f.name), data = typeof f.data === 'string' ? enc.encode(f.data) : f.data, c = crc(data);
+      const L = hdr(0x04034b50, 30);
+      L.setUint16(4, 20, true); L.setUint16(6, 0x0800, true); L.setUint16(8, 0, true); L.setUint16(10, time, true); L.setUint16(12, date, true);
+      L.setUint32(14, c, true); L.setUint32(18, data.length, true); L.setUint32(22, data.length, true); L.setUint16(26, name.length, true); L.setUint16(28, 0, true);
+      const C = hdr(0x02014b50, 46);
+      C.setUint16(4, 20, true); C.setUint16(6, 20, true); C.setUint16(8, 0x0800, true); C.setUint16(10, 0, true); C.setUint16(12, time, true); C.setUint16(14, date, true);
+      C.setUint32(16, c, true); C.setUint32(20, data.length, true); C.setUint32(24, data.length, true); C.setUint16(28, name.length, true); C.setUint32(42, off, true);
+      parts.push(new Uint8Array(L.buffer), name, data); cen.push(new Uint8Array(C.buffer), name);
+      off += 30 + name.length + data.length;
+    }
+    const cenLen = cen.reduce((a, b) => a + b.length, 0), E = hdr(0x06054b50, 22);
+    E.setUint16(8, files.length, true); E.setUint16(10, files.length, true); E.setUint32(12, cenLen, true); E.setUint32(16, off, true);
+    const all = [...parts, ...cen, new Uint8Array(E.buffer)], out = new Uint8Array(all.reduce((a, b) => a + b.length, 0));
+    let p = 0; for (const b of all) { out.set(b, p); p += b.length; }
+    return out;
+  },
   download(name, data, type = 'application/octet-stream') {
     const blob = data instanceof Blob ? data : new Blob([data], { type });
     const url = URL.createObjectURL(blob);

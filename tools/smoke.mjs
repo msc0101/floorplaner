@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
+import { validateIFC, validateDXF, validateSVG, validateOBJ, validateZIP } from './formats.mjs';
 
 // require() учитывает NODE_PATH — можно использовать глобально установленный playwright
 const { chromium } = createRequire(import.meta.url)('playwright');
@@ -122,6 +123,23 @@ const extra = await page.evaluate(() => {
 });
 console.log('extra', JSON.stringify(extra));
 if (!extra.estHidden || !extra.estHotkey) errors.push('Смета: должна быть скрыта и открываться Ctrl+Alt+S: ' + JSON.stringify(extra));
+// экспорт по спецификациям: IFC 2x3 (ISO 10303-21 / ISO 16739), DXF R12, SVG 1.1, OBJ + MTL в ZIP; фасад с облицовкой — слои материалов IFC
+const ex = await page.evaluate(() => {
+  Finish.applyFacade('brick', 3);
+  const reg = IO.regionFor('all'), dec = (b) => new TextDecoder('windows-1251').decode(b), f = View3D.objFiles();
+  const o = { ifc: IFC.build(), svg: Vector.svg(reg, 100, {}), svgD: Vector.svg(reg, 100, { drawing: true }), dxf: dec(Vector.dxf(reg, 100, {})), dxfD: dec(Vector.dxf(null, 100, { drawing: true })),
+    obj: f.obj, mtl: f.mtl, zip: Array.from(U.zip([{ name: 'floorplaner.obj', data: f.obj }, { name: 'floorplaner.mtl', data: f.mtl }])) };
+  IO.loadDemo();                                   // вернуть демо-проект без облицовки для следующих проверок
+  return o;
+});
+{
+  const z = validateZIP(Uint8Array.from(ex.zip));
+  const fmt = { IFC: validateIFC(ex.ifc), SVG: validateSVG(ex.svg), 'SVG-листы': validateSVG(ex.svgD), DXF: validateDXF(ex.dxf), 'DXF-листы': validateDXF(ex.dxfD), OBJ: validateOBJ(ex.obj, ex.mtl), ZIP: z.errors.concat(z.file('floorplaner.mtl') === ex.mtl ? [] : ['содержимое MTL в архиве не совпадает']) };
+  const clad = /IFCMATERIALLAYER\(\$,[\d.]+,\.T\.\)/.test(ex.ifc);      // вентзазор облицовки — отдельный слой
+  console.log('formats', JSON.stringify(Object.fromEntries(Object.entries(fmt).map(([k, v]) => [k, v.length]))), 'cladLayers', clad);
+  for (const [k, v] of Object.entries(fmt)) if (v.length) errors.push(`Экспорт ${k} не по спецификации: ` + v.slice(0, 5).join('; '));
+  if (!clad) errors.push('IFC: облицовка и вентзазор не выделены слоями материала стены');
+}
 await page.evaluate(() => View3D.toggle(true));
 await page.waitForTimeout(500);
 await page.screenshot({ path: join(shots, '11-3d.png') });

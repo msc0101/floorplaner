@@ -27,7 +27,7 @@ const IFC = {
       const c = ch.codePointAt(0);
       if (c >= 32 && c < 127) { flush(); out += ch === "'" ? "''" : ch === '\\' ? '\\\\' : ch; }
       else if (c < 0x10000) run += c.toString(16).toUpperCase().padStart(4, '0');
-      else { flush(); out += '?'; }
+      else { flush(); out += '\\X4\\' + c.toString(16).toUpperCase().padStart(8, '0') + '\\X0\\'; }   // вне BMP — \X4\ (ISO 10303-21, 6.4.3.3)
     }
     flush();
     return "'" + out + "'";
@@ -97,8 +97,10 @@ const IFC = {
     const bodyRep = (type, items) => add('IFCSHAPEREPRESENTATION', body, 'Body', type, items);
     const extrudeRect = (cx, cy, w, h, depth, z0 = 0) =>
       add('IFCEXTRUDEDAREASOLID', add('IFCRECTANGLEPROFILEDEF', E('AREA'), null, add('IFCAXIS2PLACEMENT2D', P2(cx, cy), null), Math.max(1, w), Math.max(1, h)), A3(0, 0, z0), dz, Math.max(1, depth));
+    // ломаная без повторов подряд (ISO 10303-42: соседние вершины IfcPolyline / IfcPolyLoop не совпадают)
+    const uniq = (pts, closed) => { const o = pts.filter((p, i) => i === 0 || Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1], (p[2] || 0) - (pts[i - 1][2] || 0)) > 0.01); if (closed) while (o.length > 1 && Math.hypot(o[0][0] - o[o.length - 1][0], o[0][1] - o[o.length - 1][1], (o[0][2] || 0) - (o[o.length - 1][2] || 0)) <= 0.01) o.pop(); return o; };
     const extrudePoly = (pts2, depth, z0 = 0) => {
-      const ps = pts2.map(p => P2(p[0], p[1]));
+      const ps = uniq(pts2, true).map(p => P2(p[0], p[1]));
       ps.push(ps[0]);
       return add('IFCEXTRUDEDAREASOLID', add('IFCARBITRARYCLOSEDPROFILEDEF', E('AREA'), null, add('IFCPOLYLINE', ps)), A3(0, 0, z0), dz, Math.max(1, depth));
     };
@@ -144,25 +146,27 @@ const IFC = {
         const ext = (end) => Model.wallEndsAt(w[end], new Set([w.id]), 1.2).filter(r => r.w.kind !== 'fence').length ? Math.max(...Model.wallEndsAt(w[end], new Set([w.id]), 1.2).map(r => r.w.th)) * 5 : 0;
         const eA = w.kind === 'fence' ? 0 : ext('a'), eB = w.kind === 'fence' ? 0 : ext('b');
         const pl = LP(S.pl, A3(a.x, a.y, 0, add('IFCDIRECTION', [u.x, u.y, 0])));
-        const axis = add('IFCSHAPEREPRESENTATION', axisCtx, 'Axis', 'Curve2D', [add('IFCPOLYLINE', [P2(0, 0), P2(L, 0)])]);
+        // ось — только у стен (у забора-прокси её нет: IfcShapeRepresentation без продукта нарушает WR21 IFC2x3)
+        const axis = () => add('IFCSHAPEREPRESENTATION', axisCtx, 'Axis', 'Curve2D', [add('IFCPOLYLINE', [P2(0, 0), P2(L, 0)])]);
         const solid = extrudeRect((L + eB - eA) / 2, 0, L + eA + eB, th, w.h * 10);
         const M = wallMaterial(w);
         const kindName = WALL_KINDS[w.kind].name;
         const el = w.kind === 'fence'
           ? add('IFCBUILDINGELEMENTPROXY', IFC.guid(), oh, 'Забор', M ? M.name : null, 'Забор', pl, shape([bodyRep('SweptSolid', [solid])]), w.id, null)
-          : add('IFCWALLSTANDARDCASE', IFC.guid(), oh, `Стена: ${kindName.toLowerCase()}`, M ? M.name : null, kindName, pl, shape([axis, bodyRep('SweptSolid', [solid])]), w.id);
+          : add('IFCWALLSTANDARDCASE', IFC.guid(), oh, `Стена: ${kindName.toLowerCase()}`, M ? M.name : null, kindName, pl, shape([axis(), bodyRep('SweptSolid', [solid])]), w.id);
         contain(f.id, el);
         if (w.kind !== 'fence') {
           // многослойный материал: несущий слой + утеплитель снаружи
-          const ins = Math.max(0, Math.min(w.ins || 0, w.th));
+          const clad = w.clad > 0 ? w.clad : 0, gap = clad ? w.gap || 0 : 0;
+          const ins = Math.max(0, Math.min(w.ins || 0, w.th - clad - gap - 1));
           let outSide = 1;
-          if (ins > 0) { const n = G.perp(Model.wallDir(w)), m = G.mid(w.a, w.b); outSide = Rooms.at(G.add(m, G.mul(n, w.th / 2 + 15))) && !Rooms.at(G.sub(m, G.mul(n, w.th / 2 + 15))) ? -1 : 1; }
-          const key = `${w.mat}|${w.th}|${ins}|${outSide}`;
-          if (!matGroups.has(key)) matGroups.set(key, { w, ins, outSide, walls: [] });
+          if (ins > 0 || clad > 0) { const n = G.perp(Model.wallDir(w)), m = G.mid(w.a, w.b); outSide = Rooms.at(G.add(m, G.mul(n, w.th / 2 + 15))) && !Rooms.at(G.sub(m, G.mul(n, w.th / 2 + 15))) ? -1 : 1; }
+          const key = `${w.mat}|${w.th}|${ins}|${clad}|${gap}|${w.cladMat || ''}|${outSide}`;
+          if (!matGroups.has(key)) matGroups.set(key, { w, ins, clad, gap, outSide, walls: [] });
           matGroups.get(key).walls.push(el);
           const R0 = wallR(w);
           pset(el, 'Pset_WallCommon', [['IsExternal', BOOL(w.kind === 'ext')], ['LoadBearing', BOOL(w.kind !== 'part')], ['Reference', LABEL(kindName)]]);
-          pset(el, 'FP_Wall', [['Material', LABEL(M ? M.name : w.mat)], ['Thickness', LEN(th)], ['Insulation', LEN(ins * 10)], ...(R0 && w.kind === 'ext' ? [['R_value_m2K_W', REAL(R0)]] : [])]);
+          pset(el, 'FP_Wall', [['Material', LABEL(M ? M.name : w.mat)], ['Thickness', LEN(th)], ['Insulation', LEN(ins * 10)], ...(clad ? [['Cladding', LEN(clad * 10)], ['AirGap', LEN(gap * 10)]] : []), ...(R0 && w.kind === 'ext' ? [['R_value_m2K_W', REAL(R0)]] : [])]);
         }
         // ---- проёмы, двери, окна ----
         for (const op of App.V.openings) {
@@ -231,7 +235,7 @@ const IFC = {
         const h = Math.max(10, ((def.shape === 'veranda' ? Math.max(it.h || 0, porchOpt(it).ph) : itH) || 2) * 10);
         const round = ['round', 'boiler', 'ring', 'well', 'borehole', 'roundtable', 'columnRound', 'tree', 'conifer', 'bush', 'pump'].includes(def.shape);
         const solid = round
-          ? add('IFCEXTRUDEDAREASOLID', add('IFCCIRCLEPROFILEDEF', E('AREA'), null, add('IFCAXIS2PLACEMENT2D', P2(0, 0), null), Math.min(size.w, size.d) * 5), A3(), dz, h)
+          ? add('IFCEXTRUDEDAREASOLID', add('IFCCIRCLEPROFILEDEF', E('AREA'), null, add('IFCAXIS2PLACEMENT2D', P2(0, 0), null), Math.max(1, Math.min(size.w, size.d) * 5)), A3(), dz, h)
           : extrudeRect(0, 0, size.w * 10, size.d * 10, h);
         const rep = shape([bodyRep('SweptSolid', [solid])]);
         const name = it.label || def.name;
@@ -250,10 +254,18 @@ const IFC = {
         const k = LINE_KINDS[l.kind];
         const depth = (l.depth || 0) * 10;
         const zc = f === d.floors[0] && depth > 0 ? -depth : 300;
-        const dir = add('IFCPOLYLINE', l.pts.map(p => P3(X(p), Y(p), zc)));
+        const lp = uniq(l.pts.map(p => [X(p), Y(p), zc]), false);
+        if (lp.length < 2) continue;
         const rad = Math.max(8, (l.dia || 20) / 2);
-        const solid = add('IFCSWEPTDISKSOLID', dir, rad, null, 0, l.pts.length - 1);
-        const el = add('IFCFLOWSEGMENT', IFC.guid(), oh, k.name, `${k.code}${l.dia ? ', Ø' + l.dia + ' мм' : ''}${l.section ? ', ' + l.section : ''}`, k.code, LP(zc < 0 ? sitePl : S.pl, A3()), shape([bodyRep('AdvancedSweptSolid', [solid])]), l.id);
+        // разворот трассы назад (угол > 150°) — сдвиг диска по ломаной вырождается: делим на участки
+        const runs = [[lp[0]]];
+        for (let i = 1; i < lp.length; i++) {
+          const run = runs[runs.length - 1], a = lp[i - 1], b = lp[i], c = lp[i + 1];
+          run.push(b);
+          if (c) { const u = [b[0] - a[0], b[1] - a[1]], v = [c[0] - b[0], c[1] - b[1]]; if (u[0] * v[0] + u[1] * v[1] < -0.866 * Math.hypot(...u) * Math.hypot(...v)) runs.push([b]); }
+        }
+        const solids = runs.filter(r => r.length >= 2).map(r => add('IFCSWEPTDISKSOLID', add('IFCPOLYLINE', r.map(p => P3(...p))), rad, null, 0, r.length - 1));
+        const el = add('IFCFLOWSEGMENT', IFC.guid(), oh, k.name, `${k.code}${l.dia ? ', Ø' + l.dia + ' мм' : ''}${l.section ? ', ' + l.section : ''}`, k.code, LP(zc < 0 ? sitePl : S.pl, A3()), shape([bodyRep('AdvancedSweptSolid', solids)]), l.id);
         contain(zc < 0 ? 'site' : f.id, el);
         pset(el, 'FP_Network', [['System', LABEL(k.name)], ['Code', LABEL(k.code)], ['Length', LEN(G.polyPerimeter(l.pts, false) * 10)], ['Depth', LEN(depth)]]);
       }
@@ -261,7 +273,9 @@ const IFC = {
     // ---- крыши ----
     for (const r of d.roofs) {
       const S = storeys.get(r.floor) || [...storeys.values()].pop();
-      const faces = Roof.faces(r).map(fc => add('IFCFACE', [add('IFCFACEOUTERBOUND', add('IFCPOLYLOOP', fc.map(p => P3(X(p), Y(p), (p.z - S.f.elev) * 10))), true)]));
+      const faces = Roof.faces(r).map(fc => uniq(fc.map(p => [X(p), Y(p), (p.z - S.f.elev) * 10]), true)).filter(fc => fc.length >= 3)
+        .map(fc => add('IFCFACE', [add('IFCFACEOUTERBOUND', add('IFCPOLYLOOP', fc.map(p => P3(...p))), true)]));
+      if (!faces.length) continue;
       const rep = shape([bodyRep('SurfaceModel', [add('IFCSHELLBASEDSURFACEMODEL', [add('IFCOPENSHELL', faces)])])]);
       const P = Roof.params(r);
       const el = add('IFCROOF', IFC.guid(), oh, 'Крыша', `${ROOF_TYPES[r.type].name}, ${Math.round(r.pitch)}°, ${(ROOF_MATERIALS[r.mat] || {}).name || ''}`, ROOF_TYPES[r.type].name, LP(S.pl, A3()), rep, r.id,
@@ -274,15 +288,16 @@ const IFC = {
     for (const [fid, els] of rel.storey) if (els.length) add('IFCRELCONTAINEDINSPATIALSTRUCTURE', IFC.guid(), oh, null, null, els, storeys.get(fid).st);
     if (rel.site.length) add('IFCRELCONTAINEDINSPATIALSTRUCTURE', IFC.guid(), oh, null, null, rel.site, site);
     for (const [fid, sps] of spacesBy) add('IFCRELAGGREGATES', IFC.guid(), oh, null, null, storeys.get(fid).st, sps);
-    for (const { w, ins, outSide, walls } of matGroups.values()) {
+    for (const { w, ins, clad, gap, outSide, walls } of matGroups.values()) {
       const M = WALL_MATERIALS[w.mat];
-      const core = add('IFCMATERIALLAYER', add('IFCMATERIAL', M ? M.name : w.mat), (w.th - ins) * 10, null);
-      const layers = [core];
-      if (ins > 0) {
-        const insL = add('IFCMATERIALLAYER', add('IFCMATERIAL', 'Утеплитель (минеральная вата)'), ins * 10, null);
-        // локальная ось Y стены смотрит в сторону −n плана: снаружи (+n) — первый слой
-        if (outSide > 0) layers.unshift(insL); else layers.push(insL);
-      }
+      // слои снаружи внутрь: облицовка, вентзазор (материал не задан, IsVentilated), утеплитель, несущий слой; сумма = толщине стены
+      const outer = [];
+      if (clad > 0) outer.push(add('IFCMATERIALLAYER', add('IFCMATERIAL', (FIN_FACADE[w.cladMat] || {}).name || 'Облицовка'), clad * 10, null));
+      if (gap > 0) outer.push(add('IFCMATERIALLAYER', null, gap * 10, RAW('.T.')));
+      if (ins > 0) outer.push(add('IFCMATERIALLAYER', add('IFCMATERIAL', 'Утеплитель (минеральная вата)'), ins * 10, null));
+      const core = add('IFCMATERIALLAYER', add('IFCMATERIAL', M ? M.name : w.mat), (w.th - ins - clad - gap) * 10, null);
+      // локальная ось Y стены смотрит в сторону −n плана: снаружи (+n) — первый слой
+      const layers = outSide > 0 ? [...outer, core] : [core, ...outer.reverse()];
       const set = add('IFCMATERIALLAYERSET', layers, `${M ? M.name : w.mat} ${w.th} см`);
       const usage = add('IFCMATERIALLAYERSETUSAGE', set, E('AXIS2'), E('POSITIVE'), -w.th * 5);
       add('IFCRELASSOCIATESMATERIAL', IFC.guid(), oh, null, null, walls, usage);

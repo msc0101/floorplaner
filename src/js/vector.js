@@ -194,7 +194,8 @@ const Vector = {
   svg(region, scaleN, o = {}) {
     const { ctx, W, H } = o.drawing ? Vector.recordSheets(scaleN, o) : Vector.record(region, scaleN, o);
     const f = (v) => (Math.round(v * 100) / 100).toString();
-    const pathD = (subs) => subs.map(s => 'M' + s.pts.map(p => f(p.x) + ' ' + f(p.y)).join('L') + (s.closed ? 'Z' : '')).join('');
+    const fin = (s) => s.pts.every(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+    const pathD = (subs) => subs.filter(fin).map(s => 'M' + s.pts.map(p => f(p.x) + ' ' + f(p.y)).join('L') + (s.closed ? 'Z' : '')).join('');
     const out = [];
     const mm = (v) => (v * 10 / scaleN).toFixed(1);
     out.push(`<?xml version="1.0" encoding="UTF-8"?>`,
@@ -202,26 +203,32 @@ const Vector = {
       `<title>${U.esc(App.doc.name)} — 1:${scaleN}</title>`,
       `<rect width="100%" height="100%" fill="#ffffff"/>`);
     let layer = null, clipN = 0, openClips = 0;
+    const seen = new Map();                       // id в SVG уникальны (XML): повторный слой — WALLS_2, WALLS_3…
     const names = { FRAME: 'Рамка и штамп', GRID: 'Сетка', UNDERLAY: 'Подложка', SITE: 'Участок', ROADS: 'Дороги', ROOMS: 'Помещения', ITEMS: 'Предметы', WALLS: 'Стены', OPENINGS: 'Проёмы', NETWORKS: 'Сети', ROOF: 'Крыша', DIMS: 'Размеры', TEXT: 'Надписи', LABELS: 'Подписи', NOTES: 'Примечания', CHECKS: 'Отступы', COMPASS: 'Компас' };
     for (const r of ctx.recs) {
       if (r.layer !== layer && !openClips) {
         if (layer !== null) out.push('</g>');
         layer = r.layer;
-        out.push(`<g id="${layer}" inkscape:groupmode="layer" inkscape:label="${names[layer] || layer}">`);
+        const k = (seen.get(layer) || 0) + 1; seen.set(layer, k);
+        const id = String(layer).replace(/[^A-Za-z0-9_-]/g, '_').replace(/^(?=[^A-Za-z_])/, 'L');   // id — XML Name: не с цифры («0» → «L0»)
+        out.push(`<g id="${id}${k > 1 ? '_' + k : ''}" inkscape:groupmode="layer" inkscape:label="${U.esc(names[layer] || layer)}">`);
       }
       if (r.t === 'clip') { clipN++; openClips++; out.push(`<clipPath id="c${clipN}"><path d="${pathD(r.subs)}"/></clipPath><g clip-path="url(#c${clipN})">`); continue; }
       if (r.t === 'clipEnd') { if (openClips) { out.push('</g>'); openClips--; } continue; }
       if (r.t === 'path') {
+        const d = pathD(r.subs);
+        if (!d) continue;
         const fill = r.fill ? `fill="${r.fill.hex}"${r.fill.a < 1 ? ` fill-opacity="${r.fill.a.toFixed(3)}"` : ''} fill-rule="nonzero"` : 'fill="none"';
         const stroke = r.stroke ? ` stroke="${r.stroke.hex}"${r.stroke.a < 1 ? ` stroke-opacity="${r.stroke.a.toFixed(3)}"` : ''} stroke-width="${f(r.width)}" stroke-linejoin="round"${r.dash && r.dash.length ? ` stroke-dasharray="${r.dash.map(f).join(' ')}"` : ''}` : '';
-        out.push(`<path d="${pathD(r.subs)}" ${fill}${stroke}/>`);
+        out.push(`<path d="${d}" ${fill}${stroke}/>`);
       } else if (r.t === 'text') {
+        if (!Number.isFinite(r.x) || !Number.isFinite(r.y)) continue;
         const anchor = r.align === 'center' ? 'middle' : (r.align === 'right' || r.align === 'end') ? 'end' : 'start';
         const base = r.base === 'middle' ? 'central' : r.base === 'top' ? 'hanging' : 'alphabetic';
         const rot = Math.abs(r.ang) > 1e-4 ? ` transform="rotate(${f(U.deg(r.ang))} ${f(r.x)} ${f(r.y)})"` : '';
         out.push(`<text x="${f(r.x)}" y="${f(r.y)}" font-family="Arial, sans-serif" font-size="${f(r.size)}"${r.bold ? ' font-weight="bold"' : ''} text-anchor="${anchor}" dominant-baseline="${base}" fill="${r.fill.hex}"${r.fill.a < 1 ? ` fill-opacity="${r.fill.a.toFixed(3)}"` : ''}${rot}>${U.esc(r.text)}</text>`);
       } else if (r.t === 'image') {
-        out.push(`<image x="${f(r.x)}" y="${f(r.y)}" width="${f(r.w)}" height="${f(r.h)}" opacity="${r.alpha.toFixed(2)}" xlink:href="${r.src}" transform="rotate(${f(U.deg(r.ang))} ${f(r.x)} ${f(r.y)})"/>`);
+        out.push(`<image x="${f(r.x)}" y="${f(r.y)}" width="${f(r.w)}" height="${f(r.h)}" opacity="${r.alpha.toFixed(2)}" xlink:href="${U.esc(r.src)}" transform="rotate(${f(U.deg(r.ang))} ${f(r.x)} ${f(r.y)})"/>`);
       }
     }
     while (openClips--) out.push('</g>');
@@ -237,11 +244,27 @@ const Vector = {
     // мм; одиночный план — в координатах проекта, комплект листов — от левого верхнего угла
     const X = (p) => (p.x + (sheets ? 0 : region.x0)) * 10, Y = (p) => -(p.y + (sheets ? 0 : region.y0)) * 10;
     const f = (v) => (Math.round(v * 1000) / 1000).toString();
-    const used = new Set(ctx.recs.map(r => r.layer));
+    // имена слоёв R12: A–Z, 0–9, $ - _, до 31 символа
+    const lname = (n) => (String(n || '0').toUpperCase().replace(/[^A-Z0-9$_-]/g, '_').slice(0, 31)) || '0';
+    const used = new Set(['0', ...ctx.recs.map(r => lname(r.layer))]);
+    // габарит для «Показать до границ» ($EXTMIN / $EXTMAX)
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const ext = (p) => { const x = X(p), y = Y(p); if (Number.isFinite(x) && Number.isFinite(y)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } };
+    for (const r of ctx.recs) if (!r.clip) { if (r.t === 'path') for (const s of r.subs) s.pts.forEach(ext); else if (r.t === 'text') ext(r); }
+    if (!(x1 >= x0)) { x0 = y0 = 0; x1 = y1 = 1000; }
+    // Заголовок — только переменные DXF R12 (AC1009): $INSUNITS появилась в R2000 и в R12 не допускается
     g(0, 'SECTION'); g(2, 'HEADER');
     g(9, '$ACADVER'); g(1, 'AC1009');
-    g(9, '$INSUNITS'); g(70, 4);
     g(9, '$DWGCODEPAGE'); g(3, 'ANSI_1251');
+    g(9, '$INSBASE'); g(10, 0); g(20, 0); g(30, 0);
+    g(9, '$EXTMIN'); g(10, f(x0)); g(20, f(y0)); g(30, 0);
+    g(9, '$EXTMAX'); g(10, f(x1)); g(20, f(y1)); g(30, 0);
+    g(9, '$LIMMIN'); g(10, f(x0)); g(20, f(y0));
+    g(9, '$LIMMAX'); g(10, f(x1)); g(20, f(y1));
+    g(9, '$LUNITS'); g(70, 2);                    // десятичные; 1 единица = 1 мм
+    g(9, '$LUPREC'); g(70, 0);
+    g(9, '$TEXTSTYLE'); g(7, 'STANDARD');
+    g(9, '$CLAYER'); g(8, '0');
     g(0, 'ENDSEC');
     g(0, 'SECTION'); g(2, 'TABLES');
     g(0, 'TABLE'); g(2, 'LTYPE'); g(70, 1);
@@ -250,8 +273,15 @@ const Vector = {
     g(0, 'TABLE'); g(2, 'LAYER'); g(70, used.size);
     for (const n of used) { g(0, 'LAYER'); g(2, n); g(70, 0); g(62, LAYER_DXF[n] || 7); g(6, 'CONTINUOUS'); }
     g(0, 'ENDTAB');
+    g(0, 'TABLE'); g(2, 'STYLE'); g(70, 1);
+    g(0, 'STYLE'); g(2, 'STANDARD'); g(70, 0); g(40, 0); g(41, 1); g(50, 0); g(71, 0); g(42, 2.5); g(3, 'txt'); g(4, '');
+    g(0, 'ENDTAB');
+    g(0, 'ENDSEC');
+    g(0, 'SECTION'); g(2, 'BLOCKS');
     g(0, 'ENDSEC');
     g(0, 'SECTION'); g(2, 'ENTITIES');
+    // текст R12: до 255 символов, «%%» — управляющий префикс (%%% — сам знак %), Ø → %%c
+    const txt = (t) => t.replace(/[\r\n\t]+/g, ' ').replace(/%%/g, '%%%%%%').replace(/[Ø⌀]/g, '%%c').slice(0, 255);
     for (const r of ctx.recs) {
       if (r.clip) continue;                 // штриховки внутри клипа — пропускаем
       if (r.t === 'path' && (r.layer === 'LABELS' || r.layer === 'GRID') && !r.stroke) continue;   // подложки под подписями
@@ -261,20 +291,22 @@ const Vector = {
           if (pts.length < 2) continue;
           const closed = s.closed || (pts.length > 2 && Math.hypot(pts[0].x - pts[pts.length - 1].x, pts[0].y - pts[pts.length - 1].y) < 1e-4);
           if (closed && pts.length > 2 && Math.hypot(pts[0].x - pts[pts.length - 1].x, pts[0].y - pts[pts.length - 1].y) < 1e-4) pts.pop();
-          g(0, 'POLYLINE'); g(8, r.layer); g(66, 1); g(70, closed ? 1 : 0); g(10, 0); g(20, 0); g(30, 0);
-          for (const p of pts) { g(0, 'VERTEX'); g(8, r.layer); g(10, f(X(p))); g(20, f(Y(p))); g(30, 0); }
-          g(0, 'SEQEND'); g(8, r.layer);
+          if (pts.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) continue;
+          const ln = lname(r.layer);
+          g(0, 'POLYLINE'); g(8, ln); g(66, 1); g(10, 0); g(20, 0); g(30, 0); g(70, closed ? 1 : 0);
+          for (const p of pts) { g(0, 'VERTEX'); g(8, ln); g(10, f(X(p))); g(20, f(Y(p))); g(30, 0); }
+          g(0, 'SEQEND'); g(8, ln);
         }
-      } else if (r.t === 'text' && r.text.trim()) {
-        const h = r.size * 10 * 0.72;      // высота прописных ≈ 0.72 кегля
+      } else if (r.t === 'text' && r.text.trim() && Number.isFinite(r.x) && Number.isFinite(r.y)) {
+        const h = Math.max(0.1, r.size * 10 * 0.72);      // высота прописных ≈ 0.72 кегля
         const hAlign = r.align === 'center' ? 1 : (r.align === 'right' || r.align === 'end') ? 2 : 0;
         const vAlign = r.base === 'middle' ? 2 : r.base === 'top' ? 3 : 0;
-        g(0, 'TEXT'); g(8, r.layer); g(10, f(X(r))); g(20, f(Y(r))); g(30, 0); g(40, f(h)); g(1, r.text.replace(/\n/g, ' '));
-        g(50, f(-U.deg(r.ang))); g(72, hAlign); g(11, f(X(r))); g(21, f(Y(r))); g(31, 0); g(73, vAlign);
+        g(0, 'TEXT'); g(8, lname(r.layer)); g(10, f(X(r))); g(20, f(Y(r))); g(30, 0); g(40, f(h)); g(1, txt(r.text));
+        g(50, f(-U.deg(r.ang))); g(7, 'STANDARD'); g(72, hAlign); g(11, f(X(r))); g(21, f(Y(r))); g(31, 0); g(73, vAlign);
       }
     }
     g(0, 'ENDSEC'); g(0, 'EOF');
-    return Vector.cp1251(L.join('\r\n') + '\r\n');
+    return Vector.cp1251(L.join('\r\n').replace(/[≥≤²³µ→]/g, (c) => ({ '≥': '>=', '≤': '<=', '²': '2', '³': '3', 'µ': 'u', '→': '->' }[c])) + '\r\n');
   },
   cp1251(s) {
     const out = new Uint8Array(s.length);
