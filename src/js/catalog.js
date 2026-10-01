@@ -1546,10 +1546,17 @@ const Painters = (() => {
     box(P, -w / 2 + 3, -d / 2 + 3, w - 6, d - 6, 0, false);
     for (let x = -w / 2 + 6; x < w / 2 - 4; x += 4) line(P, [x, -d / 2 + 3, x, d / 2 - 3]);
   };
-  S.drainChannel = (P, w, d) => {
-    P.ctx.fillStyle = P.C.itemFill; box(P, -w / 2, -d / 2, w, d, 0); thin(P);
-    for (let x = -w / 2 + 4; x < w / 2 - 2; x += 5) line(P, [x, -d / 2 + 3, x, d / 2 - 3]);
-    lw(P, 1.2); line(P, [w / 2 - 14, 0, w / 2 - 4, 0]); line(P, [w / 2 - 8, -3, w / 2 - 4, 0, w / 2 - 8, 3]);   // уклон к выпуску
+  // лоток с решёткой: тёмная решётка в стальной окантовке — читается и поверх штриховки отмостки; стыки секций по 1 м, стрелка — уклон к выпуску
+  S.drainChannel = (P, w, d0) => {
+    const d = Math.max(d0, 6 * P.px), ink = P.ctx.strokeStyle, c = Math.max(d * 0.18, 1.5);   // на мелком масштабе — не тоньше 6 px, иначе лоток сливается со стеной
+    lw(P, 1.6); P.ctx.fillStyle = '#4a4f57'; box(P, -w / 2, -d / 2, w, d, 0);
+    P.ctx.strokeStyle = '#d6d9dd'; thin(P);
+    for (let x = -w / 2 + 3; x < w / 2 - 1.5; x += 3) line(P, [x, -d / 2 + c, x, d / 2 - c]);
+    lw(P, 1.4); P.ctx.strokeStyle = ink;
+    for (let x = -w / 2 + 100; x < w / 2 - 20; x += 100) line(P, [x, -d / 2, x, d / 2]);
+    line(P, [-w / 2, -d / 2 + c, w / 2, -d / 2 + c]); line(P, [-w / 2, d / 2 - c, w / 2, d / 2 - c]);
+    const a = Math.min(30, w * 0.15), y = d / 2 + Math.max(6, d * 0.5);
+    lw(P, 1.2); line(P, [-a, y, a, y]); line(P, [a - 6, y - 3, a, y, a - 6, y + 3]);
   };
   // уличная розетка IP44: знак розетки в корпусе с крышкой
   S.socketOut = (P, w, d) => {

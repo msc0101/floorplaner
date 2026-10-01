@@ -1573,10 +1573,17 @@ const View3D = {
       return true;
     }
     if (sh === 'drainChannel') {
-      const cast = [0.22, 0.23, 0.25];
-      bx(-W, -D, W, D, e - 2, e + 1.2, [0.66, 0.65, 0.62]);
-      bx(-W + 1, -D + 3, W - 1, D - 3, e + 1.2, e + 1.3, [0.05, 0.05, 0.05]);
-      for (let x = -W + 2; x < W - 2; x += 5) bx(x, -D + 3, x + 2, D - 3, e + 1.2, e + 2, cast);
+      // вровень с покрытием: на отмостке / бетонной площадке — по её верху (+6 см), иначе по земле
+      const ends = [G.toWorld({ x: -W, y: 0 }, it.x, it.y, it.rot || 0), it, G.toWorld({ x: W, y: 0 }, it.x, it.y, it.rot || 0)];
+      const z = e + (Model.blindAreas().some(b => b.quads.some(q => ends.some(p => G.pointInPoly(p, q)))) ? 6 : 0);
+      const cast = [0.16, 0.17, 0.19], steel = [0.74, 0.76, 0.79], c = Math.max(1.5, D * 0.2);
+      bx(-W, -D, W, D, z - 14, z - 0.4, [0.58, 0.58, 0.56]);                                                                  // корпус из полимербетона
+      bx(-W + c, -D + c, W - c, D - c, z - 3, z - 0.3, [0.03, 0.03, 0.04]);                                                  // тёмный жёлоб под решёткой
+      bx(-W, -D, W, -D + c, z - 0.4, z + 0.5, steel); bx(-W, D - c, W, D, z - 0.4, z + 0.5, steel);                          // стальная окантовка
+      bx(-W, -D, -W + c, D, z - 0.4, z + 0.5, steel); bx(W - c, -D, W, D, z - 0.4, z + 0.5, steel);
+      for (let x = -W + c + 1; x < W - c - 1; x += 3) bx(x, -D + c, x + 1.3, D - c, z - 0.3, z + 0.35, cast);                // решётка: поперечные рёбра
+      bx(-W + c, -0.5, W - c, 0.5, z - 0.3, z + 0.3, cast);                                                                 // продольное ребро
+      for (let x = -W + 100; x < W - 20; x += 100) bx(x - 0.6, -D + c, x + 0.6, D - c, z - 0.3, z + 0.5, steel);           // стыки секций по 1 м
       return true;
     }
     // --- линейный LED-светильник под потолком; светильник 36 В — на стенке ямы/погреба (h < 0 — ниже пола) ---
