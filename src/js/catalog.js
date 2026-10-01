@@ -59,7 +59,7 @@ const SYSTEMS = {
     norms: 'СП 60.13330.2020 «Отопление, вентиляция и кондиционирование воздуха» (радиаторы — под окнами, п. 6.4.4); СП 50.13330.2012 (теплозащита)' },
   warmfloor: { name: 'Тёплый пол', short: 'Тёплый пол', color: '#e07b2f', lines: ['warmfloor'], keys: ['manifoldWF'],
     norms: 'СП 60.13330.2020 п. 6.4.10: температура поверхности пола ≤ 26 °C в жилых, ≤ 31 °C в ванных; контур ≤ 80–100 м (PE-Xa 16 мм)' },
-  vent:      { name: 'Вентиляция', short: 'Вентиляция', color: '#0e9f6e', lines: ['airIn'], keys: ['ventSupply', 'ventGrille', 'ventTransfer', 'recuperator', 'fan'],
+  vent:      { name: 'Вентиляция', short: 'Вентиляция', color: '#0e9f6e', lines: ['airIn'], keys: ['ventSupply', 'ventGrille', 'ventTransfer', 'recuperator', 'fan', 'ventPipe', 'ventShaft', 'ventShaft2', 'hood'],
     norms: 'СП 54.13330.2022 / СП 55.13330.2016 (воздухообмен); СП 60.13330.2020 табл. 9.1; СП 402.1325800.2018 (помещения с газовыми приборами)' },
   ac:        { name: 'Кондиционирование', short: 'Кондиционеры', color: '#0891b2', lines: ['freon'], keys: ['ac', 'acout'],
     norms: 'СП 60.13330.2020 разд. 7; длина трассы и перепад высот — по паспорту кондиционера' },
@@ -76,7 +76,7 @@ const SYSTEM_RULES = {
   sewer: ['Уклоны: Ø50 — 0,03, Ø110 — 0,02; повороты — отводами 45°, ревизии у стояков', 'Вытяжная часть стояка — выше кровли, Ø не меньше стояка', 'Выпуск Ø110 до колодца — не длиннее 12 м', 'Септик ≥ 5 м от дома, ≥ 20 м от скважины (фильтрующие — ≥ 50 м); ливнёвка — в поглощающие колодцы, не в септик'],
   heating: ['Радиаторы — под окнами, длиной 50–75 % окна, 10–12 см от пола', 'Котельная: объём ≥ 7,5 м³ (котёл до 30 кВт), окно, приток и вытяжка', 'Неотапливаемый гараж — отдельная ветка, дежурный режим ✱ +5 °C'],
   warmfloor: ['Шаг 15–20 см (у окон и в ванных — 15), отступ от стен 10–15 см', 'Контур не длиннее 80 м, контуры на коллекторе — примерно равной длины', 'Стяжка над трубой ≥ 45 мм, демпферная лента по периметру, температура пола ≤ 26 °C'],
-  vent: ['Вытяжка: кухня 60 м³/ч (с газовой плитой 90), санузел 25–50 м³/ч, котельная — 3 объёма в час', 'Приток в жилые комнаты — клапаны в стенах; переток — щели или решётки в дверях', 'Вентканалы выводятся выше кровли по СП 7.13130 п. 5.10'],
+  vent: ['Вытяжка: кухня 60 м³/ч (с газовой плитой 90), санузел 25–50 м³/ч, котельная — 3 объёма в час', 'Приток в жилые комнаты — клапаны в стенах; санузлы, котельная, гардеробная — только вытяжка, приток в них — перетоком: подрез дверей 2 см или переточная решётка (СП 54.13330 п. 9.6)', 'Вентканалы выводятся выше кровли по СП 7.13130 п. 5.10'],
   ac: ['Внутренний блок — не над кроватью и рабочим местом, ≥ 15 см от потолка', 'Трасса на блок ≤ 15–25 м (по паспорту), дренаж — с уклоном ≥ 1 %', 'Наружный блок — в тени, на кронштейнах, с доступом для обслуживания'],
   power: ['Ввод: вводной автомат, счётчик, УЗО 300 мА (пожарное), УЗИП', 'Группы: свет — 3×1,5 C10; розетки — 3×2,5 C16 + УЗО 30 мА; мощные приборы — отдельные линии', 'Ванная, стиральная машина, улица — УЗО 10–30 мА, розетки IP44', 'Высоты: розетки 0,3 м (кухня 1,1 м), выключатели 0,9 м у двери со стороны ручки'],
   lowvolt: ['Сектора камер перекрываются и закрывают весь периметр', 'Кабели UTP outdoor в гофре, в земле — в ПНД-трубе на 0,7 м', 'Регистратор с ИБП — в скрытом тёплом помещении'],
@@ -821,6 +821,40 @@ function bldWallH(it) {
   if (U.isNum(it.wallH)) return U.clamp(it.wallH, 100, 1000);
   const ops = bldShell(it, it.w, it.d).ops, opTop = ops.reduce((m, o) => Math.max(m, (o.sill || 0) + o.h), 0);
   return Math.max((it.h || 250) - bldRoofRise(it), 150, opTop + 15);
+}
+
+/** Каркас крыши постройки (гараж, сарай, баня): опоры — две несущие стены вдоль карниза, мауэрлат на армопоясе.
+ *  Подбор как у дома (Roof.frame, СП 20.13330, СП 64.13330): односкатная до 6 м / двускатная до 6,5 м — стропила
+ *  (у двускатной — с затяжкой), больше — фермы на МЗП; шаг 0,6 м; проверка по прочности и прогибу L/200 */
+function bldFrame(it) {
+  if (!BLD_HOLLOW.has(catItem(it.key).shape)) return null;
+  const R = bldRoof(it);
+  if (!['shed', 'gable'].includes(R.type) || !(R.pitch > 0)) return null;
+  const rr = bldRoofRect(it, it.w, it.d), t = bldWallT(it), clad = it.clad > 0 ? it.clad + (it.gap ?? 1) : 0, core = t - clad;
+  const alongX = Math.abs(Math.sin(U.rad(rr.rot || 0))) < 0.5;                     // карниз — вдоль локальной оси x постройки
+  const off = clad + core / 2;                                                      // ось несущего слоя от наружной грани
+  const span = ((alongX ? it.d : it.w) - 2 * off) / 100, len = ((alongX ? it.w : it.d) - 2 * off) / 100;
+  const a = U.rad(R.pitch), shed = R.type === 'shed', half = shed ? span : span / 2;
+  const cl = Climate.get(), mu = U.clamp((60 - R.pitch) / 30, 0, 1), Sg = cl.snowKpa, s0 = mu * Sg, sD = s0 * 1.4;
+  const gRoof = ['ceramic', 'slate'].includes(R.mat) ? 0.65 : ['soft', 'membrane'].includes(R.mat) ? 0.4 : 0.25;   // покрытие + настил, кПа
+  const gD = gRoof * 1.2 / Math.cos(a), step = 0.6, truss = shed ? span > 6 : span > 6.5;
+  const L = truss ? (shed ? span / 3 : half / 2) : half, q = (gD + sD) * step;
+  let pick = null;
+  for (const [b, h] of [[50, 150], [50, 200], [50, 250], [75, 200], [75, 250], [100, 250]]) {
+    const W = b * h * h / 6 / 1e9, I = b * h ** 3 / 12 / 1e12, sig = q * L * L / 8 / W / 1000;
+    const Ln = L / Math.cos(a), qn = (gRoof / Math.cos(a) + s0) * step * Math.cos(a), f = 5 * qn * Ln ** 4 / (384 * 1e7 * I) * 1000, fmax = Ln * 1000 / 200;
+    if (sig <= 13 && f <= fmax) { pick = { b, h, sig, f, fmax }; break; }
+  }
+  pick = pick || { b: 100, h: 250, sig: NaN, f: NaN, fmax: NaN };
+  const n = Math.floor(len / step + 1e-6) + 1, rafterL = (shed ? rr.d : rr.d / 2) / 100 / Math.cos(a), nRaft = shed ? n : 2 * n;
+  const BAT = { membrane: ['сплошной настил OSB-3 18 мм по контробрешётке 50×50 (вентзазор)', 0], profile: ['25×100 шаг 500', 0.5], metaltile: ['25×100 шаг 350', 0.35], soft: ['OSB-3 12 мм по обрешётке 25×100 шаг 300', 0.3], seam: ['сплошная 25×100 с зазором 20 мм', 0.12], ondulin: ['40×50 шаг 610', 0.6] }[R.mat] || ['25×100 шаг 350', 0.35];
+  const slope = rr.w * rr.d / Math.cos(a) / 1e4, mauerlat = 2 * len;
+  const woodV = (truss ? n * (rafterL + span * 1.02 + span * (shed ? 0.9 : 1.1)) : nRaft * rafterL + (shed ? 0 : n * span)) * pick.b * pick.h / 1e6 + mauerlat * 0.15 * 0.1 + (BAT[1] ? slope / BAT[1] * 0.025 * 0.1 : 0);
+  const name = truss ? (shed ? 'Односкатные фермы на МЗП (заводские), опора — мауэрлат на продольных стенах' : 'Фермы на МЗП (заводские), опора — мауэрлат на продольных стенах')
+    : shed ? 'Наслонные стропила одним пролётом: опора — мауэрлат на высокой и низкой стенах' : 'Наслонные стропила с затяжкой, опора — мауэрлат и коньковый прогон';
+  return { scheme: truss ? 'truss' : 'rafter', name, shed, alongX, off, span, len, pitch: R.pitch, mat: R.mat, step, n, nRaft, rafterL, ...pick, L,
+    snow: { district: cl.snow, Sg, mu, s0, sD }, gRoof, q, slope, bat: BAT[0], batStep: BAT[1], osb: R.mat === 'membrane' || R.mat === 'soft' ? slope : 0,
+    mauerlat, anchors: Math.ceil(mauerlat / 1.2) + 2, woodV, rr };
 }
 
 /* ===================== ПОСТРОЙКИ «КАК ДОМ»: стены с толщиной, внутри — пусто ===================== */
@@ -1755,9 +1789,9 @@ const Painters = (() => {
       } else if (o.type === 'arch') {
         thin(P); L(at(o.s0, -s.t / 2), at(o.s0, s.t / 2)); L(at(o.s1, -s.t / 2), at(o.s1, s.t / 2));
       } else {
-        // дверь: полотно и дуга открывания внутрь, петли — у начала (hinge 0) или конца проёма
-        const h0 = o.hinge ? o.s1 : o.s0, h1 = o.hinge ? o.s0 : o.s1, r = o.s1 - o.s0;
-        const pv = at(h0, s.t / 2), leaf = G.add(pv, G.mul(F.n, r)), jamb = at(h1, s.t / 2);
+        // дверь: полотно и дуга открывания внутрь (out — наружу), петли — у начала (hinge 0) или конца проёма
+        const h0 = o.hinge ? o.s1 : o.s0, h1 = o.hinge ? o.s0 : o.s1, r = o.s1 - o.s0, k = o.out ? -1 : 1;
+        const pv = at(h0, k * s.t / 2), leaf = G.add(pv, G.mul(F.n, k * r)), jamb = at(h1, k * s.t / 2);
         thin(P); L(pv, leaf);
         const a0 = Math.atan2(leaf.y - pv.y, leaf.x - pv.x), a1 = Math.atan2(jamb.y - pv.y, jamb.x - pv.x);
         let da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;

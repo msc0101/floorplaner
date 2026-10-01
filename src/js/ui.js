@@ -995,6 +995,7 @@ const UI = {
       win ? F.num('Подоконник', o.sill ?? T.sill, (v) => edit((ops, x) => { x.sill = U.clamp(v, 0, 300); }), { min: 0 }) : null,
       F.btns([pick ? ['Выделить', () => { App.subSel = { id: it.id, idx: i }; UI.refresh(); App.redraw(); }] : null,
         !win && o.type !== 'gate' && o.type !== 'arch' ? ['Петли ⇄', () => edit((ops, x) => { x.hinge = x.hinge ? 0 : 1; })] : null,
+        !win && o.type !== 'gate' && o.type !== 'arch' ? [o.out ? 'Открывается наружу ⇄' : 'Открывается внутрь ⇄', () => edit((ops, x) => { x.out = x.out ? 0 : 1; })] : null,
         ['Удалить', del, 'danger']]));
   },
   /** Выделен проём в стене гаража / сарая */

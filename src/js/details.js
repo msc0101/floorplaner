@@ -510,9 +510,98 @@ const Detail = {
     D.text(`Уклон ${Math.round(fr.pitch)}°, конёк +${(Roof.params(r).top / 100).toFixed(3)}`, 0, Dh * 0.5, { size: 2.6, align: 'center', bg: true });
   },
 
+  /** Крыша постройки (гараж, сарай): геометрия листа — разрез поперёк ската слева, план раскладки справа (см) */
+  bldGeom(id) {
+    const it = Model.get(id), fr = it && bldFrame(it);
+    if (!fr) return null;
+    const R = bldRoof(it), s = R.sides, A = fr.alongX, eave = bldWallH(it), g = View3D.roofGeom(it, it.h || 300, 150, eave);
+    const loc = (u, v) => (A ? { x: u, y: v } : { x: v, y: u }), Z = (u, v) => g.roofZ(loc(u, v));
+    const uMin = A ? -(it.w / 2 + s.l) : -(it.d / 2 + s.b), uMax = A ? it.w / 2 + s.r : it.d / 2 + s.f;
+    const vMin = A ? -(it.d / 2 + s.b) : -(it.w / 2 + s.l), vMax = A ? it.d / 2 + s.f : it.w / 2 + s.r;
+    const half = (A ? it.d : it.w) / 2 - fr.off, top = Math.max(Z(0, vMin), Z(0, vMax)) + 10;
+    const zc = top / 2, Dv = (vMax - vMin) / 2, sOff = vMax + 260 - uMin;
+    const t = bldWallT(it), clad = it.clad > 0 ? it.clad + (it.gap ?? 1) : 0;
+    return { it, fr, R, eave, Z, uMin, uMax, vMin, vMax, half, top, zc, Dv, sOff, t, clad, outer: (A ? it.d : it.w) / 2,
+      bbox: { x0: vMin - 130, y0: -(Math.max(top, zc + Dv) + 70), x1: sOff + uMax + 40, y1: -(Math.min(0, zc - Dv) - 90) } };
+  },
+  drawBldRoof(D, G2) {
+    const { fr, eave, Z, uMin, uMax, vMin, vMax, half, top, zc, sOff, t, clad, outer } = G2;
+    const a = U.rad(fr.pitch), hb = fr.h / 10, hr = hb / Math.cos(a), v0 = -half, v1 = half;
+    const roof = (v) => Z(0, v), chordTop = (v) => roof(v) - 1.8, hiV = roof(v0) > roof(v1) ? v0 : v1, loV = hiV === v0 ? v1 : v0;
+    // ---- разрез поперёк ската ----
+    D.line(vMin - 60, 0, vMax + 60, 0, '#111', 0.5);                                                 // пол / земля
+    for (const sg of [-1, 1]) {
+      const o = sg * outer, wTop = fr.scheme === 'truss' || !fr.shed ? eave : chordTop(sg * half) - hr - 10;
+      D.rect(o - sg * clad, 0, o - sg * t, wTop, D.pat.block || '#e8e2d4', '#111', 0.35);              // несущий слой
+      if (clad) D.rect(o, 0, o - sg * (clad - 1), wTop - 10, '#e9c6b0', '#111', 0.25);                  // облицовка
+      D.rect(sg * half - 7.5, wTop, sg * half + 7.5, wTop + 10, D.pat.wood, '#111', 0.3);              // мауэрлат
+      D.rect(o - sg * clad, wTop - 25, o - sg * t, wTop, '#cfcfcf', '#111', 0.25);                    // армопояс
+    }
+    const tc = [[vMin, chordTop(vMin)], [vMax, chordTop(vMax)], [vMax, chordTop(vMax) - hr], [vMin, chordTop(vMin) - hr]];
+    D.poly(tc, D.pat.wood, '#111', 0.35);                                                            // стропило / верхний пояс
+    D.line(vMin, roof(vMin), vMax, roof(vMax), '#111', 0.7);                                         // настил и кровля
+    let nWeb = 0;
+    if (fr.scheme === 'truss') {
+      const zb = eave + 10;
+      D.rect(v0 - 12, zb, v1 + 12, zb + hb, D.pat.wood, '#111', 0.3);                                  // нижний пояс
+      const tz = (v) => chordTop(v) - hr, k = 4, pv = (i) => loV + (hiV - loV) * i / k;
+      D.line(hiV, zb + hb, hiV, tz(hiV), '#8a5a2b', 1.2); nWeb++;
+      for (let i = 1; i < k; i++) { D.line(pv(i), zb + hb, pv(i), tz(pv(i)), '#8a5a2b', 0.8); D.line(pv(i - 1), i === 1 ? zb + hb : tz(pv(i - 1)), pv(i), i % 2 ? tz(pv(i)) : zb + hb, '#8a5a2b', 0.8); nWeb += 2; }
+      D.line(pv(k - 1), zb + hb, hiV, tz(hiV), '#8a5a2b', 0.8);
+    }
+    D.dimH(v0, v1, -D.cm(8), String(Math.round(half * 20)) + ' (пролёт по осям стен)');
+    D.dimH(vMin, vMax, -D.cm(15), String(Math.round((vMax - vMin) * 10)));
+    D.dimV(0, eave, vMin - D.cm(6), String(Math.round(eave * 10)));
+    D.dimV(0, roof(hiV), vMin - D.cm(13), String(Math.round(roof(hiV) * 10)));
+    D.level(vMax + 10, roof(loV), 'карниз', false);
+    D.text(`уклон ${Math.round(fr.pitch)}°`, (v0 + v1) / 2, roof((v0 + v1) / 2) + D.cm(5), { size: 2.6, align: 'center', bg: true });
+    D.text('Разрез поперёк ската', (vMin + vMax) / 2, top + D.cm(10), { size: 3.2, bold: true, align: 'center' });
+    D.callout(vMin + 30, chordTop(vMin + 30) - hr / 2, vMin + 10, top + D.cm(2), (fr.scheme === 'truss' ? 'Верхний пояс фермы' : 'Стропило') + ` ${fr.b}×${fr.h}, сосна 2 сорт, антисептик`);
+    if (fr.scheme === 'truss') D.callout((v0 + v1) / 2, eave + 10 + hb / 2, (v0 + v1) / 2 + 60, eave - D.cm(10), `Нижний пояс ${fr.b}×${fr.h}; стойки и раскосы ${fr.b}×100; узлы — пластины МЗП`);
+    D.callout(half, eave + 5, half + 40, eave + D.cm(12), 'Мауэрлат 150×100 на армопоясе, анкеры М12 через 1,2 м, гидроизоляция под ним');
+    D.callout((v0 + v1) / 2 - 80, roof((v0 + v1) / 2 - 80), (v0 + v1) / 2 - 140, top + D.cm(4), 'Кровля: ' + ((ROOF_MATERIALS[fr.mat] || {}).name || fr.mat) + '; ' + fr.bat);
+    // ---- план раскладки ----
+    const PX = (u) => sOff + u, PZ = (v) => zc - v;
+    D.rect(PX(uMin), PZ(vMax), PX(uMax), PZ(vMin), '#f8f8f8', '#111', 0.4);
+    for (const v of [v0, v1]) D.rect(PX(-fr.len * 50 - 10), PZ(v) - 7.5, PX(fr.len * 50 + 10), PZ(v) + 7.5, D.pat.wood, '#111', 0.25);
+    let k = 0;
+    for (let u = -fr.len * 50; u <= fr.len * 50 + 1; u += fr.step * 100, k++) {
+      D.line(PX(u), PZ(vMin), PX(u), PZ(vMax), '#8a5a2b', 0.7);
+      if (k % 3 === 0) D.text((fr.scheme === 'truss' ? 'Ф' : 'С') + (k + 1), PX(u), PZ(vMax) + D.cm(3), { size: 2, align: 'center' });
+    }
+    D.dimH(PX(-fr.len * 50), PX(-fr.len * 50 + fr.step * 100), PZ(vMin) - D.cm(6), String(fr.step * 1000));
+    D.dimH(PX(uMin), PX(uMax), PZ(vMin) - D.cm(13), String(Math.round((uMax - uMin) * 10)));
+    D.dimV(PZ(v1), PZ(v0), PX(uMax) + D.cm(7), String(Math.round(half * 20)));
+    D.text(`${fr.scheme === 'truss' ? 'Фермы' : 'Стропила'} ${fr.b}×${fr.h}, шаг ${fr.step * 1000} — ${fr.n} шт.`, PX((uMin + uMax) / 2), PZ(0), { size: 3, bold: true, align: 'center', bg: true });
+    D.text('План раскладки (вид сверху, без кровли)', PX((uMin + uMax) / 2), PZ(vMax) + D.cm(9), { size: 3.2, bold: true, align: 'center' });
+    D.text('скат ↓', PX(uMin) + D.cm(6), PZ((v0 + v1) / 2 + (hiV < 0 ? -40 : 40)), { size: 2.4 });
+    void nWeb;
+    return D.notes;
+  },
+  bldRoofPanel(id, spec) {
+    const it = Model.get(id), fr = it && bldFrame(it);
+    if (!fr) return U.el('div', { class: 'sysdesc' }, 'Скатной крыши нет');
+    const rows = [
+      ['Схема', fr.name], ['Пролёт между осями стен', `${fr.span.toFixed(2)} м`], ['Уклон', `${Math.round(fr.pitch)}°`],
+      [fr.scheme === 'truss' ? 'Пояса фермы' : 'Стропила', `${fr.b}×${fr.h} мм, сосна 2 сорт, влажность ≤ 20 %, антисептик`], ['Шаг', `${fr.step * 1000} мм — ${fr.n} шт.`],
+      ['Снеговой район', `${Climate.roman(fr.snow.district)} — Sg ${fr.snow.Sg} кПа; μ ${fr.snow.mu.toFixed(2)}; расчётная ${fr.snow.sD.toFixed(2)} кПа`],
+      ['Проверка', isFinite(fr.sig) ? `σ = ${fr.sig.toFixed(1)} ≤ 13 МПа; прогиб ${fr.f.toFixed(0)} ≤ ${fr.fmax.toFixed(0)} мм (L/200)` : 'нужен индивидуальный расчёт'],
+      ['Настил / обрешётка', fr.bat], fr.osb ? ['OSB-3', `${fr.osb.toFixed(0)} м²`] : null,
+      ['Мауэрлат 150×100', `${fr.mauerlat.toFixed(1)} м, анкеры М12 — ${fr.anchors} шт.`], ['Пиломатериал всего', `≈ ${fr.woodV.toFixed(1)} м³`],
+    ].filter(Boolean);
+    const notes = ((spec && spec._notes) || []).map((t, i) => `${i + 1} — ${t}`);
+    return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Крыша: ' + (it.label || catItem(it.key).name)), Sheets.T(null, rows),
+      notes.length ? Sheets.ul(notes) : null,
+      U.el('h4', {}, 'Указания'), Sheets.ul([fr.scheme === 'truss' ? 'Фермы — заводские на МЗП по расчёту изготовителя; монтаж с временными связями, постоянные связи по верхним и нижним поясам' : 'Стропила — к мауэрлату на уголках/скобах, у высокой стены — скользящие опоры не нужны (односкатная, распора нет)',
+        fr.shed && fr.scheme === 'truss' && fr.span > 6 ? `Можно дешевле: развернуть скат поперёк короткой стороны — пролёт ≈ ${(Math.min(it.w, it.d) / 100 - 0.55).toFixed(1)} м, тогда хватит обычных стропил` : null,
+        'Свес по скату — ветровые и лобовые доски, капельник; водосток по низкому карнизу', 'Под мембраной — сплошной настил и вентзазор 50 мм; на неотапливаемом гараже утепление кровли не обязательно'].filter(Boolean)),
+      U.el('div', { class: 'norm' }, '§ СП 17.13330.2017; СП 20.13330.2016; СП 64.13330.2017'));
+  },
+
   /* ------------------------------ листы ------------------------------ */
   /** Габарит сцены листа (см; ось y — вниз, как на плане) */
   bbox(spec) {
+    if (spec.detail === 'bldRoof') { const G2 = Detail.bldGeom(spec.arg); return G2 ? G2.bbox : { x0: 0, y0: 0, x1: 100, y1: 100 }; }
     const M = Detail.model();
     if (spec.detail === 'wallElev') { const g = Detail.elevGeom(spec.arg); return { x0: -110, y0: -g.H - 20, x1: g.L + 100, y1: 60 }; }
     if (!M.r) return { x0: 0, y0: 0, x1: 100, y1: 100 };
@@ -534,6 +623,7 @@ const Detail = {
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, cv.width, cv.height); ctx.clip();
     try {
       if (spec.detail === 'wallElev') { const res = Detail.drawElev(D, spec.arg); spec._res = res; }
+      else if (spec.detail === 'bldRoof') { const G2 = Detail.bldGeom(spec.arg); if (G2) spec._notes = Detail.drawBldRoof(D, G2); }
       else if (spec.detail === 'roofPlan' && M.fr) { const D2 = Detail.kit(ctx, k, ox, cv.height / 2 - cy * k, dpmm); D2.Y = (z) => cv.height / 2 + (z - cy) * k; Detail.drawRoofPlan(D2, M); }
       else if (M.r) { const S = Detail.drawSection(D, M, spec.detail); spec._notes = Detail.annotate(D, M, S, spec.detail); }
     } finally { ctx.restore(); }

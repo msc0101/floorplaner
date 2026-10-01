@@ -628,7 +628,7 @@ const Analysis = {
     }
     if (run) gaps.push(run);
     // главное — подходы к дому и гаражу (полоса 1,5 м вдоль стен) и въезды: ворота и калитки
-    const ring = blds.slice(0, (fl ? fl.outlines.length : 0)).concat(d.items.filter(it => (it.floor || f1) === f1 && BLD_HOLLOW.has(catItem(it.key).shape)).map(it => Model.itemPts(it)));
+    const ring = blds.slice(0, (fl ? fl.outlines.length : 0)).concat(d.items.filter(it => (it.floor || f1) === f1 && BLD_HOLLOW.has(catItem(it.key).shape) && (catItem(it.key).shape === 'garage' || it.w * it.d >= 20e4)).map(it => Model.itemPts(it)));   // подходы — к дому, гаражу и большим постройкам (сарай до 20 м² — нет)
     let hT = 0, hS = 0;
     const hGaps = [];
     for (const poly of ring) {

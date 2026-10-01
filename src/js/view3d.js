@@ -339,14 +339,17 @@ const View3D = {
         // отмостка вокруг дома и построек
         if (first) for (const b of Model.blindAreas()) for (const q of b.quads) prism(q, e, e + 6, View3D.hex('#bdbab2'));
         const FO = Finish.opt(), finOn = App.doc.settings.layers.finish !== false;
+        // душ с трапом: в чистовом полу — вырез, внутри свой пол с уклоном к трапу (рисует сам душ)
+        const wetHoles = d.items.filter(it => (it.floor || d.floors[0].id) === f.id && catItem(it.key).shape === 'shower' && !(it.h > 0)).map(hole);
+        const noWet = (segs) => wetHoles.length ? segs.flatMap(sg => View3D.clipLineOut(wetHoles.map(h => h.poly), sg[0], sg[1])) : segs;
         for (const r of fd.rooms) {
           // чистовой пол по отделке: керамогранит со швами раскладки, ковролин, плитка
           const F = Finish.room(r), M = FIN_FLOORS[F.floor] || FIN_FLOORS.porcelain;
-          prism(r.floor, e + 2, e + 3, View3D.hex(M.color), { noSides: true, holes: holesUp });
+          prism(r.floor, e + 2, e + 3, View3D.hex(M.color), { noSides: true, holes: holesUp.concat(wetHoles) });
           if (finOn && M.tile) {
             const b = G.bbox(r.floor), [tw, th2] = M.tile, cx = (b.x0 + b.x1) / 2, cyy = (b.y0 + b.y1) / 2, gc = View3D.hex(M.color).map(x => x * 0.82);
-            for (let x = cx - Math.ceil((cx - b.x0) / tw) * tw; x <= b.x1; x += tw) for (const seg of View3D.clipLine(r.floor, { x, y: b.y0 - 1 }, { x, y: b.y1 + 1 })) prism(View3D.lineQuad(seg[0], seg[1], 0.25), e + 3, e + 3.08, gc, { noSides: true });
-            for (let y = cyy - Math.ceil((cyy - b.y0) / th2) * th2; y <= b.y1; y += th2) for (const seg of View3D.clipLine(r.floor, { x: b.x0 - 1, y }, { x: b.x1 + 1, y })) prism(View3D.lineQuad(seg[0], seg[1], 0.25), e + 3, e + 3.08, gc, { noSides: true });
+            for (let x = cx - Math.ceil((cx - b.x0) / tw) * tw; x <= b.x1; x += tw) for (const seg of noWet(View3D.clipLine(r.floor, { x, y: b.y0 - 1 }, { x, y: b.y1 + 1 }))) prism(View3D.lineQuad(seg[0], seg[1], 0.25), e + 3, e + 3.08, gc, { noSides: true });
+            for (let y = cyy - Math.ceil((cyy - b.y0) / th2) * th2; y <= b.y1; y += th2) for (const seg of noWet(View3D.clipLine(r.floor, { x: b.x0 - 1, y }, { x: b.x1 + 1, y }))) prism(View3D.lineQuad(seg[0], seg[1], 0.25), e + 3, e + 3.08, gc, { noSides: true });
           }
           // натяжной потолок — когда крыша включена (изнутри, в режиме прогулки); сверху при снятой крыше не мешает
           const cCol = View3D.hex((FIN_CEIL[F.ceil] || FIN_CEIL.stretch).color);
@@ -1352,6 +1355,19 @@ const View3D = {
     }
     return out;
   },
+  /** Части отрезка a–b вне всех многоугольников polys */
+  clipLineOut(polys, a, b) {
+    const ts = [0, 1];
+    for (const poly of polys) for (let i = 0; i < poly.length; i++) { const x = G.segInter(a, b, poly[i], poly[(i + 1) % poly.length]); if (x) ts.push(x.t); }
+    ts.sort((x, y) => x - y);
+    const out = [];
+    for (let i = 0; i + 1 < ts.length; i++) {
+      if (ts[i + 1] - ts[i] < 1e-6) continue;
+      const m = G.add(a, G.mul(G.sub(b, a), (ts[i] + ts[i + 1]) / 2));
+      if (!polys.some(poly => G.pointInPoly(m, poly))) out.push([G.add(a, G.mul(G.sub(b, a), ts[i])), G.add(a, G.mul(G.sub(b, a), ts[i + 1]))]);
+    }
+    return out;
+  },
   /** Тонкая полоса (прямоугольник) вдоль отрезка полушириной h */
   lineQuad(a, b, h) { const n = G.mul(G.perp(G.unit(G.sub(b, a))), h); return [G.add(a, n), G.add(b, n), G.sub(b, n), G.sub(a, n)]; },
   clipSlab(poly, o, u, a, b) {
@@ -1436,25 +1452,41 @@ const View3D = {
     if (sh === 'shower') {
       // кабина (выше 1,5 м) — поддон и стёкла с рамой; поддон — бортик; с трапом — плитка вровень с полом.
       // Стёкла ставим только на стороны, где нет стены; на одной из открытых — проход; стойка с лейкой — на стене
-      const cabin = H >= 150, tray = cabin ? 15 : H > 0 ? Math.min(H, 20) : 1.5, z = e + tray, top = e + (cabin ? H : 200);
+      const cabin = H >= 150, tray = cabin ? 15 : H > 0 ? Math.min(H, 20) : 3, z = e + tray, top = e + (cabin ? H : 200);
       const glass = [0.72, 0.86, 0.94], prof = [0.75, 0.77, 0.8];
       const Ly = showerLayout(it), { open, wallSide } = Ly;
       if (H > 0) {
         bx(-W, -D, W, D, e, z - 3, [0.95, 0.96, 0.96]);
         bx(-W, -D, W, D, z - 3, z, [0.97, 0.97, 0.97]);
         bx(-W + 5, -D + 5, W - 5, D - 5, z, z + 0.2, [0.88, 0.9, 0.92]);
-        cy(0, 0, 4, z + 0.2, z + 0.5, [0.55, 0.57, 0.6], 12);
+        cy(0, 0, 5.5, z + 0.15, z + 0.3, [0.78, 0.8, 0.83], 20);                                             // слив поддона: колпачок-решётка
+        cy(0, 0, 4.2, z + 0.3, z + 0.35, [0.2, 0.21, 0.23], 20);
+        cy(0, 0, 3.4, z + 0.35, z + 0.6, [0.82, 0.84, 0.87], 20);
       } else {
-        // плитка душевой зоны (керамогранит 30×30, швы), линейный трап: лоток в раме, решётка с прорезями, выпуск
-        bx(-W, -D, W, D, e, z, [0.55, 0.6, 0.66]);
-        for (let x = -W + 30; x < W - 5; x += 30) bx(x - 0.25, -D, x + 0.25, D, z, z + 0.08, [0.44, 0.49, 0.55]);
-        for (let y = -D + 30; y < D - 5; y += 30) bx(-W, y - 0.25, W, y + 0.25, z, z + 0.08, [0.44, 0.49, 0.55]);
-        const dr = Ly.drain, along = wallSide.y !== undefined;
-        bx(dr.x0 - 0.8, dr.y0 - 0.8, dr.x1 + 0.8, dr.y1 + 0.8, z, z + 0.25, [0.16, 0.17, 0.19]);               // щель вокруг решётки
-        bx(dr.x0, dr.y0, dr.x1, dr.y1, z + 0.05, z + 0.35, [0.78, 0.8, 0.83]);                                 // решётка (нерж.)
-        const len = along ? dr.x1 - dr.x0 : dr.y1 - dr.y0;
-        for (let t = 3; t < len - 2; t += 3) along ? bx(dr.x0 + t - 0.35, dr.y0 + 1.2, dr.x0 + t + 0.35, dr.y1 - 1.2, z + 0.35, z + 0.4, [0.2, 0.21, 0.23])
-          : bx(dr.x0 + 1.2, dr.y0 + t - 0.35, dr.x1 - 1.2, dr.y0 + t + 0.35, z + 0.35, z + 0.4, [0.2, 0.21, 0.23]);
+        // пол душевой зоны — уклон к линейному трапу (на 1,5–2 см), плитка 30×30 со швами по уклону;
+        // трап: лоток в нише, рамка из нержавейки вровень с плиткой, решётка чуть ниже с двумя рядами прорезей, заглушки по торцам
+        const dr = Ly.drain, along = wallSide.y !== undefined, tile = [0.57, 0.62, 0.68], grout = [0.43, 0.48, 0.54];
+        const dLine = along ? (dr.y0 + dr.y1) / 2 : (dr.x0 + dr.x1) / 2, span = along ? 2 * D : 2 * W, drop = Math.min(2, span * 0.018);
+        const zAt = (x, y) => z - drop + drop * Math.min(1, Math.abs((along ? y : x) - dLine) / Math.max(1, span - 8));
+        bx(-W, -D, W, D, e + 2, z - drop, tile);
+        const quad = (x0, y0, x1, y1, lift, col) => face([V(x0, y0, zAt(x0, y0) + lift), V(x1, y0, zAt(x1, y0) + lift), V(x1, y1, zAt(x1, y1) + lift), V(x0, y1, zAt(x0, y1) + lift)], col, V((x0 + x1) / 2, (y0 + y1) / 2, e - 50));
+        const N = 6;
+        for (let k = 0; k < N; k++) {                                                                    // поверхность уклона — полосами
+          if (along) quad(-W, -D + 2 * D * k / N, W, -D + 2 * D * (k + 1) / N, 0, tile); else quad(-W + 2 * W * k / N, -D, -W + 2 * W * (k + 1) / N, D, 0, tile);
+        }
+        for (let x = -W + 30; x < W - 5; x += 30) quad(x - 0.25, -D, x + 0.25, D, 0.06, grout);
+        for (let y = -D + 30; y < D - 5; y += 30) quad(-W, y - 0.25, W, y + 0.25, 0.06, grout);
+        const zt = z - drop;
+        bx(dr.x0 - 1.6, dr.y0 - 1.6, dr.x1 + 1.6, dr.y1 + 1.6, zt - 0.1, zt + 0.6, [0.84, 0.86, 0.89]);   // фланец рамки
+        bx(dr.x0 - 0.5, dr.y0 - 0.5, dr.x1 + 0.5, dr.y1 + 0.5, zt + 0.6, zt + 0.7, [0.1, 0.11, 0.13]);  // щель лотка
+        bx(dr.x0, dr.y0, dr.x1, dr.y1, zt - 0.3, zt + 0.8, [0.7, 0.73, 0.77]);                             // решётка (нерж.)
+        const len = along ? dr.x1 - dr.x0 : dr.y1 - dr.y0, wid = along ? dr.y1 - dr.y0 : dr.x1 - dr.x0;
+        for (let t = 2.5; t < len - 2; t += 4) for (const r of [0.28, 0.72]) {                              // прорези — два ряда «кирпичиком»
+          const c0 = t + (r > 0.5 ? 2 : 0), c1 = Math.min(len - 1.5, c0 + 2.6), m = r * wid;
+          if (along) bx(dr.x0 + c0, dr.y0 + m - 0.45, dr.x0 + c1, dr.y0 + m + 0.45, zt + 0.8, zt + 0.9, [0.14, 0.15, 0.17]);
+          else bx(dr.x0 + m - 0.45, dr.y0 + c0, dr.x0 + m + 0.45, dr.y0 + c1, zt + 0.8, zt + 0.9, [0.14, 0.15, 0.17]);
+        }
+        for (const t of [0, len]) { if (along) bx(dr.x0 + t - 0.6, dr.y0, dr.x0 + t + 0.6, dr.y1, zt, zt + 1, [0.62, 0.65, 0.68]); else bx(dr.x0, dr.y0 + t - 0.6, dr.x1, dr.y0 + t + 0.6, zt, zt + 1, [0.62, 0.65, 0.68]); }
       }
       const pane = (sd, a0, a1) => {
         if (a1 - a0 < 5) return;
@@ -2565,8 +2597,47 @@ const View3D = {
       for (let i = 0; i <= k; i++) { const x = -it.w / 2 + post / 2 + (it.w - post) * i / k; posts.push({ x, y: it.d / 2 - post / 2 }); if (!lean) posts.push({ x, y: -it.d / 2 + post / 2 }); }
       for (const q of posts) { const wq = G.toWorld(q, it.x, it.y, rot); box(wq.x, wq.y, post, post, rot, e, roofZ(q) - 2, C('#6b5a44')); }
     }
-    const gh = sh === 'greenhouse';
-    View3D.itemRoof(it, g, { gableGlass: gh, endGlass: gh, endCol: gh ? [0.8, 0.9, 0.95] : null });
+    const gh = sh === 'greenhouse', bfr = View3D.opts.roof && View3D.roofFrameOnly() ? bldFrame(it) : null;
+    if (bfr) View3D.bldFrame3d(it, g, bfr);
+    else View3D.itemRoof(it, g, { gableGlass: gh, endGlass: gh, endCol: gh ? [0.8, 0.9, 0.95] : null });
+  },
+  /** Каркас крыши постройки (режим «стропила без кровли»): мауэрлат, стропила или фермы с шагом 0,6 м, обрешётка, лобовые доски */
+  bldFrame3d(it, g, fr) {
+    const wood = View3D.hex('#c9a06a'), woodD = View3D.hex('#a67c4a'), plate = [0.62, 0.64, 0.68], board = View3D.hex('#dcc095');
+    const s = g.R.sides, A = fr.alongX;
+    const loc = (u, v) => (A ? { x: u, y: v } : { x: v, y: u });
+    const W3 = (u, v, z) => { const q = bldWorld(it, loc(u, v)); return [q.x, q.y, z]; };
+    const Z = (u, v) => g.roofZ(loc(u, v));
+    const uMin = A ? -(it.w / 2 + s.l) : -(it.d / 2 + s.b), uMax = A ? it.w / 2 + s.r : it.d / 2 + s.f;
+    const vMin = A ? -(it.d / 2 + s.b) : -(it.w / 2 + s.l), vMax = A ? it.d / 2 + s.f : it.w / 2 + s.r;
+    const half = (A ? it.d : it.w) / 2 - fr.off, v0 = -half, v1 = half;                       // оси опорных стен
+    const a = U.rad(fr.pitch), hb = fr.h / 10, hr = hb / Math.cos(a), bb = fr.b / 10, top = (u, v) => Z(u, v) - 1.5;   // низ настила
+    const uS = -fr.len * 50, uE = fr.len * 50;
+    const hiV = Z(0, v0) > Z(0, v1) ? v0 : v1, loV = hiV === v0 ? v1 : v0;
+    // мауэрлат 150×100 на армопоясе: у ферм — оба по верху стен, у стропил односкатной — под стропилом на высокой и низкой стенах
+    for (const v of [v0, v1]) { const z = fr.scheme === 'truss' || !fr.shed ? g.eave + 5 : top(0, v) - hr - 5; View3D.beam3(W3(uS - 10, v, z), W3(uE + 10, v, z), 15, 10, woodD); }
+    for (let u = uS; u <= uE + 1; u += fr.step * 100) {
+      if (fr.shed) View3D.beam3(W3(u, vMin, top(u, vMin) - hr / 2), W3(u, vMax, top(u, vMax) - hr / 2), bb, hb, wood);              // стропило / верхний пояс
+      else for (const ve of [vMin, vMax]) View3D.beam3(W3(u, ve, top(u, ve) - hr / 2), W3(u, 0, top(u, 0) - hr / 2), bb, hb, wood);
+      if (fr.scheme === 'truss') {
+        const zb = g.eave + 10 + hb / 2, tz = (v) => top(u, v) - hr;
+        View3D.beam3(W3(u, v0 - 12, zb), W3(u, v1 + 12, zb), bb, hb, wood);                                                       // нижний пояс
+        if (fr.shed) {
+          View3D.beam3(W3(u, hiV, zb + hb / 2), W3(u, hiV, tz(hiV)), bb, 10, woodD);                                              // стойка у высокой стены
+          const k = 4, pv = (i) => loV + (hiV - loV) * i / k;
+          for (let i = 1; i < k; i++) { View3D.beam3(W3(u, pv(i), zb + hb / 2), W3(u, pv(i), tz(pv(i))), bb, 8, woodD); View3D.beam3(W3(u, pv(i - 1), i === 1 ? zb + hb / 2 : tz(pv(i - 1))), W3(u, pv(i), i % 2 ? tz(pv(i)) : zb + hb / 2), bb, 8, woodD); }
+          View3D.beam3(W3(u, pv(k - 1), zb + hb / 2), W3(u, hiV, tz(hiV)), bb, 8, woodD);
+        } else {
+          const B1 = v0 + (v1 - v0) / 3, B2 = v0 + 2 * (v1 - v0) / 3, T1 = v0 + (v1 - v0) / 4, T2 = v0 + 3 * (v1 - v0) / 4;
+          for (const [va, za, vb, zb2] of [[T1, tz(T1), B1, zb], [B1, zb, 0, tz(0)], [0, tz(0), B2, zb], [B2, zb, T2, tz(T2)]]) View3D.beam3(W3(u, va, za), W3(u, vb, zb2), bb, 8, woodD);
+        }
+        for (const v of [v0, v1]) View3D.beam3(W3(u - bb / 2 - 0.2, v - 8, zb), W3(u - bb / 2 - 0.2, v + 8, zb), 0.3, 14, plate);   // пластины МЗП
+      } else if (!fr.shed) View3D.beam3(W3(u, v0 - 12, g.eave + 10 + hb / 2), W3(u, v1 + 12, g.eave + 10 + hb / 2), bb, hb, wood); // затяжка
+    }
+    // обрешётка / доски настила вдоль карниза и лобовые доски
+    const st = (fr.batStep || 0.5) * 100 * Math.cos(a);
+    for (let v = vMin + 8; v < vMax - 4; v += st) View3D.beam3(W3(uMin, v, top(0, v) + 1.2), W3(uMax, v, top(0, v) + 1.2), 10, 2.5, board);
+    for (const v of fr.shed ? [vMin, vMax] : [vMin, vMax]) View3D.beam3(W3(uMin, v, top(0, v) - 7), W3(uMax, v, top(0, v) - 7), 2.5, 15, woodD);
   },
   /** Крыльцо / веранда / терраса: цоколь, настил, ступени, ограждение или остекление, крыша */
   /** Предмет на веранде, крыльце или настиле — стоит на их полу, а не на земле */
