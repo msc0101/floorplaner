@@ -207,6 +207,7 @@ const Analysis = {
     // ---------------- скважина / колодец у границы с соседом: его септик может оказаться рядом ----------------
     Analysis.wellsBound(d, add, m);
     Analysis.septicOut(d, add);
+    Analysis.generator(d, add);
 
     // ---------------- электрика: группы щита, автомат против сечения, УЗО на розетках ----------------
     Analysis.electric(d, add, stats);
@@ -394,6 +395,42 @@ const Analysis = {
     }
     // снегозадержатели: скатная кровля с наружным водостоком над входами и дорожками
     for (const r of d.roofs) if (r.type !== 'flat' && (r.pitch || 0) >= 5 && !r.snowGuard) add('warn', 'Кровля', 'Крыша дома: нужны снегозадержатели над входами, крыльцом и дорожками (и на металлической кровле — по всему периметру карниза)', 'СП 17.13330.2017 п. 9.11', r, r.id, () => { r.snowGuard = true; });
+  },
+  /** Резервный генератор: подключение только через АВР (иначе ток уйдёт в сеть к электрикам на линии), на улице — выхлоп
+   *  не ближе 3 м к окнам и дверям, в помещении — угарный газ; корпус — на контур заземления */
+  generator(d, add) {
+    const f1 = d.floors[0].id, gens = d.items.filter(it => it.key === 'generator' && (it.floor || f1) === f1);
+    if (!gens.length) return;
+    const src = 'ПУЭ гл. 1.2, 1.7; СП 256.1325800.2016; паспорт генератора';
+    if (!d.items.some(it => it.key === 'ats')) {
+      const pn = d.items.find(it => it.key === 'panel');
+      add('warn', 'Электрика', 'Генератор без АВР: подключать только через щит АВР (или перекидной рубильник) с механической блокировкой — иначе при включении ток пойдёт в сеть, к электрикам на линии', src, gens[0], gens[0].id,
+        pn ? () => { const q = G.toWorld({ x: pn.w / 2 + 25, y: 0 }, pn.x, pn.y, pn.rot || 0); Model.add('items', { key: 'ats', x: Math.round(q.x), y: Math.round(q.y), w: 30, d: 15, h: 50, rot: pn.rot || 0, flip: false, floor: pn.floor || f1, label: 'Щит АВР' }); } : null);
+    }
+    const outl = (App.floorData || []).filter(x => x.floor.id === f1).flatMap(x => x.outlines.map(o => o.outer));
+    const blds = d.items.filter(b => (b.floor || f1) === f1 && BLD_HOLLOW.has(catItem(b.key).shape)).map(b => Model.itemPts(b));
+    const ops = d.openings.map(op => Model.opGeom(op)).filter(Boolean).filter(g => g.w.kind === 'ext');
+    for (const g of gens) {
+      const nm = g.label || 'Генератор', inHouse = outl.some(o => G.pointInPoly(g, o)), B = d.items.find(b => (b.floor || f1) === f1 && BLD_HOLLOW.has(catItem(b.key).shape) && G.pointInPoly(g, Model.itemPts(b)));
+      if (inHouse) { add('bad', 'Электрика', `${nm}: в жилом доме генератор с двигателем ставить нельзя — угарный газ и топливо; на улицу под навес или в гараж с выводом выхлопа`, src, g, g.id); continue; }
+      if (B && !g.exhaustOut) { add('warn', 'Электрика', `${nm}: стоит в постройке без вывода выхлопа — угарный газ; выхлоп — трубой через стену наружу (свойство «Выхлоп наружу»)`, src, g, g.id); continue; }
+      if (B) {
+        const inB = (x) => G.pointInPoly(x, Model.itemPts(B));
+        if (!d.items.some(x => sysOf(x) === 'vent' && inB(x))) add('warn', 'Электрика', `${nm}: в «${B.label || catItem(B.key).name}» нет притока и вытяжки — генератору нужен воздух на охлаждение и горение (решётка внизу, вытяжка вверху)`, src, g, g.id);
+        if (!d.items.some(x => x.key === 'coDetector' && inB(x))) add('warn', 'Электрика', `${nm}: нет датчика угарного газа в помещении с генератором`, src, g, g.id, () => {
+          const q = G.toWorld({ x: 0, y: -(g.d / 2 + 2) }, g.x, g.y, g.rot || 0);
+          Model.add('items', { key: 'coDetector', x: Math.round(q.x), y: Math.round(q.y), w: 10, d: 4, h: 160, rot: g.rot || 0, flip: false, floor: g.floor || f1, label: 'Датчик CO (генератор)' });
+        });
+      }
+      // откуда идёт выхлоп: выведен наружу — оголовок за стеной, иначе — сам генератор
+      const ex = g.exhaustOut ? G.toWorld({ x: U.isNum(g.exhX) ? g.exhX : g.w / 2 - 12, y: -(g.d / 2 + (g.exhLen || 50)) }, g.x, g.y, g.rot || 0) : g, pad = g.exhaustOut ? 0 : Math.max(g.w, g.d) / 2;
+      const near = ops.reduce((b, o) => { const dd = G.distSeg(ex, o.a, o.b) - pad; return !b || dd < b.d ? { d: dd, o } : b; }, null);
+      if (near && near.d < 300) add('warn', 'Электрика', `${nm}: от выхлопа до окна или двери дома ${(Math.max(0, near.d) / 100).toFixed(1).replace('.', ',')} м — затянет в дом; нужно не меньше 3 м`, src, ex, g.id);
+      // корпус: провод к контуру или PE-жила питающего кабеля (3×, 5×)
+      const touch = (l) => [l.pts[0], l.pts[l.pts.length - 1]].some(p => G.pointInPoly(p, Model.itemPts(g)) || G.distPoly(p, Model.itemPts(g)) < 15);
+      const grounded = d.lines.some(l => touch(l) && (l.kind === 'ground' || (l.kind === 'power' && /[35]\s*[×x]/.test(l.section || ''))));
+      if (!grounded) add('warn', 'Электрика', `${nm}: корпус не заземлён — PE-жила кабеля или провод к контуру заземления`, src, g, g.id);
+    }
   },
   /** Септик без почвенной доочистки: с 10.03.2026 сброс в канаву, кювет, овраг запрещён — только доочистка в грунте в границах участка.
    *  Фильтрующий колодец работает лишь в песках и супесях на глубине его дна; в глинах и суглинках — поле фильтрации, инфильтраторы или накопитель с вывозом */

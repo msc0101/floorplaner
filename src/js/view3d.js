@@ -2410,7 +2410,29 @@ const View3D = {
       cy(0, 5, 3.5, e + 70, e + 71, [0.96, 0.96, 0.96], 12);                                                        // манометр
       return true;
     }
-    if (sh === 'panel') {
+    if (sh === 'generator') {
+      // площадка из бетона, рама, кожух с жалюзи, панель управления спереди (+D), глушитель и выхлоп сзади
+      const pad = [0.72, 0.71, 0.68], body = [0.27, 0.36, 0.3], dark = [0.12, 0.13, 0.14], top = e + 10 + Math.max(55, H);
+      bx(-W - 15, -D - 15, W + 15, D + 15, e, e + 10, pad);
+      bx(-W, -D, W, D, e + 10, e + 16, dark);                                                                 // рама на виброопорах
+      bx(-W + 1, -D + 1, W - 1, D - 1, e + 16, top - 3, body);
+      bx(-W, -D, W, D, top - 3, top, body.map(v => v * 0.85));                                                // крышка
+      for (const sx of [-1, 1]) for (let z = e + 26; z < top - 12; z += 6) bx(sx * (W - 0.5) - 0.6, -D + 8, sx * (W - 0.5) + 0.6, D - 8, z, z + 2.2, dark);   // жалюзи по бокам
+      bx(-W + 8, D - 1, W - 8, D + 0.6, top - 30, top - 8, [0.16, 0.17, 0.19]);                               // панель управления
+      bx(-W + 12, D + 0.6, -W + 26, D + 1, top - 22, top - 14, [0.3, 0.75, 0.95]);                            // дисплей
+      for (const x of [4, 14]) bx(x - 3, D + 0.6, x + 3, D + 1.2, top - 24, top - 16, [0.9, 0.9, 0.88]);       // розетки
+      bx(-W + 34, D + 0.6, -W + 40, D + 1.4, top - 22, top - 16, [0.85, 0.15, 0.1]);                          // аварийная кнопка
+      const xe = U.isNum(it.exhX) ? it.exhX : W - 12, Le = it.exhLen || 50;
+      if (it.exhaustOut) {                                                                                     // выхлоп трубой через стену наружу
+        const steel = [0.7, 0.72, 0.74];
+        cy(xe, -D + 8, 3, top - 2, top + 8, dark, 10);
+        wireL(xe, -D + 8, top + 8, xe, -D - Le, top + 8, 2.6, steel);
+        bx(xe - 6, -D - Le - 1, xe + 6, -D - Le + 1, top + 2, top + 14, dark);                                  // оголовок с сеткой
+      } else cy(xe, -D + 8, 3, top, top + 14, dark, 10);
+      bx(-6, -2, 6, 2, top, top + 4, dark);                                                                    // рым для подъёма
+      return true;
+    }
+    if (sh === 'panel' || sh === 'ats') {
       const zb = e + 120, zt = zb + Math.max(40, it.h || 60);
       bx(-W, -D, W, D, zb, zt, [0.88, 0.89, 0.9]);
       bx(-W + 2, D, W - 2, D + 0.4, zb + 2, zt - 2, [0.84, 0.85, 0.87]);

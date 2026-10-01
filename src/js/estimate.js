@@ -37,7 +37,7 @@ const PRICE_DEFAULTS = {
   'item:stoveMetal': 34000, 'item:saunaStove': 52000, 'item:chimney': 45000,
   'item:bath170': 26000, 'item:bath150': 22000, 'item:bath180': 34000, 'item:bathCorner': 41000, 'item:shower90': 34000, 'item:shower80': 15000,
   'item:showerWalk': 26000, 'item:toilet': 14000, 'item:toiletWall': 28000, 'item:bidet': 15000, 'item:sink': 6800, 'item:vanity': 16000,
-  'item:kitchenI': 135000, 'item:kitchenL': 195000, 'item:panel': 26000, 'item:meter': 19000, 'item:pole': 34000, 'item:lightPole': 19000,
+  'item:kitchenI': 135000, 'item:kitchenL': 195000, 'item:panel': 26000, 'item:meter': 19000, 'item:generator': 98000, 'item:ats': 24000, 'item:pole': 34000, 'item:lightPole': 19000,
   'item:socket': 1100, 'item:socket2': 1500, 'item:socketPower': 3000, 'item:switch': 1100, 'item:switch2': 1350, 'item:lamp': 3800,
   'item:spot': 1100, 'item:wallLamp': 3000, 'item:socketOut': 2600, 'item:cctvCam': 6800, 'item:nvr': 34000, 'item:router': 19000, 'item:lanSocket': 900, 'item:wifiAp': 6800,
   'item:downspout': 4900, 'item:stormInlet': 3400, 'item:drainChannel': 2600, 'item:manifoldWF': 34000,
