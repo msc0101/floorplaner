@@ -304,7 +304,7 @@ const UI = {
     const p = $('panel3d');
     p.textContent = '';
     const o = View3D.opts;
-    const chk = (label, key) => F.check(label, o[key], (v) => { o[key] = v; View3D.dirty = true; View3D.redraw(); });
+    const chk = (label, key) => F.check(label, o[key], (v) => { o[key] = v; if (key === 'xray') View3D._autoX = false; View3D.dirty = true; View3D.redraw(); });
     const head = U.el('button', { type: 'button', class: 'p3d-head', title: 'Свернуть / развернуть панель' }, '3D-вид');
     head.onclick = () => { p.classList.toggle('collapsed'); try { localStorage.setItem('fp:p3d', p.classList.contains('collapsed') ? '1' : ''); } catch (e) { /* нет хранилища */ } };
     try { p.classList.toggle('collapsed', localStorage.getItem('fp:p3d') === '1'); } catch (e) { /* нет хранилища */ }
@@ -353,7 +353,7 @@ const UI = {
       U.el('p', { class: 'fnote' }, Walk.on
         ? (Walk.ghost ? 'Призрак: WASD — лететь куда смотришь, ЛКМ + мышь — осмотреться, Space — вверх, C — вниз, Shift — быстрее, F — пешком, Esc — выйти.'
           : 'WASD — ходить, ↑↓ — вперёд/назад, ←→ — поворот, ЛКМ + мышь — осмотреться, Shift — бегом, Space — прыжок, C — присесть, PgUp/PgDn — этаж, N — сквозь стены, F — призрак, Esc — выйти.')
-        : 'ЛКМ — вращать, ПКМ / Shift — сдвиг, колесо — масштаб. WASD или стрелки — прогулка. Esc — к плану.'),
+        : 'ЛКМ — вращать (вниз — взгляд из-под земли: газон становится прозрачным), ПКМ / Shift — сдвиг, колесо — масштаб. WASD или стрелки — прогулка. Esc — к плану.'),
       U.el('button', { type: 'button', class: 'primary', onclick: () => View3D.toggle(false) }, '← К плану')].filter(Boolean));
   },
 

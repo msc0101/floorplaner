@@ -201,12 +201,22 @@ const Model = {
       if ((it.floor || f1) !== f1 || !(it.blind > 0) || !BLD_HOLLOW.has(catItem(it.key).shape)) continue;
       res.push(Model._blind(it.id, it.label || catItem(it.key).name, Model.itemPts(it), it.blind, bldRoof(it).type === 'none' ? 0 : bldRoof(it).over));
     }
+    // веранды и крыльца на фундаменте: отмостка по их наружному периметру; стороны, что упираются в дом или постройку, — без неё
+    if (s && s.w > 0) {
+      const fd = (App.floorData || [])[0], solid = (fd ? fd.outlines.map(o => o.outer) : []).concat(App.doc.items.filter(b => (b.floor || f1) === f1 && BLD_HOLLOW.has(catItem(b.key).shape)).map(b => Model.itemPts(b)));
+      for (const it of App.doc.items) {
+        if ((it.floor || f1) !== f1 || catItem(it.key).shape !== 'veranda' || it.blind === 0) continue;
+        const b = Model._blind(it.id, it.label || catItem(it.key).name, Model.itemPts(it), it.blind > 0 ? it.blind : s.w, 0, (q) => !solid.some(P => G.pointInPoly(G.polyCentroid(q), P)));
+        if (b.quads.length) res.push(b);
+      }
+    }
     return res;
   },
-  _blind(id, name, inner, w, over) {
+  /** Отмостка вокруг контура inner шириной w; keep(q) — оставить ли сторону (у примыкающих к дому сторон её нет) */
+  _blind(id, name, inner, w, over, keep) {
     const outer = G.offsetPoly(inner, w), n = inner.length;
-    const quads = inner.map((p, i) => [p, inner[(i + 1) % n], outer[(i + 1) % n], outer[i]]);
-    return { id, name, w, inner, outer, quads, area: Math.abs(G.polyArea(outer)) - Math.abs(G.polyArea(inner)), over };
+    const quads = inner.map((p, i) => [p, inner[(i + 1) % n], outer[(i + 1) % n], outer[i]]).filter(q => !keep || keep(q));
+    return { id, name, w, inner, outer, quads, area: quads.reduce((a, q) => a + Math.abs(G.polyArea(q)), 0), over };
   },
   /** Разрывы забора: проёмы в нём и ворота / калитки из библиотеки, стоящие на его линии → [[s0, s1]] вдоль стены */
   fenceGaps(w) {

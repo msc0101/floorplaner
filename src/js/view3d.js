@@ -71,6 +71,15 @@ const View3D = {
   /** Система инженерных сетей видна в 3D (свои переключатели в панели 3D, не зависят от слоёв плана) */
   sysOn(id) { return !id || (View3D.opts.nets !== false && (View3D.opts.sys3d || {})[id] !== false); },
   /** Каркас крыши без кровли: список «Крыша» или старый режим «Показать» */
+  /** Взгляд снизу: камера ушла под землю — газон сам становится прозрачным (видны фундамент, сети, днища),
+   *  поднялась обратно — возвращаем как было (если прозрачность включили не руками) */
+  autoXray() {
+    const c = View3D.cam, below = c.ty + c.dist * Math.sin(c.pitch) < 0.05;
+    let ch = false;
+    if (below && !View3D.opts.xray) { View3D.opts.xray = true; View3D._autoX = true; ch = true; }
+    else if (!below && View3D._autoX) { View3D.opts.xray = false; View3D._autoX = false; ch = true; }
+    if (ch) { View3D.dirty = true; if (typeof UI !== 'undefined' && UI.render3dPanel) UI.render3dPanel(); }
+  },
   roofFrameOnly() { return View3D.opts.roofView === 'frame' || View3D.opts.mode === 'roofFrame'; },
 
   hex(c) {
@@ -2554,6 +2563,7 @@ const View3D = {
       const wbx = (r, z0, z1, col, opt) => { const sp = col === wallC ? cladR(r) : null; if (!sp) { bx(r, z0, z1, col, opt); return; } bx(sp[0], z0, z1, col, opt); bx(sp[1], z0, z1, z0 < e + 40 ? baseC : brickC, opt); };
       const band = (r, z0, z1, col, opt) => { if (z1 - z0 > 0.5) { bx(r, z0, Math.min(z1, e + 40), baseC); wbx(r, Math.max(z0, e + 40), z1, col, opt); } };
       const piece = (r, z0, z1, col, opt) => { if (z1 - z0 < 0.5) return; if (z0 < e + 40) band(r, z0, z1, col, opt); else wbx(r, z0, z1, col, opt); };
+      g.wallC = wallC; g.brickC = it.clad > 0 && finOn ? brickC : null;                                    // для фронтонов в режиме «стропила»
       for (const r of s.walls) { bx(r, e, e + 40, baseC); wbx(r, e + 40, eave, wallC, { topK: 0.8 }); }
       const F0 = e + View3D.BLD_FLOOR;
       for (const o of s.ops) {
@@ -2640,6 +2650,22 @@ const View3D = {
         }
         for (const v of [v0, v1]) View3D.beam3(W3(u - bb / 2 - 0.2, v - 8, zb), W3(u - bb / 2 - 0.2, v + 8, zb), 0.3, 14, plate);   // пластины МЗП
       } else if (!fr.shed) View3D.beam3(W3(u, v0 - 12, g.eave + 10 + hb / 2), W3(u, v1 + 12, g.eave + 10 + hb / 2), bb, hb, wood); // затяжка
+    }
+    // фронтоны и стена над карнизом (у односкатной — высокая стена): стены от карниза до низа стропил, иначе стропила «висят»
+    const { face } = View3D._g, t = bldWallT(it), hw = it.w / 2, hd = it.d / 2, cen = bldWorld(it, { x: 0, y: 0 });
+    const under = (p) => g.roofZ(p) - 1.5 - hr;
+    const P3 = (p, z) => { const q = bldWorld(it, p); return [q.x / 100, z / 100, q.y / 100]; };
+    for (const [k, inset] of [[0, 0], [1, t]]) {
+      const cs = [{ x: -hw + inset, y: -hd + inset }, { x: hw - inset, y: -hd + inset }, { x: hw - inset, y: hd - inset }, { x: -hw + inset, y: hd - inset }];
+      for (let i = 0; i < 4; i++) {
+        const A0 = cs[i], B0 = cs[(i + 1) % 4], n = 8, tp = [];
+        for (let j = 0; j <= n; j++) { const p = { x: A0.x + (B0.x - A0.x) * j / n, y: A0.y + (B0.y - A0.y) * j / n }; tp.push([p, Math.max(g.eave, under(p))]); }
+        if (Math.max(...tp.map(x => x[1])) - g.eave < 1) continue;
+        // веером от середины низа: у низкой стороны часть верха совпадает с карнизом — вырожденные треугольники просто пропускаются
+        const M = P3({ x: (A0.x + B0.x) / 2, y: (A0.y + B0.y) / 2 }, g.eave), rim = [P3(B0, g.eave), ...tp.reverse().map(([p, z]) => P3(p, z)), P3(A0, g.eave)];
+        const col = k === 0 && g.brickC ? g.brickC : (g.wallC || View3D.hex('#ddd3c3')), ref = [cen.x / 100, (g.eave + 20) / 100, cen.y / 100];
+        for (let m = 0; m + 1 < rim.length; m++) face([M, rim[m], rim[m + 1]], col, ref);
+      }
     }
     // обрешётка / доски настила вдоль карниза и лобовые доски
     const st = (fr.batStep || 0.5) * 100 * Math.cos(a);
@@ -3796,8 +3822,9 @@ const View3D = {
         c.tx -= (Math.cos(c.yaw) * dx) * k; c.tz += (Math.sin(c.yaw) * dx) * k;
         c.ty = U.clamp(c.ty + dy * k, -5, 60);
       } else {
-        c.yaw -= dx * 0.008; c.pitch = U.clamp(c.pitch + dy * 0.006, -0.1, 1.55);
+        c.yaw -= dx * 0.008; c.pitch = U.clamp(c.pitch + dy * 0.006, -1.45, 1.55);
       }
+      View3D.autoXray();
       View3D.redraw();
     });
     const end = (e) => { pts.delete(e.pointerId); if (!pts.size) drag = null; };

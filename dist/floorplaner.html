@@ -3641,12 +3641,22 @@ const Model = {
       if ((it.floor || f1) !== f1 || !(it.blind > 0) || !BLD_HOLLOW.has(catItem(it.key).shape)) continue;
       res.push(Model._blind(it.id, it.label || catItem(it.key).name, Model.itemPts(it), it.blind, bldRoof(it).type === 'none' ? 0 : bldRoof(it).over));
     }
+    // веранды и крыльца на фундаменте: отмостка по их наружному периметру; стороны, что упираются в дом или постройку, — без неё
+    if (s && s.w > 0) {
+      const fd = (App.floorData || [])[0], solid = (fd ? fd.outlines.map(o => o.outer) : []).concat(App.doc.items.filter(b => (b.floor || f1) === f1 && BLD_HOLLOW.has(catItem(b.key).shape)).map(b => Model.itemPts(b)));
+      for (const it of App.doc.items) {
+        if ((it.floor || f1) !== f1 || catItem(it.key).shape !== 'veranda' || it.blind === 0) continue;
+        const b = Model._blind(it.id, it.label || catItem(it.key).name, Model.itemPts(it), it.blind > 0 ? it.blind : s.w, 0, (q) => !solid.some(P => G.pointInPoly(G.polyCentroid(q), P)));
+        if (b.quads.length) res.push(b);
+      }
+    }
     return res;
   },
-  _blind(id, name, inner, w, over) {
+  /** Отмостка вокруг контура inner шириной w; keep(q) — оставить ли сторону (у примыкающих к дому сторон её нет) */
+  _blind(id, name, inner, w, over, keep) {
     const outer = G.offsetPoly(inner, w), n = inner.length;
-    const quads = inner.map((p, i) => [p, inner[(i + 1) % n], outer[(i + 1) % n], outer[i]]);
-    return { id, name, w, inner, outer, quads, area: Math.abs(G.polyArea(outer)) - Math.abs(G.polyArea(inner)), over };
+    const quads = inner.map((p, i) => [p, inner[(i + 1) % n], outer[(i + 1) % n], outer[i]]).filter(q => !keep || keep(q));
+    return { id, name, w, inner, outer, quads, area: quads.reduce((a, q) => a + Math.abs(G.polyArea(q)), 0), over };
   },
   /** Разрывы забора: проёмы в нём и ворота / калитки из библиотеки, стоящие на его линии → [[s0, s1]] вдоль стены */
   fenceGaps(w) {
@@ -6949,7 +6959,7 @@ const Render = {
         for (let k = 1; k < n; k++) { const t = k / n, p = G.add(a, G.mul(G.sub(c, a), t)), q2 = G.add(e2, G.mul(G.sub(d2, e2), t)); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(G.add(p, G.mul(G.sub(q2, p), 0.35)).x, G.add(p, G.mul(G.sub(q2, p), 0.35)).y); ctx.stroke(); }
       }
       ctx.strokeStyle = '#8a877f'; ctx.lineWidth = 1 * px;
-      Render.polyPath(ctx, b.outer); ctx.stroke();
+      for (const q of b.quads) { ctx.beginPath(); ctx.moveTo(q[3].x, q[3].y); ctx.lineTo(q[2].x, q[2].y); ctx.stroke(); }   // наружная кромка (у веранды — только свободные стороны)
       ctx.restore();
     }
   },
@@ -7456,6 +7466,15 @@ const View3D = {
   /** Система инженерных сетей видна в 3D (свои переключатели в панели 3D, не зависят от слоёв плана) */
   sysOn(id) { return !id || (View3D.opts.nets !== false && (View3D.opts.sys3d || {})[id] !== false); },
   /** Каркас крыши без кровли: список «Крыша» или старый режим «Показать» */
+  /** Взгляд снизу: камера ушла под землю — газон сам становится прозрачным (видны фундамент, сети, днища),
+   *  поднялась обратно — возвращаем как было (если прозрачность включили не руками) */
+  autoXray() {
+    const c = View3D.cam, below = c.ty + c.dist * Math.sin(c.pitch) < 0.05;
+    let ch = false;
+    if (below && !View3D.opts.xray) { View3D.opts.xray = true; View3D._autoX = true; ch = true; }
+    else if (!below && View3D._autoX) { View3D.opts.xray = false; View3D._autoX = false; ch = true; }
+    if (ch) { View3D.dirty = true; if (typeof UI !== 'undefined' && UI.render3dPanel) UI.render3dPanel(); }
+  },
   roofFrameOnly() { return View3D.opts.roofView === 'frame' || View3D.opts.mode === 'roofFrame'; },
 
   hex(c) {
@@ -9939,6 +9958,7 @@ const View3D = {
       const wbx = (r, z0, z1, col, opt) => { const sp = col === wallC ? cladR(r) : null; if (!sp) { bx(r, z0, z1, col, opt); return; } bx(sp[0], z0, z1, col, opt); bx(sp[1], z0, z1, z0 < e + 40 ? baseC : brickC, opt); };
       const band = (r, z0, z1, col, opt) => { if (z1 - z0 > 0.5) { bx(r, z0, Math.min(z1, e + 40), baseC); wbx(r, Math.max(z0, e + 40), z1, col, opt); } };
       const piece = (r, z0, z1, col, opt) => { if (z1 - z0 < 0.5) return; if (z0 < e + 40) band(r, z0, z1, col, opt); else wbx(r, z0, z1, col, opt); };
+      g.wallC = wallC; g.brickC = it.clad > 0 && finOn ? brickC : null;                                    // для фронтонов в режиме «стропила»
       for (const r of s.walls) { bx(r, e, e + 40, baseC); wbx(r, e + 40, eave, wallC, { topK: 0.8 }); }
       const F0 = e + View3D.BLD_FLOOR;
       for (const o of s.ops) {
@@ -10025,6 +10045,22 @@ const View3D = {
         }
         for (const v of [v0, v1]) View3D.beam3(W3(u - bb / 2 - 0.2, v - 8, zb), W3(u - bb / 2 - 0.2, v + 8, zb), 0.3, 14, plate);   // пластины МЗП
       } else if (!fr.shed) View3D.beam3(W3(u, v0 - 12, g.eave + 10 + hb / 2), W3(u, v1 + 12, g.eave + 10 + hb / 2), bb, hb, wood); // затяжка
+    }
+    // фронтоны и стена над карнизом (у односкатной — высокая стена): стены от карниза до низа стропил, иначе стропила «висят»
+    const { face } = View3D._g, t = bldWallT(it), hw = it.w / 2, hd = it.d / 2, cen = bldWorld(it, { x: 0, y: 0 });
+    const under = (p) => g.roofZ(p) - 1.5 - hr;
+    const P3 = (p, z) => { const q = bldWorld(it, p); return [q.x / 100, z / 100, q.y / 100]; };
+    for (const [k, inset] of [[0, 0], [1, t]]) {
+      const cs = [{ x: -hw + inset, y: -hd + inset }, { x: hw - inset, y: -hd + inset }, { x: hw - inset, y: hd - inset }, { x: -hw + inset, y: hd - inset }];
+      for (let i = 0; i < 4; i++) {
+        const A0 = cs[i], B0 = cs[(i + 1) % 4], n = 8, tp = [];
+        for (let j = 0; j <= n; j++) { const p = { x: A0.x + (B0.x - A0.x) * j / n, y: A0.y + (B0.y - A0.y) * j / n }; tp.push([p, Math.max(g.eave, under(p))]); }
+        if (Math.max(...tp.map(x => x[1])) - g.eave < 1) continue;
+        // веером от середины низа: у низкой стороны часть верха совпадает с карнизом — вырожденные треугольники просто пропускаются
+        const M = P3({ x: (A0.x + B0.x) / 2, y: (A0.y + B0.y) / 2 }, g.eave), rim = [P3(B0, g.eave), ...tp.reverse().map(([p, z]) => P3(p, z)), P3(A0, g.eave)];
+        const col = k === 0 && g.brickC ? g.brickC : (g.wallC || View3D.hex('#ddd3c3')), ref = [cen.x / 100, (g.eave + 20) / 100, cen.y / 100];
+        for (let m = 0; m + 1 < rim.length; m++) face([M, rim[m], rim[m + 1]], col, ref);
+      }
     }
     // обрешётка / доски настила вдоль карниза и лобовые доски
     const st = (fr.batStep || 0.5) * 100 * Math.cos(a);
@@ -11181,8 +11217,9 @@ const View3D = {
         c.tx -= (Math.cos(c.yaw) * dx) * k; c.tz += (Math.sin(c.yaw) * dx) * k;
         c.ty = U.clamp(c.ty + dy * k, -5, 60);
       } else {
-        c.yaw -= dx * 0.008; c.pitch = U.clamp(c.pitch + dy * 0.006, -0.1, 1.55);
+        c.yaw -= dx * 0.008; c.pitch = U.clamp(c.pitch + dy * 0.006, -1.45, 1.55);
       }
+      View3D.autoXray();
       View3D.redraw();
     });
     const end = (e) => { pts.delete(e.pointerId); if (!pts.size) drag = null; };
@@ -13177,7 +13214,7 @@ const UI = {
     const p = $('panel3d');
     p.textContent = '';
     const o = View3D.opts;
-    const chk = (label, key) => F.check(label, o[key], (v) => { o[key] = v; View3D.dirty = true; View3D.redraw(); });
+    const chk = (label, key) => F.check(label, o[key], (v) => { o[key] = v; if (key === 'xray') View3D._autoX = false; View3D.dirty = true; View3D.redraw(); });
     const head = U.el('button', { type: 'button', class: 'p3d-head', title: 'Свернуть / развернуть панель' }, '3D-вид');
     head.onclick = () => { p.classList.toggle('collapsed'); try { localStorage.setItem('fp:p3d', p.classList.contains('collapsed') ? '1' : ''); } catch (e) { /* нет хранилища */ } };
     try { p.classList.toggle('collapsed', localStorage.getItem('fp:p3d') === '1'); } catch (e) { /* нет хранилища */ }
@@ -13226,7 +13263,7 @@ const UI = {
       U.el('p', { class: 'fnote' }, Walk.on
         ? (Walk.ghost ? 'Призрак: WASD — лететь куда смотришь, ЛКМ + мышь — осмотреться, Space — вверх, C — вниз, Shift — быстрее, F — пешком, Esc — выйти.'
           : 'WASD — ходить, ↑↓ — вперёд/назад, ←→ — поворот, ЛКМ + мышь — осмотреться, Shift — бегом, Space — прыжок, C — присесть, PgUp/PgDn — этаж, N — сквозь стены, F — призрак, Esc — выйти.')
-        : 'ЛКМ — вращать, ПКМ / Shift — сдвиг, колесо — масштаб. WASD или стрелки — прогулка. Esc — к плану.'),
+        : 'ЛКМ — вращать (вниз — взгляд из-под земли: газон становится прозрачным), ПКМ / Shift — сдвиг, колесо — масштаб. WASD или стрелки — прогулка. Esc — к плану.'),
       U.el('button', { type: 'button', class: 'primary', onclick: () => View3D.toggle(false) }, '← К плану')].filter(Boolean));
   },
 

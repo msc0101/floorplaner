@@ -879,7 +879,7 @@ const Render = {
         for (let k = 1; k < n; k++) { const t = k / n, p = G.add(a, G.mul(G.sub(c, a), t)), q2 = G.add(e2, G.mul(G.sub(d2, e2), t)); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(G.add(p, G.mul(G.sub(q2, p), 0.35)).x, G.add(p, G.mul(G.sub(q2, p), 0.35)).y); ctx.stroke(); }
       }
       ctx.strokeStyle = '#8a877f'; ctx.lineWidth = 1 * px;
-      Render.polyPath(ctx, b.outer); ctx.stroke();
+      for (const q of b.quads) { ctx.beginPath(); ctx.moveTo(q[3].x, q[3].y); ctx.lineTo(q[2].x, q[2].y); ctx.stroke(); }   // наружная кромка (у веранды — только свободные стороны)
       ctx.restore();
     }
   },
