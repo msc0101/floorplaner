@@ -16354,7 +16354,6 @@ const Analysis = {
         pn ? () => { const q = G.toWorld({ x: pn.w / 2 + 25, y: 0 }, pn.x, pn.y, pn.rot || 0); Model.add('items', { key: 'ats', x: Math.round(q.x), y: Math.round(q.y), w: 30, d: 15, h: 50, rot: pn.rot || 0, flip: false, floor: pn.floor || f1, label: 'Щит АВР' }); } : null);
     }
     const outl = (App.floorData || []).filter(x => x.floor.id === f1).flatMap(x => x.outlines.map(o => o.outer));
-    const blds = d.items.filter(b => (b.floor || f1) === f1 && BLD_HOLLOW.has(catItem(b.key).shape)).map(b => Model.itemPts(b));
     const ops = d.openings.map(op => Model.opGeom(op)).filter(Boolean).filter(g => g.w.kind === 'ext');
     for (const g of gens) {
       const nm = g.label || 'Генератор', inHouse = outl.some(o => G.pointInPoly(g, o)), B = d.items.find(b => (b.floor || f1) === f1 && BLD_HOLLOW.has(catItem(b.key).shape) && G.pointInPoly(g, Model.itemPts(b)));
