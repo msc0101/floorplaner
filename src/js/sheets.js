@@ -339,6 +339,11 @@ const Sheets = {
       r.sec = r.sec || l.section || (l.dia ? 'Ø' + l.dia : ''); r.br = r.br || l.breaker || ''; r.rcd = r.rcd || l.rcd || '';
       by.set(k, r);
     }
+    // ответвление группы на другом листе (в сарай, на участок): автомат и УЗО — с основной линии группы в щите
+    if (power) for (const r of by.values()) if (/^Гр\.\d+$/.test(r.k) && !r.br) {
+      const main = App.doc.lines.find(l => l.kind === 'power' && l.breaker && new RegExp('^' + r.k.replace('.', '\\.') + '(?!\\d)').test(l.label || ''));
+      if (main) { r.br = main.breaker; r.rcd = r.rcd || main.rcd || ''; }
+    }
     const ord = (k) => { const m = /^Гр\.(\d+)/.exec(k); return m ? +m[1] : /^Ввод/.test(k) ? -1 : 1e3; };
     const rows = [...by.values()].sort((a, b) => ord(a.k) - ord(b.k) || a.k.localeCompare(b.k, 'ru'));
     const lrows = rows.map(r => power ? [r.name, r.sec, r.br, r.rcd, r.L.toFixed(1), r.depth ? (r.depth / 100).toFixed(2) : '—'] : [r.name, r.sec, r.L.toFixed(1), r.depth ? (r.depth / 100).toFixed(2) + (r.heated ? '*' : '') : '—']);
