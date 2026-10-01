@@ -248,7 +248,9 @@ const Rooms = {
     // в застройку идут постройки под крышей; открытые настилы и бассейны — нет
     const roofless = (it) => { const sh = catItem(it.key).shape; return sh === 'deck' || sh === 'pool' || (sh === 'veranda' && !porchOpt(it).roofed); };
     const built = footprint + outb.filter(it => !roofless(it)).reduce((s, it) => s + it.w * it.d, 0);
-    return { total, living, axis, footprint, outb, outbArea, outbInner, plotArea, zones, built, free: plotArea ? plotArea - built : 0, perFloor };
+    // площадь всех этажей по наружному контуру — для коэффициента плотности застройки
+    const gross = fd.reduce((s, x) => s + x.outlines.reduce((a, o) => a + o.area, 0), 0) + outb.filter(it => !roofless(it)).reduce((s, it) => s + it.w * it.d, 0);
+    return { total, living, axis, footprint, gross, outb, outbArea, outbInner, plotArea, zones, built, free: plotArea ? plotArea - built : 0, perFloor };
   },
   at(p) {
     let best = null;

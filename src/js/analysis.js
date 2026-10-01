@@ -31,9 +31,18 @@ const Analysis = {
         ['Периметр (длина забора)', m(per)],
         ['Застройка (дом + постройки под крышей)', `${m2(s.built)} — ${(s.built / s.plotArea * 100).toFixed(1)}% участка`],
         ['Свободная площадь', m2(s.free)],
+        ...(s.plotArea ? [['Коэффициент застройки / плотности', `${(s.built / s.plotArea).toFixed(2)} / ${(s.gross / s.plotArea).toFixed(2)} (норма ИЖС ≤ 0,2 / ≤ 0,4)`]] : []),
         // покрытия и дорожки участка (улицы и тротуары за забором — не участок)
         ...Object.entries(s.zones).filter(([k]) => k !== 'road:street' && k !== 'road:sidewalk').map(([, z]) => [z.name, `${m2(z.area)}${z.count > 1 ? ` (${z.count})` : ''}`]),
       ] });
+    }
+    // СП 42.13330.2026 (с 12.07.2026), застройка ИЖС: коэффициент застройки ≤ 0,2, плотности (площадь всех этажей) ≤ 0,4 — показатели территории квартала;
+    // для отдельного участка обязателен максимальный процент застройки из ПЗЗ, поэтому превышение — справка, а не ошибка
+    if (s.plotArea) {
+      const f2 = (v) => v.toFixed(2).replace('.', ','), kz = s.built / s.plotArea, kp = s.gross / s.plotArea, srcK = 'СП 42.13330.2026 (параметры индивидуальной жилой застройки); ПЗЗ муниципалитета';
+      const cap = (s.footprint + s.outb.filter(it => catItem(it.key).shape === 'garage' || (catItem(it.key).shape === 'veranda' && porchOpt(it).roofed) || (catItem(it.key).shape === 'building' && !['pile', 'none'].includes(it.foundType))).reduce((a, it) => a + it.w * it.d, 0)) / s.plotArea;
+      if (kz > 0.2) add('info', 'Участок', `Коэффициент застройки ${f2(kz)} — больше 0,2 из СП 42.13330.2026 (капитальные: дом, веранды, гараж — ${f2(cap)}; теплица, беседка, сарай на сваях — некапитальные). Для участка обязателен предельный процент застройки по ПЗЗ — сверьте до подачи уведомления`, srcK, plots[0].pts[0]);
+      if (kp > 0.4) add('info', 'Участок', `Коэффициент плотности застройки ${f2(kp)} больше 0,4 (площадь всех этажей ${m2(s.gross)}) — сверьте с ПЗЗ`, srcK, plots[0].pts[0]);
     }
     const ext = d.walls.filter(w => w.kind === 'ext'), int = d.walls.filter(w => w.kind === 'int' || w.kind === 'part');
     const len = (ws) => ws.reduce((a, w) => a + Model.wallLen(w), 0);
@@ -131,7 +140,7 @@ const Analysis = {
     }
     // теплозащита по ГСОП города: наружные стены, чердачное перекрытие / скаты мансарды (облицовка за вентзазором не считается)
     {
-      const city = Climate.get().city, src = `СП 50.13330.2012 п. 5.2, табл. 3; ГСОП ≈ ${Climate.gsop()} °C·сут (${city}, оценка по СП 131.13330)`, needW = Climate.Rreq('wall'), seen = new Set();
+      const city = Climate.get().city, src = `СП 50.13330.2024 п. 5.2, табл. 3; ГСОП ≈ ${Climate.gsop()} °C·сут (${city}, оценка по СП 131.13330)`, needW = Climate.Rreq('wall'), seen = new Set();
       for (const w of d.walls.filter(x => x.kind === 'ext' && WALL_MATERIALS[x.mat])) {
         const R = wallR(w), k = [w.mat, Math.round(w.th), w.ins || 0, w.clad || 0].join(':');
         if (seen.has(k)) continue;
@@ -197,6 +206,7 @@ const Analysis = {
 
     // ---------------- скважина / колодец у границы с соседом: его септик может оказаться рядом ----------------
     Analysis.wellsBound(d, add, m);
+    Analysis.septicOut(d, add);
 
     // ---------------- электрика: группы щита, автомат против сечения, УЗО на розетках ----------------
     Analysis.electric(d, add, stats);
@@ -385,6 +395,19 @@ const Analysis = {
     // снегозадержатели: скатная кровля с наружным водостоком над входами и дорожками
     for (const r of d.roofs) if (r.type !== 'flat' && (r.pitch || 0) >= 5 && !r.snowGuard) add('warn', 'Кровля', 'Крыша дома: нужны снегозадержатели над входами, крыльцом и дорожками (и на металлической кровле — по всему периметру карниза)', 'СП 17.13330.2017 п. 9.11', r, r.id, () => { r.snowGuard = true; });
   },
+  /** Септик без почвенной доочистки: с 10.03.2026 сброс в канаву, кювет, овраг запрещён — только доочистка в грунте в границах участка.
+   *  Фильтрующий колодец работает лишь в песках и супесях на глубине его дна; в глинах и суглинках — поле фильтрации, инфильтраторы или накопитель с вывозом */
+  septicOut(d, add) {
+    const f1 = d.floors[0].id, sep = d.items.filter(it => (it.floor || f1) === f1 && ['septic2', 'septic3', 'septicRing'].includes(it.key));
+    if (!sep.length || typeof Struct === 'undefined') return;
+    const post = d.items.some(it => it.key === 'filterField' || /инфильтр|поле фильтрац|фильтрующ|доочист/i.test((it.label || '') + ' ' + (it.note || '')));
+    const S = Struct.soilAt(2.5), sandy = S === SOILS.sand || S === SOILS.sandFine || S === SOILS.sandyLoam;
+    if (post) return;
+    add('warn', 'Канализация', sandy
+      ? 'Септик: не указана почвенная доочистка — подпишите последний колодец как фильтрующий (дно без днища, щебень 30–50 см) или добавьте поле фильтрации / инфильтраторы; сброс в канаву запрещён'
+      : `Септик: на глубине дна — ${S.name.toLowerCase()}, стоки в грунт не уйдут, а сброс в канаву запрещён — нужна доочистка в верхнем проницаемом слое (инфильтраторы, фильтрующая кассета) либо герметичный накопитель с вывозом`,
+      'СанПиН 2.1.3684-21 (изм. от 12.02.2026, с 10.03.2026); СП 32.13330.2018 п. 9', sep[0], sep[0].id);
+  },
   /** Колодец / скважина ближе 20 м к границе с соседом: санитарный разрыв до чужого септика и уборной от нас не зависит */
   wellsBound(d, add, m) {
     const f1 = d.floors[0].id, plots = d.areas.filter(a => a.kind === 'plot' && (a.floor || f1) === f1);
@@ -453,7 +476,7 @@ const Analysis = {
           can.length ? () => { for (const kd of can) Analysis.autoLink(it, kd); } : null);
       }
       // концы трасс: в приборе (с нужной системой), в колодце, на другой трассе той же системы
-      const ok = (l, p) => items.some(it => inRect(it, p, 15) && (itemLinks(it).some(([, ks]) => ks.includes(l.kind)) || catItem(it.key).sym || ['pit', 'ring', 'borehole', 'well', 'septic', 'boiler', 'pole'].includes(catItem(it.key).shape)))
+      const ok = (l, p) => items.some(it => inRect(it, p, 15) && (itemLinks(it).some(([, ks]) => ks.includes(l.kind)) || catItem(it.key).sym || ['pit', 'ring', 'borehole', 'well', 'septic', 'boiler', 'pole', 'ground'].includes(catItem(it.key).shape)))
         || lines.some(x => x !== l && sysOfLine(x) === sysOfLine(l) && x.pts.some((q, i) => G.dist(q, p) <= 15 || (i && G.distSeg(p, x.pts[i - 1], q) <= 8)));
       const mans = items.filter(it => it.key === 'manifoldWF');
       // тёплый пол: у коллектора — подводки, на их концах — контуры (подача и обратка рядом); касание соседнего контура — не подключение
@@ -490,7 +513,7 @@ const Analysis = {
     let best = null;
     if (it.key === 'lamp36') {                                                  // 36 В — только от разделительного трансформатора
       const t = App.doc.items.filter(o => o.key === 'transformer36' && (o.floor || f1) === fl).sort((a, b) => G.dist(a, it) - G.dist(b, it))[0];
-      if (t) Model.add('lines', { kind: 'power', depth: 0, section: 'ВВГнг 2×1.5', label: `36 В → ${(it.label || 'светильник').replace(/^Светильник 36 В — /, '')}`, note: 'Безопасное напряжение 36 В от разделительного трансформатора (ПУЭ 6.1.16)', pts: [{ x: t.x, y: t.y }, { x: t.x, y: it.y }, { x: it.x, y: it.y }].filter((p, i, a) => !i || G.dist(p, a[i - 1]) > 1), floor: t.floor });
+      if (t) Model.add('lines', { kind: 'power', depth: 0, section: 'ВВГнг(А)-LS 2×1,5', label: `36 В → ${(it.label || 'светильник').replace(/^Светильник 36 В — /, '')}`, note: 'Безопасное напряжение 36 В от разделительного трансформатора (ПУЭ 6.1.16)', pts: [{ x: t.x, y: t.y }, { x: t.x, y: it.y }, { x: it.x, y: it.y }].filter((p, i, a) => !i || G.dist(p, a[i - 1]) > 1), floor: t.floor });
       return;
     }
     const light = kd === 'power' && (catItem(it.key).lm || /lamp|light|spot|bollard|ledline|transformer/i.test(catItem(it.key).shape + it.key));
@@ -594,6 +617,27 @@ const Analysis = {
       if (LIM[sec] && amp > LIM[sec]) add('bad', 'Электрика', `${l.label || 'Линия'}: автомат ${l.breaker} больше допустимого для кабеля ${sec} мм² (до ${LIM[sec]} А) — кабель перегреется раньше, чем сработает автомат`, 'ПУЭ табл. 1.3.4, п. 3.1.4', l.pts[0], l.id, () => { l.breaker = (/3P/.test(l.breaker) ? '3P ' : '') + REC[sec]; });
       if (socks.length && !l.rcd) add('warn', 'Электрика', `${l.label || 'Линия'}: розетки без УЗО — поставьте УЗО или дифавтомат 30 мА`, 'ПУЭ 7.1.79, 7.1.83; СП 256.1325800.2016 п. 15.3', l.pts[0], l.id, () => { l.rcd = '30 мА'; });
     }
+    // ввод в частный дом (ВЛ, система TN-C-S): повторное заземление PEN на вводе и контур у фундамента — обязательно
+    const rod = d.items.find(it => catItem(it.key).shape === 'ground'), vru = d.items.find(it => it.key === 'meter') || d.items.find(it => it.key === 'panel');
+    if (!rod && vru) add('warn', 'Электрика', 'Нет контура заземления: на вводе нужно повторное заземление PEN (TN-C-S) — 3 электрода Ø16 × 3 м треугольником со стороной 3 м, полоса 40×4 на глубине 0,5 м, не ближе 1 м от фундамента, R ≤ 30 Ом; от контура — к ГЗШ щита',
+      'ПУЭ 1.7.61, 1.7.103, 7.1.88; СП 256.1325800.2016 п. 15.11', vru, vru.id, () => {
+        const outl = (App.floorData || []).flatMap(f => f.outlines.map(o => o.outer)), inH = (p) => outl.some(o => G.pointInPoly(p, o));
+        const w = d.walls.filter(x => x.kind === 'ext').map(x => ({ x, pr: G.proj(vru, x.a, x.b) })).sort((a, b) => a.pr.d - b.pr.d)[0];
+        if (!w) return;
+        let n = G.perp(Model.wallDir(w.x));
+        if (inH(G.add(w.pr.q, G.mul(n, w.x.th / 2 + 20)))) n = G.mul(n, -1);
+        const face = G.add(w.pr.q, G.mul(n, w.x.th / 2)), c = G.add(face, G.mul(n, 170)), r = (p) => ({ x: Math.round(p.x), y: Math.round(p.y) });
+        Model.add('items', { key: 'groundRod', x: Math.round(c.x), y: Math.round(c.y), w: 100, d: 100, h: 0, rot: 0, flip: false, floor: d.floors[0].id, label: 'Контур заземления', note: '3 электрода Ø16 × 3 м (треугольник, сторона 3 м), полоса 40×4 на глубине 0,5 м; R ≤ 30 Ом — замер после монтажа' });
+        Model.add('lines', { kind: 'ground', depth: 50, section: 'Полоса 40×4 / провод ПуГВ 1×16 в щит', label: 'З-1 Контур → ВРУ (ГЗШ)', floor: d.floors[0].id, pts: [r(c), r(face), r(vru)] });
+      });
+    // в доме и постройках — кабель, не распространяющий горение в пучке, с низким дымо- и газовыделением
+    const bad = d.lines.filter(l => l.kind === 'power' && !(l.depth > 0) && !/нг\(А\)/i.test(l.section || ''));
+    if (bad.length) add('warn', 'Электрика', `${bad.length} линий в здании без индекса нг(А)-LS (${[...new Set(bad.map(l => l.section || 'марка не указана'))].join(', ')}) — для жилого дома нужен кабель ВВГнг(А)-LS: не распространяет горение в пучке, мало дыма`, 'СП 6.13130.2026; ГОСТ 31565-2012 табл. 2', bad[0].pts[0], bad[0].id, () => {
+      for (const l of bad) {
+        const m = String(l.section || '').match(/\d+\s*[×x]\s*\d+(?:[.,]\d+)?/);
+        l.section = 'ВВГнг(А)-LS ' + (m ? m[0].replace(/\s|x/g, s => s === 'x' ? '×' : '').replace('.', ',') : '3×1,5');
+      }
+    });
     const at = stats.findIndex(x => /Смета/.test(x.title));
     stats.splice(at < 0 ? stats.length : at, 0, { title: 'Электрощит: группы', rows });
   },

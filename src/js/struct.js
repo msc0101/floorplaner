@@ -298,7 +298,8 @@ const Struct = {
       const R = WALL_REINF[w.mat], M = WALL_MATERIALS[w.mat] || {}, L = Model.wallLen(w);
       if (L < 60) continue;
       const u = G.unit(G.sub(w.b, w.a)), n = G.perp(u), ang = Math.atan2(u.y, u.x), up = ang > Math.PI / 2 || ang < -Math.PI / 2 ? ang + Math.PI : ang;
-      const txt = `${(M.name || w.mat).split(' (')[0]} ${Math.round(w.th)} см` + (R ? (R.every ? ` · армир. 1-й и каждый ${R.every}-й ряд` : '') + (R.ring && (w.kind === 'ext' || w.kind === 'int') ? ' · армопояс' : '') : '');
+      const lay = [wallCore(w) > 0 ? `${Math.round(wallCore(w))}` : null, w.ins > 0 ? ` + утеплитель ${Math.round(w.ins)}` : '', w.clad > 0 ? ` + облицовка ${Math.round(w.clad)}` : ''].join('');   // слои: блок + утеплитель + облицовка, см
+      const txt = `${(M.name || w.mat).split(' (')[0]} ${lay} см` + (R ? (R.every ? ` · армир. 1-й и каждый ${R.every}-й ряд` : '') + (R.ring && (w.kind === 'ext' || w.kind === 'int') ? ' · армопояс' : '') : '');
       Render.label(env, txt, G.add(G.mid(w.a, w.b), G.mul(n, w.th / 2 + 14 * px)), up, { size: 9.5, color: col, bg: true, pad: 1.5, prio: 4 });
       if (w.kind !== 'ext' && w.kind !== 'int') continue;
       for (const o of App.V.openings.filter(x => x.wall === w.id)) {

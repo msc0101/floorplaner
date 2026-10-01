@@ -6,23 +6,23 @@
    ========================================================================== */
 
 const CHECK_RULES = [
-  { id: 'house_street', a: 'house', b: 'bound:street', min: 500, name: 'Дом — красная линия улицы', src: 'СП 53.13330.2019 п. 6.6' },
-  { id: 'house_lane', a: 'house', b: 'bound:lane', min: 300, name: 'Дом — красная линия проезда', src: 'СП 53.13330.2019 п. 6.6' },
-  { id: 'outb_street', a: 'outbuilding', b: 'bound:street', min: 500, name: 'Хозпостройка — красная линия улицы', src: 'СП 53.13330.2019 п. 6.6' },
-  { id: 'outb_lane', a: 'outbuilding', b: 'bound:lane', min: 500, name: 'Хозпостройка — красная линия проезда', src: 'СП 53.13330.2019 п. 6.6' },
-  { id: 'house_neighbor', a: 'house', b: 'bound:neighbor', min: 300, name: 'Дом — граница соседнего участка', src: 'СП 53.13330.2019 п. 6.7' },
-  { id: 'animals_neighbor', a: 'animals', b: 'bound:neighbor', min: 400, name: 'Постройка для скота и птицы — граница соседа', src: 'СП 53.13330.2019 п. 6.7' },
+  { id: 'house_street', a: 'house', b: 'bound:street', min: 500, name: 'Дом — красная линия улицы', src: 'СП 53.13330.2019 п. 6.6; СП 42.13330.2026' },
+  { id: 'house_lane', a: 'house', b: 'bound:lane', min: 300, name: 'Дом — красная линия проезда', src: 'СП 53.13330.2019 п. 6.6; СП 42.13330.2026' },
+  { id: 'outb_street', a: 'outbuilding', b: 'bound:street', min: 500, name: 'Хозпостройка — красная линия улицы', src: 'СП 53.13330.2019 п. 6.6; СП 42.13330.2026' },
+  { id: 'outb_lane', a: 'outbuilding', b: 'bound:lane', min: 500, name: 'Хозпостройка — красная линия проезда', src: 'СП 53.13330.2019 п. 6.6; СП 42.13330.2026' },
+  { id: 'house_neighbor', a: 'house', b: 'bound:neighbor', min: 300, name: 'Дом — граница соседнего участка', src: 'СП 53.13330.2019 п. 6.7; СП 42.13330.2026' },
+  { id: 'animals_neighbor', a: 'animals', b: 'bound:neighbor', min: 400, name: 'Постройка для скота и птицы — граница соседа', src: 'СП 53.13330.2019 п. 6.7; СП 42.13330.2026' },
   { id: 'outb_neighbor', a: 'outbuilding', b: 'bound:neighbor', min: 100, name: 'Другие постройки (гараж, баня, сарай) — граница соседа', src: 'СП 53.13330.2019 п. 6.7', except: 'animals' },
-  { id: 'tall_neighbor', a: 'treeTall', b: 'bound:neighbor', min: 400, name: 'Высокорослое дерево — граница соседа', src: 'СП 53.13330.2019 п. 6.7' },
-  { id: 'mid_neighbor', a: 'treeMid', b: 'bound:neighbor', min: 200, name: 'Среднерослое дерево — граница соседа', src: 'СП 53.13330.2019 п. 6.7' },
-  { id: 'shrub_neighbor', a: 'shrub', b: 'bound:neighbor', min: 100, name: 'Кустарник — граница соседа', src: 'СП 53.13330.2019 п. 6.7' },
+  { id: 'tall_neighbor', a: 'treeTall', b: 'bound:neighbor', min: 400, name: 'Высокорослое дерево — граница соседа', src: 'СП 53.13330.2019 п. 6.7; СП 42.13330.2026' },
+  { id: 'mid_neighbor', a: 'treeMid', b: 'bound:neighbor', min: 200, name: 'Среднерослое дерево — граница соседа', src: 'СП 53.13330.2019 п. 6.7; СП 42.13330.2026' },
+  { id: 'shrub_neighbor', a: 'shrub', b: 'bound:neighbor', min: 100, name: 'Кустарник — граница соседа', src: 'СП 53.13330.2019 п. 6.7; СП 42.13330.2026' },
   { id: 'house_animals', a: 'house', b: 'animals', min: 1200, name: 'Дом — постройка для скота и птицы', src: 'СП 53.13330 п. 6.8; СП 30-102-99: от окон 10–40 м в зависимости от поголовья' },
   { id: 'house_toilet', a: 'house', b: 'toilet', min: 1200, name: 'Дом — уборная, выгребная яма', src: 'СП 53.13330 п. 6.8' },
   { id: 'cellar_toilet', a: 'cellar', b: 'toilet', min: 1200, name: 'Погреб — уборная', src: 'СП 53.13330 п. 6.8' },
   { id: 'house_bath', a: 'house', b: 'bath', min: 800, name: 'Дом — баня, летний душ', src: 'СП 53.13330.2019 п. 6.8' },
   { id: 'well_toilet', a: 'well', b: 'toilet', min: 800, name: 'Колодец — уборная, компост', src: 'СП 53.13330.2019 п. 6.8' },
-  { id: 'septic_house', a: 'septic', b: 'house', min: 500, name: 'Септик — дом', src: 'СП 32.13330, рекомендация' },
-  { id: 'septic_well', a: 'septic', b: 'well', min: 2000, name: 'Септик — колодец / скважина', src: 'санитарные правила; с полем фильтрации — 50 м', except: 'filter' },
+  { id: 'septic_house', a: 'septic', b: 'house', min: 500, name: 'Септик — фундамент дома', src: 'СанПиН 2.1.3684-21 (с 10.03.2026): не менее 5 м' },
+  { id: 'septic_well', a: 'septic', b: 'well', min: 2000, name: 'Септик — колодец / скважина', src: 'СанПиН 2.1.3684-21; с полем фильтрации — 50 м', except: 'filter' },
   { id: 'filter_well', a: 'filter', b: 'well', min: 5000, name: 'Поле фильтрации — колодец / скважина', src: 'СанПиН 2.1.3684-21, СП 32.13330' },
   { id: 'well_house', a: 'well', b: 'house', min: 300, name: 'Колодец / скважина — фундамент дома', src: 'рекомендация: не подмывать фундамент, подъезд буровой' },
   { id: 'well_animals', a: 'well', b: 'animals', min: 2000, name: 'Колодец / скважина — постройка для скота и птицы', src: 'рекомендация; для общественных колодцев — 50 м (СанПиН 2.1.3684-21)' },
@@ -101,7 +101,22 @@ const Checks = {
   },
   rules() {
     const over = App.doc.settings.checkRules || {};
-    return CHECK_RULES.map(r => ({ ...r, min: U.isNum(over[r.id]?.min) ? over[r.id].min : r.min, off: !!over[r.id]?.off }));
+    const out = CHECK_RULES.map(r => ({ ...r, min: U.isNum(over[r.id]?.min) ? over[r.id].min : r.min, off: !!over[r.id]?.off }));
+    // СанПиН 2.1.3684-21 (изм. от 12.02.2026, с 10.03.2026): септик — скважина по грунту на глубине септика и объёму стоков
+    const sw = out.find(r => r.id === 'septic_well');
+    if (sw && !U.isNum(over.septic_well?.min) && typeof Struct !== 'undefined') {
+      const S = Struct.soilAt(2.5), sandy = S === SOILS.sand || S === SOILS.sandFine || S === SOILS.sandyLoam, q = Checks.flow();
+      sw.min = sandy ? (q <= 1 ? 3500 : 5000) : (q <= 1 ? 2000 : 3500);
+      sw.src = `СанПиН 2.1.3684-21 (изм. от 12.02.2026): ${S.name.toLowerCase()} на глубине септика, стоки ≈ ${q.toFixed(1).replace('.', ',')} м³/сут — ${sandy ? 'пески/супеси 35 м до 1 м³/сут, 50 м до 5' : 'глины/суглинки 20 м до 1 м³/сут, 30–35 м до 5'}; сокращать — только по заключению Роспотребнадзора`;
+    }
+    return out;
+  },
+  /** Суточный объём стоков, м³: 0,2 м³ на жильца (СП 30.13330), жильцов — по спальням (в первой двое) или из настроек */
+  flow() {
+    const n = App.doc.settings.residents;
+    if (U.isNum(n)) return n * 0.2;
+    const beds = (App.floorData || []).flatMap(f => f.rooms).filter(r => /спальн|детск/i.test((r.tag && r.tag.name) || r.name || '')).length;
+    return Math.max(2, beds + 1) * 0.2;
   },
   /** Объекты группы: { id, name, poly (контур) или pt (точка — ствол) } */
   objects(group) {

@@ -56,7 +56,7 @@ const SYSTEMS = {
   sewer:     { name: 'Канализация и ливнёвка', short: 'Канализация', color: '#8a5a2b', lines: ['sewer', 'drain'], keys: ['septic2', 'septic3', 'septicRing', 'cesspool', 'manhole', 'drainWell', 'filterField', 'riser', 'downspout', 'stormInlet', 'drainChannel', 'rainBarrel'],
     norms: 'СП 30.13330.2020 (внутренняя: Ø50 — уклон 3%, Ø110 — 2%); СП 32.13330.2018 «Канализация. Наружные сети»; СП 17.13330.2017 п. 9 (водосток с кровли)' },
   heating:   { name: 'Отопление', short: 'Отопление', color: '#c2257e', lines: ['heating'], keys: ['radiator', 'radiatorLong', 'towel', 'gasBoilerWall', 'boilerFloor', 'elBoiler', 'indirect', 'pump', 'expansionTank'],
-    norms: 'СП 60.13330.2020 «Отопление, вентиляция и кондиционирование воздуха» (радиаторы — под окнами, п. 6.4.4); СП 50.13330.2012 (теплозащита)' },
+    norms: 'СП 60.13330.2020 «Отопление, вентиляция и кондиционирование воздуха» (радиаторы — под окнами, п. 6.4.4); СП 50.13330.2024 (теплозащита)' },
   warmfloor: { name: 'Тёплый пол', short: 'Тёплый пол', color: '#e07b2f', lines: ['warmfloor'], keys: ['manifoldWF'],
     norms: 'СП 60.13330.2020 п. 6.4.10: температура поверхности пола ≤ 26 °C в жилых, ≤ 31 °C в ванных; контур ≤ 80–100 м (PE-Xa 16 мм)' },
   vent:      { name: 'Вентиляция', short: 'Вентиляция', color: '#0e9f6e', lines: ['airIn'], keys: ['ventSupply', 'ventGrille', 'ventTransfer', 'recuperator', 'fan', 'ventPipe', 'ventShaft', 'ventShaft2', 'hood'],
@@ -64,7 +64,7 @@ const SYSTEMS = {
   ac:        { name: 'Кондиционирование', short: 'Кондиционеры', color: '#0891b2', lines: ['freon'], keys: ['ac', 'acout'],
     norms: 'СП 60.13330.2020 разд. 7; длина трассы и перепад высот — по паспорту кондиционера' },
   power:     { name: 'Электрика', short: 'Электрика', color: '#d21f3c', lines: ['power', 'overhead', 'ground'], keys: ['generator', 'groundRod'],
-    norms: 'ПУЭ 7-е изд., гл. 7.1 (жилые здания), 1.7 (заземление), 2.4 (ВЛ); СП 256.1325800.2016 «Электроустановки жилых и общественных зданий»' },
+    norms: 'ПУЭ 7-е изд., гл. 7.1 (жилые здания), 1.7 (заземление), 2.4 (ВЛ); СП 256.1325800.2016 «Электроустановки жилых и общественных зданий»; СП 6.13130.2026 (пожарная безопасность электроустановок: в здании — кабель нг(А)-LS, в каркасных и деревянных стенах — в металлической трубе или негорючем канале); ГОСТ 31565-2012' },
   lowvolt:   { name: 'Интернет, слаботочка и видеонаблюдение', short: 'Интернет, видео', color: '#7c3aed', lines: ['lowvolt'], keys: ['cctvCam', 'nvr', 'router', 'lanSocket', 'wifiAp'],
     norms: 'СП 134.13330.2022 «Системы электросвязи зданий»; ГОСТ Р 51558-2014 (системы охранные телевизионные)' },
   gas:       { name: 'Газоснабжение', short: 'Газ', color: '#d89b00', lines: ['gas', 'gasAir'], keys: [],
@@ -1689,6 +1689,14 @@ const Painters = (() => {
     for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; line(P, [Math.cos(a) * w * 0.6, Math.sin(a) * w * 0.6, Math.cos(a) * w * 0.95, Math.sin(a) * w * 0.95]); }
   };
   S.ground = (P, w, d) => {
+    if (d >= 2.5 * w || w >= 2.5 * d) {                                                  // электроды в ряд через ~3 м, полоса между ними
+      const L = Math.max(w, d), n = Math.max(2, Math.round(L / 300) + 1), along = d > w;
+      P.ctx.strokeStyle = LINE_KINDS.ground.color;
+      line(P, along ? [0, -L / 2, 0, L / 2] : [-L / 2, 0, L / 2, 0]);
+      for (let i = 0; i < n; i++) { const t = -L / 2 + L * i / (n - 1); P.ctx.fillStyle = LINE_KINDS.ground.color; circle(P, along ? 0 : t, along ? t : 0, 6); }
+      text(P, '⏚', along ? Math.min(w, d) * 0.9 : 0, along ? 0 : -Math.min(w, d) * 0.9, 18);
+      return;
+    }
     P.ctx.setLineDash([3 * P.px, 3 * P.px]);
     box(P, -w / 2, -d / 2, w, d, 0, false);
     P.ctx.setLineDash([]);

@@ -417,7 +417,8 @@ const Detail = {
       let n = G.perp(u); if (inside(G.add(G.mid(w.a, w.b), G.mul(n, w.th)))) n = G.mul(n, -1);
       out.push({ key: w.id, name: `${dirName(n)} стена дома`, walls: grp, n, u, bld: null });
     }
-    for (const it of d.items.filter(o => (o.floor || f1) === f1 && BLD_HOLLOW.has(catItem(o.key).shape) && catItem(o.key).key !== 'house')) {
+    // раскладка кладки — только у каменных построек (каркас, СИП, брус, ГКЛ не кладут)
+    for (const it of d.items.filter(o => (o.floor || f1) === f1 && BLD_HOLLOW.has(catItem(o.key).shape) && catItem(o.key).key !== 'house' && !['frame', 'sip', 'timber', 'gkl'].includes(bldWallMat(o)))) {
       for (const side of ['front', 'back', 'left', 'right']) {
         const t = bldWallT(it), F = bldSide(side, it.w, it.d, t), n = G.sub(bldWorld(it, G.mul(F.n, -1)), bldWorld(it, { x: 0, y: 0 }));
         out.push({ key: it.id + ':' + side, name: `${(it.label || catItem(it.key).name).split(' на ')[0].toLowerCase()} — ${dirName(G.unit(n))} стена`, bld: it, side, n: G.unit(n) });
@@ -522,7 +523,7 @@ const Detail = {
     const zc = top / 2, Dv = (vMax - vMin) / 2, sOff = vMax + 260 - uMin;
     const t = bldWallT(it), clad = it.clad > 0 ? it.clad + (it.gap ?? 1) : 0;
     return { it, fr, R, eave, Z, uMin, uMax, vMin, vMax, half, top, zc, Dv, sOff, t, clad, outer: (A ? it.d : it.w) / 2,
-      bbox: { x0: vMin - 130, y0: -(Math.max(top, zc + Dv) + 70), x1: sOff + uMax + 40, y1: -(Math.min(0, zc - Dv) - 90) } };
+      bbox: { x0: vMin - 130, y0: -(Math.max(top, zc + Dv) + 150), x1: sOff + uMax + 60, y1: -(Math.min(0, zc - Dv) - 90) } };
   },
   drawBldRoof(D, G2) {
     const { fr, eave, Z, uMin, uMax, vMin, vMax, half, top, zc, sOff, t, clad, outer } = G2;
@@ -567,13 +568,13 @@ const Detail = {
     let k = 0;
     for (let u = -fr.len * 50; u <= fr.len * 50 + 1; u += fr.step * 100, k++) {
       D.line(PX(u), PZ(vMin), PX(u), PZ(vMax), '#8a5a2b', 0.7);
-      if (k % 3 === 0) D.text((fr.scheme === 'truss' ? 'Ф' : 'С') + (k + 1), PX(u), PZ(vMax) + D.cm(3), { size: 2, align: 'center' });
+      if (k % 3 === 0) D.text((fr.scheme === 'truss' ? 'Ф' : 'С') + (k + 1), PX(u), PZ(vMax) - D.cm(3), { size: 2, align: 'center' });
     }
-    D.dimH(PX(-fr.len * 50), PX(-fr.len * 50 + fr.step * 100), PZ(vMin) - D.cm(6), String(fr.step * 1000));
-    D.dimH(PX(uMin), PX(uMax), PZ(vMin) - D.cm(13), String(Math.round((uMax - uMin) * 10)));
+    D.dimH(PX(-fr.len * 50), PX(-fr.len * 50 + fr.step * 100), PZ(vMin) + D.cm(5), String(fr.step * 1000));
+    D.dimH(PX(uMin), PX(uMax), PZ(vMin) + D.cm(11), String(Math.round((uMax - uMin) * 10)));
     D.dimV(PZ(v1), PZ(v0), PX(uMax) + D.cm(7), String(Math.round(half * 20)));
     D.text(`${fr.scheme === 'truss' ? 'Фермы' : 'Стропила'} ${fr.b}×${fr.h}, шаг ${fr.step * 1000} — ${fr.n} шт.`, PX((uMin + uMax) / 2), PZ(0), { size: 3, bold: true, align: 'center', bg: true });
-    D.text('План раскладки (вид сверху, без кровли)', PX((uMin + uMax) / 2), PZ(vMax) + D.cm(9), { size: 3.2, bold: true, align: 'center' });
+    D.text('План раскладки (вид сверху, без кровли)', PX((uMin + uMax) / 2), PZ(vMin) + D.cm(18), { size: 3.2, bold: true, align: 'center' });
     D.text('скат ↓', PX(uMin) + D.cm(6), PZ((v0 + v1) / 2 + (hiV < 0 ? -40 : 40)), { size: 2.4 });
     void nWeb;
     return D.notes;
@@ -653,7 +654,7 @@ const Detail = {
       water: 'Гидроизоляция: по верху ленты — 2 слоя наплавляемой (отсечка под кладку); боковые грани — битумная обмазочная',
       xps: 'Утепление ленты: XPS 100 мм по наружной грани до подошвы; под отмосткой — XPS 50 мм, юбка 1200 мм (МЗЛФ)',
       blind: 'Отмостка 1000 мм: бетон 80–100 мм с уклоном 2 % от дома, песок 100 мм, деформационный шов у цоколя',
-      wall: 'Стена: ' + lay.map(l => `${l.name.toLowerCase()} ${l.th * 10} мм`).join(' + ') + (lay.some(l => l.kind === 'brick') ? '; облицовка на гибких связях 4 шт./м²' : ''),
+      wall: 'Стена: ' + lay.map(l => `${l.name.toLowerCase()} ${l.th * 10} мм`).join(' + ') + (lay.some(l => l.kind === 'brick') ? '; облицовка на базальтопластиковых связях 4 шт./м²; утеплитель — фасадная минвата ≥ 80 кг/м³ под ветрозащитной мембраной; зазор с продухами внизу и вверху (пустой вертикальный шов через 1 м)' : ''),
       reinf: 'Армирование кладки: 1-й и каждый ' + ((WALL_REINF[M.w0.mat] || {}).every || 3) + '-й ряд — ' + ((WALL_REINF[M.w0.mat] || {}).how || 'по расчёту'),
       lintel: 'Перемычка над проёмом: U-блок с бетоном B20, 2Ø12 А500, опирание ≥ 250 мм; подоконник и отлив',
       ring: 'Армопояс 250 мм по всем наружным стенам: бетон B20, 4Ø12 А500, хомуты Ø8 шаг 300; анкеры М12 шаг 1000 под лежень',
@@ -732,7 +733,7 @@ const Detail = {
   posList(spec) { const n = (spec && spec._notes) || []; return n.length ? U.el('ol', { class: 'pos' }, n.map(t => U.el('li', {}, t))) : null; },
   nodePanel(spec, title, re, fixed) {
     return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, title), Detail.posList(spec),
-      U.el('h4', {}, 'Указания'), Sheets.ul(fixed || Sheets.notes(re).slice(0, 5)),
+      U.el('h4', {}, 'Указания'), Sheets.ul(fixed || Sheets.notes(re).filter(t => !/Смотровая яма|Погреб|\+5 °C|не отапливается|примыкает к дому|Печь/.test(t)).slice(0, 5)),   // узел — по ленте дома: про яму, погреб, гараж и печь — на их листах
       U.el('div', { class: 'norm' }, '§ СП 22.13330.2016; СП 45.13330.2017; СП 50-101-2004; СП 15.13330.2020; СП 17.13330.2017; СП 64.13330.2017'));
   },
   /** Указания к узлу карниза — по узлу, а не общие замечания проекта */
@@ -754,7 +755,7 @@ const Detail = {
     if (M.mz) rows.push(['Чистый пол мансарды', lvl(M.mz.e)], ['Верх мауэрлата', lvl(M.lv.plate)], ['Потолок мансарды (по ригелям)', lvl(M.mz.L.ceil)]);
     if (M.r) rows.push(['Конёк', '+' + (Roof.params(M.r).top / 100).toFixed(3)]);
     return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Разрез 1-1'), Detail.posList(spec), U.el('h4', {}, 'Отметки'), Sheets.T(null, rows),
-      U.el('h4', {}, 'Указания'), Sheets.ul(Sheets.notes(/Фундамент|Конструкции/).slice(0, 4)),
+      U.el('h4', {}, 'Указания'), Sheets.ul(Sheets.notes(/Фундамент|Конструкции/).filter(t => !/Смотровая яма|Погреб|\+5 °C|не отапливается|примыкает к дому|Печь/.test(t)).slice(0, 4)),
       U.el('div', { class: 'norm' }, '§ СП 22.13330; СП 15.13330; СП 17.13330; СП 20.13330; СП 64.13330; СП 50.13330'));
   },
   roofPanel(node) {

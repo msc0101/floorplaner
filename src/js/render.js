@@ -132,7 +132,7 @@ const Render = {
     if (L.masonry) Struct.drawMasonry(env);
     lay('ITEMS');
     for (const it of items) if (!isGround(it) && !isShell(it) && !isCanopy(it) && !catItem(it.key).sym) Render.item(env, it);
-    for (const it of items) if (isShell(it)) Render.item(env, it, '_label');
+    if (!env.noBldLabel) for (const it of items) if (isShell(it)) Render.item(env, it, '_label');
     for (const it of items) if (isCanopy(it)) Render.item(env, it);
     // лестницы с нижнего этажа приходят на этот — показываем проём
     if (fi > 0) for (const it of App.doc.items) if (it.floor === App.doc.floors[fi - 1].id && ['stairs', 'stairsL'].includes(catItem(it.key).shape)) Render.stairsFromBelow(env, it);
@@ -140,6 +140,11 @@ const Render = {
     Render.lines(env);
     lay('ITEMS');
     for (const it of items) if (catItem(it.key).sym) Render.item(env, it);
+    // листы сетей: подписи приборов своей системы (вытяжки, клапаны, колодцы) — иначе мелкий значок не найти
+    if (env.sysTags) for (const it of items) if (sysOf(it) === env.sysTags) {
+      const t = (it.label || catItem(it.key).name).replace(/\s*\(.*?\)\s*/g, ' ').trim();
+      Render.label(env, t.length > 30 ? t.slice(0, 29) + '…' : t, { x: it.x, y: it.y - (Math.max(it.d || 0, 20) / 2 + 14 * env.px) }, 0, { size: 9, color: SYSTEMS[env.sysTags].color, bg: true, pad: 1.5, prio: 5 });
+    }
     lay('ROOF');
     if (L.roof !== false) for (const r of App.V.roofs) { env.ghost = r.floor !== App.floor; Roof.draw(env, r); env.ghost = false; }
     // крыши построек — только линии (конёк, скаты, свес): планировка внутри остаётся видна
@@ -899,7 +904,14 @@ const Render = {
       for (const r of use) Render.dimLine(env, r.p, G.add(r.p, G.mul(r.d, r.t)), 0, U.fmtLen(r.t), color);
     };
     const fd = (App.floorData || [])[0];
-    if (fd && fd.outlines.length) { let b = null; for (const o of fd.outlines) b = G.bboxUnion(b, G.bbox(o.outer)); tie(b, true); }
+    if (fd && fd.outlines.length) {
+      let b = null; for (const o of fd.outlines) b = G.bboxUnion(b, G.bbox(o.outer)); tie(b, true);
+      // подпись дома на генплане: назначение, габарит по наружным граням, общая площадь, этажность
+      const c = { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 }, nf = App.doc.floors.filter(f => (App.floorData || []).some(x => x.floor.id === f.id && x.rooms.length)).length || 1;
+      const S = (App.floorData || []).reduce((s2, x) => s2 + x.rooms.reduce((a2, r) => a2 + r.areaFloor, 0), 0) / 1e4;
+      Render.label(env, 'Жилой дом', { x: c.x, y: c.y - 30 * env.px }, 0, { size: 22, bold: true, prio: 9, force: true });
+      Render.label(env, `${((b.x1 - b.x0) / 100).toFixed(2).replace('.', ',')} × ${((b.y1 - b.y0) / 100).toFixed(2).replace('.', ',')} м · ${S.toFixed(1).replace('.', ',')} м² · ${nf} эт.`, { x: c.x, y: c.y + 6 * env.px }, 0, { size: 14, prio: 9, force: true, color: '#555' });
+    }
     for (const b of blds) tie(G.bbox(b.poly), false, b.it);
   },
   dimLine(env, a, b, off, text, color) {

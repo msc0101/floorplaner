@@ -62,8 +62,23 @@ const Drawing = {
     return dims.filter(d => G.dist(d.a, d.b) > 3);
   },
   /** Выполнить fn с временными авторазмерами на текущем виде этажа */
-  withAutoDims(fid, fn) {
-    const extra = Drawing.autoDims(fid).map((d, i) => ({ ...d, id: '_auto' + i, auto: true }));
+  /** Авторазмеры постройки (гараж, сарай): цепочки по наружным граням со всеми проёмами и габариты */
+  bldDims(it, gap1 = 70, gap2 = 130) {
+    const s = bldShell(it, it.w, it.d), t = s.t, dims = [];
+    for (const side of Object.keys(BLD_SIDES)) {
+      const F = bldSide(side, it.w, it.d, t), out = G.mul(F.n, -1), face = t / 2;   // наружная грань — против внутренней нормали
+      const P = (sv, k) => bldWorld(it, G.add(G.add(F.c, G.mul(F.u, sv)), G.mul(out, face + k)));
+      const xs = [-F.L / 2, F.L / 2];
+      for (const o of s.ops.filter(x => x.side === side)) xs.push(o.s0, o.s1);
+      const v = [...new Set(xs.map(x => Math.round(x)))].sort((a, b) => a - b);
+      if (v.length > 2) for (let i = 0; i < v.length - 1; i++) if (v[i + 1] - v[i] > 3) dims.push({ a: P(v[i], gap1), b: P(v[i + 1], gap1), off: 0 });
+      if (side === 'front' || side === 'left') dims.push({ a: P(-F.L / 2, gap2), b: P(F.L / 2, gap2), off: 0 });
+    }
+    return dims;
+  },
+  withAutoDims(fid, fn, o = {}) {
+    const blds = o.blds ? App.V.items.filter(it => (it.floor || App.doc.floors[0].id) === fid && BLD_HOLLOW.has(catItem(it.key).shape)).flatMap(it => Drawing.bldDims(it)) : [];
+    const extra = (o.noHouse ? [] : Drawing.autoDims(fid)).concat(blds).map((d, i) => ({ ...d, id: '_auto' + i, auto: true }));
     const saveDims = App.V.dims;
     App.V.dims = saveDims.concat(extra);
     try { return fn(); } finally { App.V.dims = saveDims; }
