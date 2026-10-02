@@ -852,12 +852,12 @@ function bldFrame(it) {
   const n = Math.floor(len / step + 1e-6) + 1, rafterL = (shed ? rr.d : rr.d / 2) / 100 / Math.cos(a), nRaft = shed ? n : 2 * n;
   const BAT = { membrane: ['сплошной настил OSB-3 18 мм по контробрешётке 50×50 (вентзазор)', 0], profile: ['25×100 шаг 500', 0.5], metaltile: ['25×100 шаг 350', 0.35], soft: ['OSB-3 12 мм по обрешётке 25×100 шаг 300', 0.3], seam: ['сплошная 25×100 с зазором 20 мм', 0.12], ondulin: ['40×50 шаг 610', 0.6] }[R.mat] || ['25×100 шаг 350', 0.35];
   const slope = rr.w * rr.d / Math.cos(a) / 1e4, mauerlat = 2 * len;
-  const woodV = (truss ? n * (rafterL + span * 1.02 + span * (shed ? 0.9 : 1.1)) : nRaft * rafterL + (shed ? 0 : n * span)) * pick.b * pick.h / 1e6 + mauerlat * 0.15 * 0.1 + (BAT[1] ? slope / BAT[1] * 0.025 * 0.1 : 0);
+  const woodV = (truss ? n * (rafterL + span * 1.02 + span * (shed ? 0.9 : 1.1)) : nRaft * rafterL + (shed ? 0 : n * span)) * pick.b * pick.h / 1e6 + mauerlat * 0.15 * 0.15 + (BAT[1] ? slope / BAT[1] * 0.025 * 0.1 : 0);
   const name = truss ? (shed ? 'Односкатные фермы на МЗП (заводские), опора — мауэрлат на продольных стенах' : 'Фермы на МЗП (заводские), опора — мауэрлат на продольных стенах')
     : shed ? 'Наслонные стропила одним пролётом: опора — мауэрлат на высокой и низкой стенах' : 'Наслонные стропила с затяжкой, опора — мауэрлат и коньковый прогон';
   return { scheme: truss ? 'truss' : 'rafter', name, shed, alongX, off, span, len, pitch: R.pitch, mat: R.mat, step, n, nRaft, rafterL, ...pick, L,
     snow: { district: cl.snow, Sg, mu, s0, sD }, gRoof, q, slope, bat: BAT[0], batStep: BAT[1], osb: R.mat === 'membrane' || R.mat === 'soft' ? slope : 0,
-    mauerlat, anchors: Math.ceil(mauerlat / 1.2) + 2, woodV, rr };
+    mauerlat, anchors: Math.ceil(mauerlat / 0.8) + 4, woodV, rr };
 }
 
 /* ===================== ПОСТРОЙКИ «КАК ДОМ»: стены с толщиной, внутри — пусто ===================== */

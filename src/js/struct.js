@@ -16,7 +16,10 @@ const SOILS = {
   clay:      { name: 'Глина', R0: 250, heave: true, d0: 0.23 },
   peat:      { name: 'Торф, насыпной, ил (слабый)', R0: 50, heave: true, weak: true, d0: 0.23 },
 };
-const FOUND_TYPES = { auto: 'Подобрать автоматически', strip: 'Ленточный монолитный', mzlf: 'Мелкозаглублённый утеплённый (МЗЛФ)', slab: 'Утеплённая плита (УШП)', pile: 'Свайно-винтовой / буронабивной с ростверком' };
+const FOUND_TYPES = { auto: 'Подобрать автоматически', strip: 'Ленточный монолитный', mzlf: 'Мелкозаглублённый утеплённый (МЗЛФ)', slab: 'Утеплённая плита (УШП)', bored: 'Буронабивные сваи с монолитным ростверком', pile: 'Винтовые сваи с ростверком (лёгкие постройки)' };
+/* Буронабивные сваи без изысканий — осторожные значения (порядок СП 24.13330.2021 для глубины 2–3 м):
+   R — сопротивление под нижним концом, кПа; f — трение по боковой поверхности, кПа */
+const PILE_SOIL = { sand: { R: 900, f: 20 }, sandFine: { R: 600, f: 12 }, sandyLoam: { R: 600, f: 12 }, loam: { R: 700, f: 15 }, clay: { R: 700, f: 15 }, peat: { R: 0, f: 0 } };
 /* Плотность кладки, кН/м³ (с раствором и влажностью) */
 const WALL_GAMMA = { aerated: 6, foam: 7, ceramic: 8.5, brick: 18, silicate: 19, concrete: 25, claybl: 12, cinder: 14, arbolit: 7, timber: 5.5, frame: 2, sip: 1.5, gkl: 1.5, pgp: 12, stone: 22 };
 /* Кладка: сколько рядов между армированными, чем армировать, нужен ли армопояс */
@@ -139,8 +142,11 @@ const Struct = {
     const S = { ...S1, heave, weak: S1.weak || !!(S2 && S2.weak && o.layer < 150) };
     // песок поверх пучинистой глины: МЗЛФ на природной песчаной подушке, промерзание глины отсекает утеплённая отмостка
     const sandTop = /^sand/.test(o.soil) && S2 && S2.heave;
-    const type = FOUND_TYPES[sp.type] && sp.type !== 'auto' ? sp.type : S.weak ? 'pile' : heave && o.gwl < 150 ? 'slab' : heave && (high || sandTop) ? 'mzlf' : 'strip';
-    let depth = type === 'strip' ? (heave ? Math.max(df, 0.5) : 0.5) : type === 'mzlf' ? 0.5 : type === 'slab' ? 0.35 : 0;
+    // тяжёлые каменные стены (кладка с облицовкой) на пучинистом или слабом грунте — буронабивные сваи ниже промерзания с ростверком:
+    // МЗЛФ и УШП под такой дом без изысканий и без расчёта на пучение не закладываем
+    const heavy = qn > 18;
+    const type = FOUND_TYPES[sp.type] && sp.type !== 'auto' ? sp.type : S.weak ? (heavy ? 'bored' : 'pile') : heave ? (heavy ? 'bored' : o.gwl < 150 ? 'slab' : high || sandTop ? 'mzlf' : 'strip') : 'strip';
+    let depth = type === 'strip' ? (heave ? Math.max(df, 0.5) : 0.5) : type === 'mzlf' ? 0.5 : type === 'slab' ? 0.35 : type === 'bored' ? 0.2 : 0;
     if (U.isNum(sp.depth)) depth = sp.depth / 100;
     // ширина подошвы: q / (R − γ·d); не меньше стены + 10 см и не меньше 30 см
     const H = depth + o.plinth / 100;                                        // высота ленты с цоколем
@@ -148,7 +154,7 @@ const Struct = {
     const Sb = Struct.soilAt(depth), Sd = Struct.soilAt(depth + 1), R0 = Math.min(Sb.R0, Sd.R0);
     const R = R0 * (type === 'mzlf' ? 0.9 : 1) * (o.survey ? 1 : 0.8);
     let b = q / Math.max(30, R - 24 * H);                                  // та же формула, что и в проверке давления
-    b = Math.max(b, sp.thMax + 0.1, 0.3);
+    b = type === 'bored' ? Math.max(0.4, sp.thMax) : Math.max(b, sp.thMax + 0.1, 0.3);   // ростверк — во всю толщину стены с облицовкой
     b = Math.ceil(b * 20) / 20;
     if (U.isNum(sp.width)) b = sp.width / 100;
     const p = (q + 24 * b * H) / b;                                          // давление под подошвой, кПа
@@ -167,6 +173,8 @@ const Struct = {
       out.bars = 'плита — сетка Ø8 шаг 200; рёбра — 4 Ø12 А500, хомуты Ø8 шаг 300';
       out.rebar = A * 2 * 5 * REBAR_KG[8] + L * 4 * 1.1 * REBAR_KG[12];
       out.sand = A * 0.3; out.xps = A + Lext * 1.2;
+    } else if (type === 'bored') {
+      Object.assign(out, Struct._bored(out, o, dfn));
     } else {
       const piles = Math.ceil(L / 2.5) + 4;
       out.piles = piles; out.concrete = L * 0.4 * 0.4;                       // ростверк 400×400
@@ -176,6 +184,61 @@ const Struct = {
     }
     // низ подошвы (от уровня земли), м: у свай — ростверк 0,4 м над сваями
     out.bottom = type === 'pile' ? 0.4 : depth;
+    return out;
+  },
+  /** Буронабивные сваи + ростверк. Низ сваи — на 1 м ниже нормативного промерзания (заделка против сил пучения), не меньше 2,5 м от земли;
+   *  ростверк — от низа (0,2 м ниже земли) до верха цоколя, под ним сминаемый слой 150 мм (пучение не поднимает ростверк).
+   *  Несущая способность: Fd = R·A + u·Σf·h (трение — ниже зоны промерзания), допускаемая N = Fd / 1,4 (без изысканий × 0,85);
+   *  диаметр — наименьший из 300 / 400 / 500 мм, при котором шаг ≥ 1,2 м; шаг — не больше 2,0 м */
+  _bored(F, o, dfn) {
+    const gBot = F.depth, gh = F.H, gw = F.width;
+    const tip = Math.max(2.5, Math.ceil((dfn + 1) * 10) / 10), Lp = +(tip - gBot).toFixed(2);
+    const Pt = PILE_SOIL[o.soil2 && o.layer && tip * 100 >= o.layer ? o.soil2 : o.soil] || PILE_SOIL.loam;
+    let fh = 0;                                                                          // Σ f·h ниже промерзания (до острия)
+    for (let z = Math.max(dfn, gBot); z < tip - 1e-6; z += 0.1) fh += (PILE_SOIL[o.soil2 && o.layer && z * 100 >= o.layer ? o.soil2 : o.soil] || PILE_SOIL.loam).f * Math.min(0.1, tip - z);
+    const qg = F.q + 25 * gw * gh * 1.1;                                                // кН/м на ростверк с его весом
+    let pick = null;
+    for (const d of [0.3, 0.4, 0.5]) {
+      const A = Math.PI * d * d / 4, u = Math.PI * d, Fd = Pt.R * A + u * fh, N = Fd / 1.4 * (o.survey ? 1 : 0.85);
+      const step = Math.min(2.0, Math.floor(N / qg * 10) / 10);
+      pick = { d, A, u, Fd, N, step };
+      if (step >= 1.2) break;
+    }
+    pick.step = Math.max(1.0, pick.step);
+    const pts = Struct.pilePts(F.segs, pick.step * 100), n = pts.length;
+    // силы морозного пучения по боковой поверхности в зоне промерзания (τ ≈ 80 кПа без обмазки) против удерживающих: постоянная нагрузка, вес сваи, трение ниже промерзания
+    // меры: уширение пяты Ø 2d (бур ТИСЭ) — анкер в глине ниже промерзания; обмазка битумом + 2 слоя рубероида в зоне промерзания — τ вдвое меньше
+    const Fh = 80 * pick.u * dfn, hold = 0.9 * F.qn * pick.step + 25 * pick.A * Lp + pick.u * fh;
+    const bellD = 2 * pick.d, bell = Math.PI / 4 * (bellD * bellD - pick.d * pick.d) * 0.5 * Pt.R, heaveOk = hold + bell >= 1.1 * 0.5 * Fh;
+    const nb = gw <= 0.45 ? 2 : 3;
+    return {
+      gw, gh, gBot, tip, Lp, pileD: pick.d, pileStep: pick.step, pileN: pick.N, pileLoad: qg * pick.step, pileFd: pick.Fd, piles: n, pilePts: pts, heaveF: Fh, heaveHold: hold, bellD, bellHold: bell, heaveOk,
+      concrete: F.L * gw * gh + n * pick.A * Lp,
+      bars: `ростверк ${Math.round(gw * 1000)}×${Math.round(gh * 1000)}: 2 ряда по ${nb} Ø12 А500 (низ и верх), хомуты Ø8 А240 шаг 300; сваи Ø${Math.round(pick.d * 1000)} с уширением пяты Ø${Math.round(bellD * 1000)}, длиной ${Lp.toFixed(1).replace('.', ',')} м: 4 Ø12 А500, спираль Ø6 шаг 200, выпуски в ростверк 400 мм`,
+      rebar: F.L * 2 * nb * 1.1 * REBAR_KG[12] + (F.L / 0.3) * (2 * (gw + gh) - 0.2) * REBAR_KG[8] + n * (4 * (Lp + 0.4) * REBAR_KG[12] + (Lp / 0.2) * Math.PI * (pick.d - 0.1) * 0.222),
+      sand: F.L * (gw + 0.2) * 0.1, xps: F.L * (gw + gh),
+    };
+  },
+  /** Габариты фундамента одной строкой (для таблиц и панелей), м */
+  dimsText(F) {
+    const n2 = (v) => v.toFixed(2).replace('.', ',');
+    if (F.type === 'bored') return `ростверк ${n2(F.gw)}×${n2(F.gh)}, низ −${n2(F.gBot)} от земли; сваи Ø${Math.round(F.pileD * 1000)} (уширение Ø${Math.round(F.bellD * 1000)}) L ${n2(F.Lp)}, низ −${n2(F.tip)}; шаг ${n2(F.pileStep)} — ${F.piles} шт.`;
+    if (F.type === 'pile') return `сваи ${F.piles} шт.`;
+    return `${n2(F.depth)} / ${n2(F.width)} / ${n2(F.H)}`;
+  },
+  /** Нагрузка и несущая способность одной строкой: у свай — на сваю, у лент и плит — давление на грунт */
+  loadText(F) {
+    if (F.type === 'bored') return `на сваю ${F.pileLoad.toFixed(0)} из ${F.pileN.toFixed(0)} кН ${F.pileLoad <= F.pileN * 1.001 ? '✓' : '✗'}`;
+    return `${F.p.toFixed(0)} / ${F.R.toFixed(0)} кПа`;
+  },
+  /** Точки свай по осям лент: концы, углы, примыкания и промежуточные с шагом не больше step (см); совпадающие — одной сваей */
+  pilePts(segs, step) {
+    const out = [];
+    const add = (p) => { if (!out.some(q => G.dist(q, p) < 40)) out.push({ x: Math.round(p.x), y: Math.round(p.y) }); };
+    for (const sg of segs) {
+      const L = G.dist(sg.a, sg.b), k = Math.max(1, Math.ceil(L / step - 1e-6));
+      for (let i = 0; i <= k; i++) add(G.add(sg.a, G.mul(G.sub(sg.b, sg.a), i / k)));
+    }
     return out;
   },
   /** Тяжёлые печи и камины (с кирпичной трубой ≥ 750 кг) — на свой фундамент, не связанный с плитой пола и лентами:
@@ -197,14 +260,15 @@ const Struct = {
       const own = def.mass * (it.w * it.d * it.h) / (def.w * def.d * def.h), mass = own + chim;
       if (mass < 750) continue;
       const w = it.w + 20, dd = it.d + 20, pts = G.rectPts(it.x, it.y, w, dd, it.rot || 0), A = w * dd / 1e4;
-      const clear = H && H.type !== 'slab' && H.type !== 'pile' ? Math.min(...H.segs.map(sg => Struct._polySegDist(pts, sg))) / 100 - H.width / 2 : 1;
+      const clear = H && H.type !== 'slab' && H.type !== 'pile' && H.type !== 'bored' ? Math.min(...H.segs.map(sg => Struct._polySegDist(pts, sg))) / 100 - H.width / 2 : 1;
       // печь у несущей стены: отдельный фундамент не помещается — уширение ленты под печь, подошва на отметке ленты, общее армирование
       const joined = clear < 0.05;
       const bottom = Math.max(o.plinth / 100 + 0.5, joined ? o.plinth / 100 + H.bottom : 0), top = 0.15, Hh = bottom - top;   // от чистого пола, м
       const G0 = mass * 9.81 / 1000 * 1.1, Gp = 24 * A * Hh, p = (G0 + Gp) / A;
       const S = Struct.soilAt(bottom - o.plinth / 100), R = S.R0 * (o.survey ? 1 : 0.8);
       const nb = (Math.floor(w / 15) + 1) * dd / 100 + (Math.floor(dd / 15) + 1) * w / 100;     // стержней на сетку, м
-      out.push({ it, name: it.label || def.name, mass, own, chim, pts, w, d: dd, A, bottom, top, H: Hh, p, R, clear, joined, concrete: A * Hh, rebar: nb * 2 * 1.05 * REBAR_KG[12], sand: (w + 20) * (dd + 20) / 1e4 * 0.15 });
+      const piles = H && H.type === 'bored' ? { n: 4, d: 0.3, L: H.Lp } : null;   // дом на сваях — печь тоже: плита-ростверк на 4 сваях того же заложения
+      out.push({ it, name: it.label || def.name, mass, own, chim, pts, w, d: dd, A, bottom, top, H: Hh, p, R, clear, joined, piles, concrete: A * Hh + (piles ? piles.n * Math.PI * piles.d ** 2 / 4 * piles.L : 0), rebar: nb * 2 * 1.05 * REBAR_KG[12], sand: (w + 20) * (dd + 20) / 1e4 * 0.15 });
     }
     return out;
   },
@@ -252,6 +316,12 @@ const Struct = {
       if (F.soil.heave && F.type === 'strip' && F.high) add('warn', nm, `грунтовые воды на ${m(o.gwl)} — ближе промерзания + 2 м: для ленты нужны дренаж и утепление отмостки, либо МЗЛФ / УШП`, 'СП 22.13330.2016 п. 5.5.4; СП 104.13330', pos, id, fix('type', 'mzlf'));
       if (F.soil.weak && F.type !== 'pile') add('bad', nm, 'слабый грунт (торф, насыпной, ил) — нужен свайный фундамент до плотного слоя или замена грунта', 'СП 22.13330.2016 п. 6.4; СП 24.13330', pos, id, fix('type', 'pile'));
       if (F.house && o.top) add('note', nm, `срезать растительный слой ${o.top} см по пятну застройки + 1 м; котлован — по разметке осей, дно уплотнить; обратная засыпка пазух — песком послойно с трамбованием`, 'СП 45.13330.2017 п. 6.1, 7.4');
+      if (F.type === 'bored') {
+        const src = 'СП 24.13330.2021 «Свайные фундаменты»; СП 22.13330.2016 п. 6.8 (пучинистые грунты); СП 50-101-2004';
+        add('note', nm, `буронабивные сваи Ø${F.pileD * 1000} с уширением пяты Ø${Math.round(F.bellD * 1000)} (бур ТИСЭ), длиной ${String(F.Lp).replace('.', ',')} м — низ на ${m(F.tip * 100)} от земли, на 1 м ниже промерзания ${m(F.dfn * 100)}; шаг ${m(F.pileStep * 100)}, ${F.piles} шт. (углы, примыкания стен, промежуточные); допускаемая нагрузка на сваю ≈ ${F.pileN.toFixed(0)} кН без изысканий. Ростверк ${Math.round(F.gw * 1000)}×${Math.round(F.gh * 1000)} во всю толщину стены с облицовкой; под ним сминаемый слой 150 мм (ПСБ-С 15) — пучинистый грунт не поднимает ростверк. В зоне промерзания сваи — обмазка битумом и 2 слоя рубероида (силы пучения меньше вдвое)`, src, pos, id);
+        if (!F.heaveOk) add('warn', nm, `силы морозного пучения ≈ ${F.heaveF.toFixed(0)} кН на сваю больше удерживающих (${(F.heaveHold + F.bellHold).toFixed(0)} кН с уширением) даже с обмазкой — удлините сваи или увеличьте уширение`, src, pos, id);
+        if (!o.survey && (F.house || !A.some(x => x.house && x.type === 'bored'))) add('warn', nm, 'сваи рассчитаны по осторожным табличным значениям — до начала работ инженерно-геологические изыскания (2–3 скважины на 5–6 м) и уточнение длины, диаметра и шага свай', src, pos, id);
+      }
       if (F.soil.heave && F.type === 'mzlf') add('note', nm, `МЗЛФ ${m(F.depth * 100)} при промерзании ${m(F.df * 100)} (${F.khWhy}): обязательно утеплить подошву и отмостку XPS по периметру (юбка ≥ 1,2 м) и сделать подушку из непучинистого песка`, 'СП 22.13330.2016 п. 5.5.4; СП 50-101-2004 п. 12');
       // ямы и погреба у ленты: дно ниже подошвы ближе, чем на разность отметок, — лента «подрезается» (СП 22.13330 п. 5.5.9: Δh ≤ a·(tgφ + c/p) ≈ a)
       if (F.type !== 'slab') for (const pit of App.doc.items.filter(x => catItem(x.key).shape === 'pit' && (x.floor || App.doc.floors[0].id) === App.doc.floors[0].id)) {
@@ -260,7 +330,7 @@ const Struct = {
         const pp = Model.itemPts(pit), gap = Math.min(...F.segs.map(sg => Struct._polySegDist(pp, sg))) / 100 - F.width / 2;
         if (gap >= dh) continue;
         const name = pit.label || catItem(pit.key).name, src = 'СП 22.13330.2016 п. 5.5.9, 5.5.10; СП 63.13330.2018; СП 50-101-2004';
-        if (pit.monolith) add('note', nm, `${name} глубиной ${m(pd * 100)} в ${m(Math.max(0, gap) * 100)} от подошвы: стенки — монолит ж/б 200 мм, две сетки Ø10–12 шаг 200, рассчитать как подпорные на давление грунта с пригрузом от ленты; бетонировать до устройства ленты, наружная гидроизоляция и дренаж`, src, { x: pit.x, y: pit.y }, pit.id);
+        if (pit.monolith) add('note', nm, `${name} глубиной ${m(pd * 100)} в ${m(Math.max(0, gap) * 100)} от подошвы: стенки — монолит ж/б 200 мм, две сетки Ø10–12 шаг 200, рассчитать как подпорные на давление грунта с пригрузом от ${F.type === 'bored' ? 'ростверка' : 'ленты'}; бетонировать до устройства ${F.type === 'bored' ? 'ростверка' : 'ленты'}, наружная гидроизоляция и дренаж`, src, { x: pit.x, y: pit.y }, pit.id);
         else add(gap < 0.05 ? 'bad' : 'warn', nm, `${name} глубиной ${m(pd * 100)} — на ${m(dh * 100)} ниже подошвы (${m(F.bottom * 100)}) и в ${m(Math.max(0, gap) * 100)} от неё: грунт из-под ленты «поплывёт». Отодвиньте яму на ≥ ${m(dh * 100)} от края подошвы или сделайте стенки монолитными ж/б (подпорными)`, src, { x: pit.x, y: pit.y }, pit.id, () => { pit.monolith = true; });
       }
     }
@@ -277,6 +347,7 @@ const Struct = {
       const t = (x) => (x / 1000).toFixed(1).replace('.', ','), src = 'СП 7.13130.2013 разд. 5 (печное отопление); СП 22.13330.2016 п. 5.6; СП 63.13330.2018', at = { x: P.it.x, y: P.it.y };
       const head = `${P.name} ≈ ${t(P.mass)} т (печь ${t(P.own)} т${P.chim ? ` + кирпичная труба ${t(P.chim)} т` : ''}) — на плиту пола 100 мм по утеплителю ставить нельзя`;
       const body = `${m(P.w)} × ${m(P.d)}, низ на ${m(P.bottom * 100)} ниже чистого пола на песчаной подушке 150 мм, верх — на 15 см ниже чистого пола (дальше 2 ряда кирпича и 2 слоя гидроизоляции); бетон B20 ${P.concrete.toFixed(2).replace('.', ',')} м³, две сетки Ø12 А500 шаг 150 (${P.rebar.toFixed(0)} кг); давление ${P.p.toFixed(0)} из ${P.R.toFixed(0)} кПа`;
+      if (P.piles) { add('note', 'Фундамент под печь', `${head}: дом на сваях — печь на свою плиту-ростверк ${m(P.w)} × ${m(P.d)} толщиной 300 мм на ${P.piles.n} буронабивных сваях Ø${P.piles.d * 1000} длиной ${String(P.piles.L).replace('.', ',')} м (как под домом, с уширением и обмазкой); две сетки Ø12 А500 шаг 150, выпуски свай 400 мм; под плитой — сминаемый слой 150 мм; от плиты пола и ростверка дома — шов 50 мм, арматурой не связывать`, src, at, P.it.id); continue; }
       add('note', 'Фундамент под печь', P.joined
         ? `${head}: печь у несущей стены — уширение ленты под печь ${body}; подошва — на отметке ленты, бетонировать вместе с лентой, сетки завести в ленту (выпуски Ø12 шаг 300) — осадки печи и стены одинаковые; от плиты пола — шов 50 мм (демпферная лента)`
         : `${head}: отдельный фундамент ${body}; от плиты пола и лент — шов 50 мм (песок, демпферная лента), арматурой не связывать`, src, at, P.it.id);
@@ -288,6 +359,64 @@ const Struct = {
       if (!R || !R.ring || w.kind !== 'ext') continue;
       for (const op of App.doc.openings.filter(x => x.wall === w.id && x.w > 150)) add('note', 'Конструкции', `${OPENING_TYPES[op.type].name} ${m(op.w)} в стене «${(WALL_MATERIALS[w.mat] || {}).name}»: перемычка — из U-блоков с армированием 2–4 Ø12 или готовая, опирание ≥ 25 см; ряд под окном — армировать с заходом 0,9 м в стороны`, R.src, G.mid(w.a, w.b), op.id);
     }
+  },
+  /** Перемычки всего дома и каменных построек — общий каталог с марками (одинаковые — одна марка):
+   *  ПР-n — монолитная ж/б в несущем слое (в U-блоках или опалубке) по расчёту: q = кладка над проёмом + армопояс + крыша со снегом
+   *  (наружные стены), M = q·l0²/8, l0 = проём + 250 мм; высота — целое число рядов, не меньше l0/14; опирание 250 мм;
+   *  проём под самым армопоясом — армопояс над ним работает как перемычка (усиление низа); У-n — стальные уголки под облицовочный
+   *  кирпич (опирание 200 мм); ПП-n — перегородки из блоков: 2 уголка 50×5 (опирание 150 мм). Ссылки refs — id проёмов (для раскладок) */
+  lintels() {
+    if (Struct._lc && Struct._lc.rev === App.rev && Struct._lc.doc === App.doc) return Struct._lc.list;
+    const d = App.doc, recs = [];
+    const roofQ = (() => {                                                                   // крыша со снегом на 1 м наружной стены вдоль карниза, кН/м
+      const F = Struct.foundation(), r = d.roofs.find(x => x.type !== 'flat');
+      return F && r ? F.Groof / Math.max(2, 2 * r.w / 100) * 1.3 : 0;
+    })();
+    const BARS = [[2, 12], [2, 14], [2, 16], [3, 16]], area = (n, dd) => n * Math.PI * dd * dd / 400;   // см²
+    const angleFor = (w) => w <= 100 ? 'L75×6' : w <= 150 ? 'L90×7' : w <= 200 ? 'L100×8' : w <= 250 ? 'L110×8' : 'L125×8';
+    const mono = (o) => {
+      const { b, top, gamma, bh, roof, w, z1 } = o, l0 = (w + 25) / 100, gap = top - z1;
+      const qSelf = (Math.max(0, gap) / 100 * b / 100 * gamma + (o.ring ? 0.25 * b / 100 * 25 : 0)) * 1.1, q = qSelf + roof;
+      const M = q * l0 * l0 / 8;
+      if (gap < bh + 2) {                                                                    // перемычка = армопояс над проёмом
+        const As = M / (0.9 * 0.21 * 435e3) * 1e4, bars = BARS.find(([n, dd]) => area(n, dd) >= As) || BARS[3];
+        return { kind: 'belt', b, h: Math.round(Math.max(bh, (o.ring || 0) + Math.max(0, gap))), len: Math.ceil((w + 100) / 20) * 20, bars: `${bars[0]} Ø${bars[1]} А500 доп. снизу`, M, q };
+      }
+      let h = bh; while (h < Math.max(l0 * 100 / 14, 18) && h + bh <= gap + 0.5) h += bh;
+      const dEff = (h - 4) / 100, As = M / (0.9 * dEff * 435e3) * 1e4, bars = BARS.find(([n, dd]) => area(n, dd) >= As) || BARS[3];
+      return { kind: 'mono', b, h: Math.round(h), len: Math.ceil((w + 50) / 20) * 20, bars: `низ ${bars[0]} Ø${bars[1]} А500, верх 2 Ø10 А500, хомуты Ø8 А240 шаг 150`, M, q };
+    };
+    const push = (r, ref, where) => { const k = [r.kind, r.b, r.h, r.len, r.bars, r.prof].join('|'); let x = recs.find(y => y.k === k); if (!x) recs.push(x = { ...r, k, n: 0, refs: [], where: new Set() }); x.n++; x.refs.push(ref); x.where.add(where); };
+    // стены дома (все этажи): наружные и внутренние несущие, перегородки из блоков
+    for (const w of d.walls) {
+      if (w.kind === 'fence') continue;
+      const Mt = WALL_MATERIALS[w.mat] || {}, masonry = !!Mt.block || ['brick', 'silicate'].includes(w.mat);
+      if (!masonry) continue;
+      const bh = (Mt.block ? Mt.block[1] : 6.5) + (Mt.block ? 1 : 1.2), core = wallCore(w), ring = (WALL_REINF[w.mat] || {}).ring && (w.kind === 'ext' || w.kind === 'int') ? 25 : 0;
+      for (const op of d.openings.filter(o => o.wall === w.id)) {
+        const T = OPENING_TYPES[op.type] || {}, sill = T.cat === 'door' ? 0 : (op.sill ?? T.sill ?? 90), z1 = sill + (op.h || T.h || 150), wO = op.w;
+        if (w.kind === 'part') { push({ kind: 'part', b: core, h: 5, len: Math.ceil((wO + 30) / 20) * 20, prof: '2 × L50×5', bars: '' }, op.id, 'перегородки'); continue; }
+        push(mono({ b: core, top: w.h - ring, ring, gamma: WALL_GAMMA[w.mat] || 12, bh, roof: w.kind === 'ext' ? roofQ : 0, w: wO, z1 }), op.id, w.kind === 'ext' ? 'наружные стены дома' : 'внутренние несущие стены');
+        if (w.kind === 'ext' && w.clad > 0) push({ kind: 'angle', b: w.clad, h: 0, len: Math.ceil((wO + 40) / 20) * 20, prof: angleFor(wO), bars: '' }, op.id, 'облицовка дома');
+      }
+    }
+    // каменные постройки (гараж): проёмы по сторонам
+    for (const it of Struct.blds()) {
+      const mat = bldWallMat(it), Mt = WALL_MATERIALS[mat] || {};
+      if (!(Mt.block || ['brick', 'silicate'].includes(mat))) continue;
+      const sh = bldShell(it, it.w, it.d), clad = it.clad > 0 ? it.clad : 0, core = sh.t - (clad ? clad + (it.gap ?? 1) : 0), ring = (WALL_REINF[mat] || {}).ring ? 25 : 0, wh = bldWallH(it);
+      const B = Struct.all().find(x => x.item === it), rq = B && B.Groof ? B.Groof / Math.max(1, B.Lroof) * 1.3 : 0, bh = (Mt.block ? Mt.block[1] + 1 : 7.7);
+      sh.ops.forEach((o, i) => {
+        const z1 = (o.sill || 0) + o.h, nm = (it.label || catItem(it.key).name).split(' на ')[0].toLowerCase();
+        push(mono({ b: core, top: wh - ring, ring, gamma: WALL_GAMMA[mat] || 12, bh, roof: rq, w: o.w, z1 }), it.id + ':' + i, nm);
+        if (clad) push({ kind: 'angle', b: clad, h: 0, len: Math.ceil((o.w + 40) / 20) * 20, prof: angleFor(o.w), bars: '' }, it.id + ':' + i, 'облицовка: ' + nm);
+      });
+    }
+    const ord = { mono: 0, belt: 1, angle: 2, part: 3 }, pre = { mono: 'ПР', belt: 'ПР', angle: 'У', part: 'ПП' }, cnt = {};
+    recs.sort((a, b) => ord[a.kind] - ord[b.kind] || a.len - b.len || a.h - b.h);
+    for (const r of recs) { const p = pre[r.kind]; cnt[p] = (cnt[p] || 0) + 1; r.mark = `${p}-${cnt[p]}`; r.where = [...r.where].join(', '); }
+    Struct._lc = { rev: App.rev, doc: App.doc, list: recs };
+    return recs;
   },
   /** Слой «Кладка»: по стенам — материал и армирование, над проёмами несущих стен — перемычки с опиранием 25 см */
   drawMasonry(env) {
@@ -301,12 +430,19 @@ const Struct = {
       const lay = [wallCore(w) > 0 ? `${Math.round(wallCore(w))}` : null, w.ins > 0 ? ` + утеплитель ${Math.round(w.ins)}` : '', w.clad > 0 ? ` + облицовка ${Math.round(w.clad)}` : ''].join('');   // слои: блок + утеплитель + облицовка, см
       const txt = `${(M.name || w.mat).split(' (')[0]} ${lay} см` + (R ? (R.every ? ` · армир. 1-й и каждый ${R.every}-й ряд` : '') + (R.ring && (w.kind === 'ext' || w.kind === 'int') ? ' · армопояс' : '') : '');
       Render.label(env, txt, G.add(G.mid(w.a, w.b), G.mul(n, w.th / 2 + 14 * px)), up, { size: 9.5, color: col, bg: true, pad: 1.5, prio: 4 });
-      if (w.kind !== 'ext' && w.kind !== 'int') continue;
-      for (const o of App.V.openings.filter(x => x.wall === w.id)) {
+      if (w.kind !== 'ext' && w.kind !== 'int' && w.kind !== 'part') continue;
+      if (w.kind !== 'part') for (const o of App.V.openings.filter(x => x.wall === w.id)) {
         const s0 = Math.max(0, o.pos - o.w / 2 - 25), s1 = Math.min(L, o.pos + o.w / 2 + 25);
         const A = G.add(G.add(w.a, G.mul(u, s0)), G.mul(n, w.th / 2 - 4)), B = G.add(G.add(w.a, G.mul(u, s1)), G.mul(n, w.th / 2 - 4));
         ctx.strokeStyle = col; ctx.lineWidth = 3 * px; ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
         for (const E of [A, B]) { ctx.beginPath(); ctx.moveTo(E.x - n.x * 8, E.y - n.y * 8); ctx.lineTo(E.x + n.x * 2, E.y + n.y * 2); ctx.stroke(); }
+        // марка перемычки (и уголка под облицовку) — по общему каталогу, как в ведомости
+        const mk = Struct.lintels().filter(r => r.refs.includes(o.id)).map(r => r.mark).join(' + ');
+        if (mk) Render.label(env, mk, G.add(G.add(w.a, G.mul(u, o.pos)), G.mul(n, -(w.th / 2 + 12 * px))), up, { size: 9, color: col, bg: true, pad: 1.5, prio: 6, bold: true });
+      }
+      if (w.kind === 'part') for (const o of App.V.openings.filter(x => x.wall === w.id)) {
+        const mk = Struct.lintels().filter(r => r.refs.includes(o.id)).map(r => r.mark).join(' + ');
+        if (mk) Render.label(env, mk, G.add(w.a, G.mul(u, o.pos)), up, { size: 8.5, color: col, bg: true, pad: 1.2, prio: 5 });
       }
     }
     ctx.restore();
@@ -333,7 +469,12 @@ const Struct = {
         const u = G.unit(G.sub(sg.b, sg.a)), n = G.perp(u), m = G.mid(sg.a, sg.b), out = G.dot(n, G.sub(m, cen)) > 0 ? 1 : -1;
         // внешние ленты — размер снаружи, внутренние — рядом с лентой
         const edge = F.segs.filter(o => o !== sg).every(o => G.dot(G.sub(G.mid(o.a, o.b), m), G.mul(n, out)) <= 5);
-        Render.dimLine(env, sg.a, sg.b, (edge ? 70 + F.width * 50 : F.width * 50 + 25) * out, null, c);
+        Render.dimLine(env, sg.a, sg.b, (edge ? 70 + F.width * 50 + (F.type === 'bored' ? 45 : 0) : F.width * 50 + 25) * out, null, c);
+        // шаг свай — цепочкой у ленты (снаружи у наружных, рядом — у внутренних)
+        if (F.type === 'bored') {
+          const L = G.dist(sg.a, sg.b), on = F.pilePts.filter(p => G.distSeg(p, sg.a, sg.b) < 5).map(p => G.dot(G.sub(p, sg.a), u)).sort((x, y) => x - y);
+          for (let i = 0; i + 1 < on.length; i++) if (on[i + 1] - on[i] > 20 && on[i + 1] <= L + 1) Render.dimLine(env, G.add(sg.a, G.mul(u, on[i])), G.add(sg.a, G.mul(u, on[i + 1])), (edge ? 40 + F.width * 50 : -(F.width * 50 + 25)) * out, null, c);
+        }
       }
     }
   },
@@ -349,13 +490,22 @@ const Struct = {
     // фундаменты под печи — сплошной контур с подписью
     for (const P of Struct.stovePads()) {
       ctx.save(); ctx.setLineDash([]); ctx.fillStyle = 'rgba(107, 91, 69, 0.14)'; Render.polyPath(ctx, P.pts, true); ctx.fill(); ctx.stroke(); ctx.restore();
-      Render.label(env, `${P.joined ? 'Уширение ленты под печь' : 'Фундамент печи'} ${(P.w / 100).toFixed(2).replace('.', ',')}×${(P.d / 100).toFixed(2).replace('.', ',')}, низ −${P.bottom.toFixed(2).replace('.', ',')} м`, { x: P.it.x, y: P.it.y + P.d / 2 + 18 }, 0, { size: 10, color: col, bg: true, pad: 2, prio: 5 });
+      Render.label(env, P.piles ? `Плита-ростверк печи ${(P.w / 100).toFixed(2).replace('.', ',')}×${(P.d / 100).toFixed(2).replace('.', ',')} на ${P.piles.n} сваях Ø${P.piles.d * 1000}` : `${P.joined ? 'Уширение ленты под печь' : 'Фундамент печи'} ${(P.w / 100).toFixed(2).replace('.', ',')}×${(P.d / 100).toFixed(2).replace('.', ',')}, низ −${P.bottom.toFixed(2).replace('.', ',')} м`, { x: P.it.x, y: P.it.y + P.d / 2 + 18 }, 0, { size: 10, color: col, bg: true, pad: 2, prio: 5 });
     }
     for (const F of A) {
       if (F.type === 'slab') {
         for (const pts of F.slabs) { Render.polyPath(ctx, pts, true); ctx.fill(); ctx.stroke(); }
       } else {
         const bw = F.type === 'pile' ? 40 : F.width * 100;
+        if (F.type === 'bored') {                                                                   // сваи: круги диаметра сваи, уширение — пунктиром
+          ctx.save(); ctx.setLineDash([]); ctx.lineWidth = 1.2 * px;
+          for (const c of F.pilePts) {
+            ctx.beginPath(); ctx.arc(c.x, c.y, F.pileD * 50, 0, Math.PI * 2); ctx.fillStyle = 'rgba(107, 91, 69, 0.35)'; ctx.fill(); ctx.stroke();
+            ctx.save(); ctx.setLineDash([3 * px, 3 * px]); ctx.lineWidth = 0.7 * px; ctx.beginPath(); ctx.arc(c.x, c.y, F.bellD * 50, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+            ctx.beginPath(); ctx.moveTo(c.x - F.pileD * 60, c.y); ctx.lineTo(c.x + F.pileD * 60, c.y); ctx.moveTo(c.x, c.y - F.pileD * 60); ctx.lineTo(c.x, c.y + F.pileD * 60); ctx.lineWidth = 0.6 * px; ctx.stroke();
+          }
+          ctx.restore();
+        }
         for (const w of F.segs) {
           const u = G.unit(G.sub(w.b, w.a)), n = G.mul(G.perp(u), bw / 2), a = G.sub(w.a, G.mul(u, bw / 2)), b = G.add(w.b, G.mul(u, bw / 2));
           const pts = [G.add(a, n), G.add(b, n), G.sub(b, n), G.sub(a, n)];
@@ -366,7 +516,7 @@ const Struct = {
       if (!F.house) {
         // подпись — у самой длинной ленты, внутрь постройки
         const it = F.item, sg = F.segs.reduce((a, b) => G.dist(b.a, b.b) > G.dist(a.a, a.b) ? b : a), mid = G.mid(sg.a, sg.b), c = G.add(mid, G.mul(G.unit(G.sub(it, mid)), F.width * 50 + 45));
-        const txt = F.type === 'pile' ? `Фундамент: сваи ${F.piles} шт.` : `Фундамент: ${F.type === 'slab' ? 'УШП' : F.type === 'mzlf' ? 'МЗЛФ' : 'лента'}${F.type === 'slab' ? '' : `, подошва ${(F.width * 100).toFixed(0)} см`}, низ −${F.bottom.toFixed(2).replace('.', ',')} м`;
+        const txt = F.type === 'bored' ? `Ростверк ${Math.round(F.gw * 100)}×${Math.round(F.gh * 100)}, сваи Ø${F.pileD * 1000} × ${F.piles} шт., шаг ${F.pileStep.toFixed(1).replace('.', ',')} м` : F.type === 'pile' ? `Фундамент: сваи ${F.piles} шт.` : `Фундамент: ${F.type === 'slab' ? 'УШП' : F.type === 'mzlf' ? 'МЗЛФ' : 'лента'}${F.type === 'slab' ? '' : `, подошва ${(F.width * 100).toFixed(0)} см`}, низ −${F.bottom.toFixed(2).replace('.', ',')} м`;
         const ang = G.angle(sg.a, sg.b), up = ang > Math.PI / 2 || ang < -Math.PI / 2 ? ang + Math.PI : ang;
         Render.label(env, txt, c, up, { size: 10, color: col, bg: true, pad: 2, prio: 5 });
       }

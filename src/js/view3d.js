@@ -688,9 +688,14 @@ const View3D = {
       if (F.type === 'slab') { for (const pts of F.slabs) prism(pts, e - F.depth * 100, e - 1, con, { glass: detailed }); continue; }
       const bw = F.type === 'pile' ? 40 : F.width * 100, h0 = F.type === 'pile' ? 40 : F.depth * 100;
       const inB = (p) => F.house ? inside(p) : G.pointInPoly(p, Model.itemPts(F.item));
+      if (F.type === 'bored') for (const c of F.pilePts) {                                             // буронабивные сваи с уширением пяты
+        cyl(c.x, c.y, F.pileD * 50, e - F.tip * 100 + 30, e - h0 - 15, con, 14);
+        cyl(c.x, c.y, F.bellD * 50, e - F.tip * 100, e - F.tip * 100 + 30, con, 16);
+      }
       for (const w of F.segs) {
         const L = G.dist(w.a, w.b), m = G.mid(w.a, w.b), ang = U.deg(Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x)), u = G.unit(G.sub(w.b, w.a));
         box(m.x, m.y, L + bw, bw, ang, e - h0, e - 1, con, { glass: detailed });
+        if (F.type === 'bored') { box(m.x, m.y, L + bw, bw, ang, e - h0 - 15, e - h0, xps); if (!detailed) continue; }   // сминаемый слой под ростверком
         if (F.type === 'pile') { const k = Math.max(1, Math.round(L / 250)); for (let i = 0; i <= k; i++) { const c = G.add(w.a, G.mul(u, L * i / k)); cyl(c.x, c.y, 6, e - Math.max(250, F.dfn * 100 + 100), e - h0, [0.45, 0.46, 0.48], 10); } continue; }
         if (!detailed) continue;
         box(m.x, m.y, L + bw + 40, bw + 40, ang, e - h0 - 20, e - h0, sand);                           // песчаная подушка
@@ -984,16 +989,16 @@ const View3D = {
     const A0 = S.v0, A1 = S.v1, span = A1 - A0, mid = (A0 + A1) / 2;
     // мансарда: мауэрлат — на кнеевой стене под стропилом, ригели — над плоским потолком, затяжки у карниза нет (там комнаты)
     const LV = Roof.living(r), zc = LV ? LV.ceil + 10 : 0, vc = LV ? Dh - (zc + hr + 15.5 - base) / Math.max(t, 0.05) : 0;
-    for (const v of [A0, A1]) View3D.beam3(T(S.u0 - 10, v, LV ? zr(v) - hr - 8 : base + 2.5), T(S.u1 + 10, v, LV ? zr(v) - hr - 8 : base + 2.5), 15, LV ? 15 : 5, woodD);   // мауэрлат / опорный лежень
+    for (const v of [A0, A1]) View3D.beam3(T(S.u0 - 10, v, LV ? zr(v) - hr - 8 : base + 7.5), T(S.u1 + 10, v, LV ? zr(v) - hr - 8 : base + 7.5), 15, 15, woodD);   // мауэрлат / опорный лежень
     for (let u = S.u0; u <= S.u1 + 1; u += fr.step * 100) {
-      const zb = base + 5 + hb / 2;
+      const zb = base + 15 + hb / 2;
       if (LV) { if (vc > 10) View3D.beam3(T(u, -vc, zc + hb / 2), T(u, vc, zc + hb / 2), bb, hb, wood); }   // ригель
       else View3D.beam3(T(u, A0 - 12, zb), T(u, A1 + 12, zb), bb, hb, wood);                            // нижний пояс / затяжка
       for (const sg of r.type === 'shed' ? [1] : [-1, 1]) View3D.beam3(T(u, sg * Dh, zr(sg * Dh) - hr / 2), T(u, 0, zr(0) - hr / 2), bb, fr.h / 10, wood);   // верхний пояс / стропило
       if (fr.scheme === 'truss') {
-        const B1 = A0 + span / 3, B2 = A0 + 2 * span / 3, T1 = A0 + span / 4, T2 = A0 + 3 * span / 4, zc = base + 5 + hb;
+        const B1 = A0 + span / 3, B2 = A0 + 2 * span / 3, T1 = A0 + span / 4, T2 = A0 + 3 * span / 4, zc = base + 15 + hb;
         for (const [va, za, vb, zb2] of [[T1, zr(T1) - hr, B1, zc], [B1, zc, mid, zr(mid) - hr], [mid, zr(mid) - hr, B2, zc], [B2, zc, T2, zr(T2) - hr]]) View3D.beam3(T(u, va, za), T(u, vb, zb2), bb, 10, woodD);
-        for (const [v, z] of [[A0, base + 5 + hb / 2], [A1, base + 5 + hb / 2], [mid, zr(mid) - hr / 2]]) View3D.beam3(T(u - bb / 2 - 0.2, v - 8, z), T(u - bb / 2 - 0.2, v + 8, z), 0.3, 14, plate);   // пластины МЗП
+        for (const [v, z] of [[A0, base + 15 + hb / 2], [A1, base + 15 + hb / 2], [mid, zr(mid) - hr / 2]]) View3D.beam3(T(u - bb / 2 - 0.2, v - 8, z), T(u - bb / 2 - 0.2, v + 8, z), 0.3, 14, plate);   // пластины МЗП
       }
     }
     if (under) {                                                                   // под кровлей: конёк-прогон, утеплитель — на месте; обрешётку закрывает скат
@@ -1003,7 +1008,7 @@ const View3D = {
       const inset = (poly, k) => { const a = G.offsetPoly(poly, -k); return Math.abs(G.polyArea(a)) < Math.abs(G.polyArea(poly)) ? a : G.offsetPoly(poly, k); };   // внутрь при любом обходе контура
       const ra = U.rad(r.rot || 0), vd = { x: -Math.sin(ra), y: Math.cos(ra) }, vmax = Dh - (hb + 42) / Math.max(t, 0.05);   // полоса, где под скатом хватает высоты
       if (LV) { if (fd && vc > 10) for (const o of fd.outlines) { const p = View3D.clipSlab(o.outer, { x: r.x, y: r.y }, vd, -vc, vc); if (p.length >= 3) prism(p, zc + hb, zc + hb + 20, View3D.hex('#f2dc6a')); } return; }   // утеплитель над ригелями
-      if (fd) for (const o of fd.outlines) { const p = View3D.clipSlab(inset(o.outer, S.th || 40), { x: r.x, y: r.y }, vd, -vmax, vmax); if (p.length >= 3) prism(p, base + 5 + hb, base + 5 + hb + 20, View3D.hex('#f2dc6a')); }
+      if (fd) for (const o of fd.outlines) { const p = View3D.clipSlab(inset(o.outer, S.th || 40), { x: r.x, y: r.y }, vd, -vmax, vmax); if (p.length >= 3) prism(p, base + 15 + hb, base + 15 + hb + 20, View3D.hex('#f2dc6a')); }
       return;
     }
     // обрешётка по скатам вдоль конька (у мягкой кровли — под сплошной OSB)
@@ -1012,7 +1017,7 @@ const View3D = {
     for (const sg of r.type === 'shed' ? [1] : [-1, 1]) View3D.beam3(T(-W, sg * Dh, zr(sg * Dh) - 6), T(W, sg * Dh, zr(sg * Dh) - 6), 2.5, 15, woodD);
     // утеплитель чердака по нижним поясам
     const fd = (App.floorData || []).find(f => f.floor.id === r.floor) || (App.floorData || [])[0];
-    if (fd) for (const o of fd.outlines) { const p = G.offsetPoly(o.outer, -20); if (p.length >= 3) prism(p, base + 5 + hb, base + 5 + hb + 20, View3D.hex('#f2dc6a')); }
+    if (fd) for (const o of fd.outlines) { const p = G.offsetPoly(o.outer, -20); if (p.length >= 3) prism(p, base + 15 + hb, base + 15 + hb + 20, View3D.hex('#f2dc6a')); }
     void rise;
   },
   /** Швы кладки на обеих гранях несущего слоя: ряды и вертикальные швы с перевязкой в полблока */
@@ -2654,7 +2659,7 @@ const View3D = {
     const uS = -fr.len * 50, uE = fr.len * 50;
     const hiV = Z(0, v0) > Z(0, v1) ? v0 : v1, loV = hiV === v0 ? v1 : v0;
     // мауэрлат 150×100 на армопоясе: у ферм — оба по верху стен, у стропил односкатной — под стропилом на высокой и низкой стенах
-    for (const v of [v0, v1]) { const z = fr.scheme === 'truss' || !fr.shed ? g.eave + 5 : top(0, v) - hr - 5; View3D.beam3(W3(uS - 10, v, z), W3(uE + 10, v, z), 15, 10, woodD); }
+    for (const v of [v0, v1]) { const z = fr.scheme === 'truss' || !fr.shed ? g.eave + 7.5 : top(0, v) - hr - 7.5; View3D.beam3(W3(uS - 10, v, z), W3(uE + 10, v, z), 15, 15, woodD); }
     for (let u = uS; u <= uE + 1; u += fr.step * 100) {
       if (fr.shed) View3D.beam3(W3(u, vMin, top(u, vMin) - hr / 2), W3(u, vMax, top(u, vMax) - hr / 2), bb, hb, wood);              // стропило / верхний пояс
       else for (const ve of [vMin, vMax]) View3D.beam3(W3(u, ve, top(u, ve) - hr / 2), W3(u, 0, top(u, 0) - hr / 2), bb, hb, wood);

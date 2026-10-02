@@ -262,7 +262,7 @@ const IO = {
           ['Тип', ...FDs.map(F => FOUND_TYPES[F.type])],
           ['Грунт, вода', ...FDs.map(F => `${Struct.soilText()}; УГВ ${(F.gwl / 100).toFixed(1)} м`)],
           ['Промерзание: норм. × kh = расч.', ...FDs.map(F => `${F.dfn.toFixed(2)} × ${F.kh} = ${F.df.toFixed(2)} м (${F.khWhy})`)],
-          ['Глубина / ширина / высота', ...FDs.map(F => F.type === 'pile' ? `сваи ${F.piles} шт.` : `${F.depth.toFixed(2)} / ${F.width.toFixed(2)} / ${F.H.toFixed(2)} м`)],
+          ['Размеры, м', ...FDs.map(F => Struct.dimsText(F))],
           ['Нагрузка', ...FDs.map(F => `${F.qn.toFixed(0)} кН/м; p = ${F.p.toFixed(0)} ≤ R = ${F.R.toFixed(0)} кПа`)],
           ['Армирование', ...FDs.map(F => F.bars)],
           ['Бетон B20 W6 F150 / арматура', ...FDs.map(F => `${F.concrete.toFixed(1)} м³ / ${F.rebar.toFixed(0)} кг`)],

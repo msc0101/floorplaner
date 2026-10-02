@@ -190,9 +190,10 @@ const Roof = {
     const pts = fd ? fd.outlines.flatMap(o => o.outer) : [];
     const loc = pts.map(p => G.toLocal(p, r.x, r.y, r.rot || 0)).filter(q => Math.abs(q.x) <= r.w / 2 + 1 && Math.abs(q.y) <= r.d / 2 + 1);
     if (!loc.length) return { v0: -r.d / 2 + 50, v1: r.d / 2 - 50, u0: -r.w / 2 + 50, u1: r.w / 2 - 50, th: 40 };
-    const th = Math.max(20, ...App.doc.walls.filter(w => w.kind === 'ext' && (w.floor || App.doc.floors[0].id) === (fd ? fd.floor.id : w.floor)).map(w => w.th));
-    const b = G.bbox(loc.map(q => ({ x: q.x, y: q.y })));
-    return { v0: b.y0 + th / 2, v1: b.y1 - th / 2, u0: b.x0 + th / 2, u1: b.x1 - th / 2, th, outer: b };
+    const ws = App.doc.walls.filter(w => w.kind === 'ext' && (w.floor || App.doc.floors[0].id) === (fd ? fd.floor.id : w.floor));
+    const th = Math.max(20, ...ws.map(w => w.th)), core = Math.max(10, ...ws.map(w => wallCore(w)));
+    const b = G.bbox(loc.map(q => ({ x: q.x, y: q.y }))), ax = th - core / 2;     // опора — по оси несущей кладки (облицовка и утеплитель снаружи нагрузку не несут)
+    return { v0: b.y0 + ax, v1: b.y1 - ax, u0: b.x0 + ax, u1: b.x1 - ax, th, core, outer: b };
   },
   /** Расчёт стропильной системы (упрощённо по СП 20.13330.2016 и СП 64.13330.2017): схема, сечения, шаг,
    *  проверка по прочности и прогибу, обрешётка по материалу кровли, объёмы пиломатериала */
@@ -237,7 +238,7 @@ const Roof = {
       scheme: truss ? 'truss' : mans ? 'mansard' : 'rafter', name: truss ? 'Фермы деревянные заводские на МЗП (W-образные), опора — наружные стены' : mans ? 'Наслонные стропила с ригелем (мансарда): опора — мауэрлат на кнеевой стене и коньковый прогон; утеплитель между стропилами' : 'Наслонные стропила с затяжкой (потолочная балка), опора — мауэрлат и коньковый прогон',
       span, half, L, pitch: U.deg(a), step, n, nRaft, rafterL, b: pick.b, h: pick.h, sig: pick.sig, f: pick.f, fmax: pick.fmax, R,
       snow: { district: cl.snow, Sg, mu, s0, sD }, gRoof, q, len, slope, bat: BAT[0], batStep: BAT[1], batM, counter: slope / step, osb: r.mat === 'soft' ? slope : 0,
-      membrane: slope * 1.15, mauerlat: 2 * len, anchors: Math.ceil(2 * len) + 2, woodV, S,
+      membrane: slope * 1.15, mauerlat: 2 * len, anchors: Math.ceil(2 * len / 0.8) + 4, woodV, S,
       attic: mans ? { ins: pick.h + 50, mansard: true, vent: 0, R: Roof.insR(pick.b, pick.h, step, pick.h + 50), need: Climate.Rreq('roof') }   // мансарда: утеплитель между стропилами + 50 мм поперёк, вентзазор над мембраной
         : (() => { const need = Climate.Rreq('attic'), ins = U.isNum(r.atticIns) ? r.atticIns : [200, 250, 300, 350, 400, 450].find(t => Roof.insR(pick.b, pick.h, step, t) >= need * 1.1) || 450;
           return { ins, auto: !U.isNum(r.atticIns), R: Roof.insR(pick.b, pick.h, step, ins), need, vent: (S.v1 - S.v0) * (S.u1 - S.u0) / 1e4 / 300 }; })(),

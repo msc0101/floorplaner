@@ -21,11 +21,12 @@ const Detail = {
     const lv = { fin: 0, screed: -6, slab: -16, xps: -26, sand: -56, stripTop: -6, gnd: -6 - (o.plinth || 40) };
     lv.stripBot = lv.gnd - (F ? F.depth * 100 : 50);
     lv.cushion = lv.stripBot - 20;
+    if (F && F.type === 'bored') { lv.cushion = lv.stripBot - 25; lv.pileTip = lv.gnd - F.tip * 100; lv.frost = lv.gnd - F.dfn * 100; }   // сминаемый слой 150 + песок 100; низ сваи; промерзание
     lv.wallTop = top;
     lv.ring = WALL_REINF[w0.mat] && WALL_REINF[w0.mat].ring ? 25 : 0;
     lv.ceil = top - 10;                                                        // натяжной потолок
     const fr = r ? Roof.frame(r) : null;
-    lv.plate = lv.wallTop;                                                     // верх мауэрлата / лежня (узел карниза)
+    lv.plate = lv.wallTop + (r && r.type !== 'flat' ? 15 : 0);                // верх мауэрлата 150×150 на армопоясе (узел карниза)
     const M = { F, r, fr, w0, lay, lv, o, top, ext };
     // мансарда: стены 1 этажа — до низа плиты перекрытия, над ней колено (кнеевая стена) с мауэрлатом, стропила с ригелем
     const L = Roof.living(r);
@@ -208,7 +209,7 @@ const Detail = {
       xps: mk(3, 3, (g, w, h) => { g.beginPath(); g.moveTo(0, 0); g.lineTo(w, h); g.moveTo(w, 0); g.lineTo(0, h); g.stroke(); }, '#d9ecf7'),
       brick: mk(3, 3, (g, w, h) => { g.beginPath(); g.moveTo(0, h); g.lineTo(w, 0); g.stroke(); }, '#f1c7b3'),
       block: mk(4, 4, (g, w, h) => { g.beginPath(); g.arc(w * 0.3, h * 0.35, dpmm * 0.35, 0, 7); g.stroke(); g.beginPath(); g.arc(w * 0.75, h * 0.8, dpmm * 0.25, 0, 7); g.stroke(); }, '#e9e2d6'),
-      wood: mk(4, 1.5, (g, w, h) => { g.beginPath(); g.moveTo(0, h / 2); g.bezierCurveTo(w * 0.3, 0, w * 0.6, h, w, h / 2); g.stroke(); }, '#f0dcb8'),
+      wood: mk(6, 1.2, (g, w, h) => { g.strokeStyle = '#8a6237'; g.beginPath(); g.moveTo(0, h * 0.5); g.lineTo(w, h * 0.5); g.stroke(); }, '#e2c38f'),   // древесина: плотный коричневый фон, волокна — прямыми (не путать с утеплителем)
       tile: mk(6, 1, () => {}, '#c9c6c0'),
     };
   },
@@ -221,7 +222,7 @@ const Detail = {
     const ext = walls.filter(w => w.kind === 'ext'), vMin = -Dh - 150, vMax = Dh + 150;
     const bw = F ? F.width * 100 : 50;
     // 1) грунт и засыпка
-    D.rect(vMin, lv.cushion - 40, vMax, lv.gnd, P.earth, null);
+    D.rect(vMin, Math.min(lv.cushion - 40, (lv.pileTip ?? Infinity) - 30), vMax, lv.gnd, P.earth, null);
     D.line(vMin, lv.gnd, vMax, lv.gnd, '#111', 0.5);
     const inner = ext.length >= 2 ? [ext[0].v + ext[0].th / 2, ext[ext.length - 1].v - ext[ext.length - 1].th / 2] : [-Dh + 100, Dh - 100];
     // 2) пирог пола по грунту между лентами
@@ -233,10 +234,21 @@ const Detail = {
     for (let v = inner[0] + 15; v < inner[1] - 5; v += 15) D.dot(v, lv.screed + 2.5, 0.35, '#e07b2f');           // трубы ТП
     D.rect(inner[0], lv.fin - 1, inner[1], lv.fin, P.tile, '#333', 0.2);
     // 3) ленты фундамента, подушка, утепление, отмостка — под каждой наружной стеной
+    const bored = F && F.type === 'bored';
+    if (bored) D.line(vMin, lv.frost, vMax, lv.frost, '#2b6cb0', 0.35, [3, 1.5]);                           // граница промерзания
     for (const W of ext) {
       const out = W.outV || (W.v < 0 ? -1 : 1), axis = W.v, s0 = axis - bw / 2, s1 = axis + bw / 2;
-      D.rect(s0 - 20, lv.cushion, s1 + 20, lv.stripBot, P.sand, '#555', 0.2);                                // подушка
-      D.rect(s0, lv.stripBot, s1, lv.stripTop, P.concrete, '#111', 0.35);                                   // лента
+      if (bored) {
+        // свая с уширением пяты: тело, арматура с выпусками в ростверк, обмазка в зоне промерзания
+        const pr = F.pileD * 50, br = F.bellD * 50, zt = lv.pileTip, zb0 = lv.stripBot - 15;
+        D.poly([[axis - pr, zb0], [axis + pr, zb0], [axis + pr, zt + 30], [axis + br, zt + 12], [axis + br, zt], [axis - br, zt], [axis - br, zt + 12], [axis - pr, zt + 30]], P.concrete, '#111', 0.35);
+        for (const sx of [-1, 1]) D.line(axis + sx * (pr - 5), zt + 8, axis + sx * (pr - 5), lv.stripBot + 40, '#b00', 0.5);
+        for (let z = zt + 15; z < zb0; z += 20) D.line(axis - pr + 4, z, axis + pr - 4, z + 4, '#b00', 0.15);   // спираль Ø6 шаг 200
+        for (const sx of [-1, 1]) D.line(axis + sx * (pr + 0.6), zb0, axis + sx * (pr + 0.6), lv.frost, '#000', 0.9);   // обмазка + рубероид
+        D.rect(s0, lv.stripBot - 15, s1, lv.stripBot, P.xps, '#333', 0.2);                                  // сминаемый слой
+        D.rect(s0 - 10, lv.cushion, s1 + 10, lv.stripBot - 15, P.sand, '#555', 0.2);                        // песок
+      } else D.rect(s0 - 20, lv.cushion, s1 + 20, lv.stripBot, P.sand, '#555', 0.2);                         // подушка
+      D.rect(s0, lv.stripBot, s1, lv.stripTop, P.concrete, '#111', 0.35);                                   // лента / ростверк
       const nb = F && F.width <= 0.4 ? 2 : 3;
       for (const zz of [lv.stripBot + 5, lv.stripTop - 5]) for (let i = 0; i < nb; i++) D.dot(s0 + 5 + i * (bw - 10) / (nb - 1), zz, 0.55, '#b00');
       D.rect(s0 + 4, lv.stripBot + 4, s1 - 4, lv.stripTop - 4, null, '#b00', 0.18);                          // хомуты Ø8
@@ -249,11 +261,25 @@ const Detail = {
       D.poly([[oFace, lv.gnd + 10], [oFace + out * 100, lv.gnd + 8], [oFace + out * 100, lv.gnd - 2], [oFace, lv.gnd]], P.concrete, '#111', 0.3);
       D.rect(oFace, lv.gnd - 30, oFace + out * 100, lv.gnd, P.sand, '#777', 0.15);
     }
+    // 3а) под внутренними несущими стенами — та же лента / ростверк со сваей (как на плане фундамента)
+    if (F && F.type !== 'slab') for (const W of walls.filter(w => w.kind === 'int')) {
+      const gwI = bored ? Math.max(40, W.th + 10) : Math.max(30, W.th + 10), s0 = W.v - gwI / 2, s1 = W.v + gwI / 2;
+      if (bored) {
+        const pr = F.pileD * 50, br = F.bellD * 50, zt = lv.pileTip, zb0 = lv.stripBot - 15;
+        D.poly([[W.v - pr, zb0], [W.v + pr, zb0], [W.v + pr, zt + 30], [W.v + br, zt + 12], [W.v + br, zt], [W.v - br, zt], [W.v - br, zt + 12], [W.v - pr, zt + 30]], P.concrete, '#111', 0.35);
+        for (const sx of [-1, 1]) D.line(W.v + sx * (pr - 5), zt + 8, W.v + sx * (pr - 5), lv.stripBot + 40, '#b00', 0.5);
+        D.rect(s0, lv.stripBot - 15, s1, lv.stripBot, P.xps, '#333', 0.2);
+      } else D.rect(s0 - 20, lv.cushion, s1 + 20, lv.stripBot, P.sand, '#555', 0.2);
+      D.rect(s0, lv.stripBot, s1, lv.stripTop, P.concrete, '#111', 0.35);
+      for (const zz of [lv.stripBot + 5, lv.stripTop - 5]) for (const f of [0.25, 0.75]) D.dot(s0 + (s1 - s0) * f, zz, 0.55, '#b00');
+      D.line(s0, lv.stripTop + 0.5, s1, lv.stripTop + 0.5, '#000', 0.8);
+    }
     // 4) стены в разрезе: слои (кладка рядами, минвата, зазор, кирпич), армопояс, проём с перемычкой
     const MZ = M.mz, hr0 = fr ? fr.h / 10 / Math.cos(U.rad(r.pitch || 0)) : 0;
-    const hi = (x, top) => MZ ? Math.min(zr(x) - hr0, lv.plate) : top;                                   // мансарда: наружные слои — до стропил
+    // наружные слои (утеплитель, облицовка) — до низа стропил: у мансарды — до колена, у холодного чердака — без щели под скатом
+    const hi = (x, top) => MZ ? Math.min(zr(x) - hr0, lv.plate) : fr ? Math.max(top, zr(x) - hr0 - 1) : top;
     for (const W of walls) {
-      const top = W.kind === 'ext' ? lv.wallTop : Math.min(lv.fin + (W.h || 270), lv.wallTop), bot = W.kind === 'ext' ? lv.stripTop + 1 : lv.screed;
+      const top = W.kind === 'ext' ? lv.wallTop : Math.min(lv.fin + (W.h || 270), lv.wallTop), bot = W.kind === 'ext' || (W.kind === 'int' && F && F.type !== 'slab') ? lv.stripTop + 1 : lv.screed;
       const out = W.outV || 1, v0 = W.v - W.th / 2 * out;                                                    // от внутренней грани наружу
       const L = W.kind === 'ext' ? M.lay : [{ kind: 'block', th: W.th, mat: W.w.mat }];
       let at = W.kind === 'ext' ? v0 : W.v - W.th / 2, dir = W.kind === 'ext' ? out : 1;
@@ -297,11 +323,22 @@ const Detail = {
     // 5) чердачное перекрытие и потолок: нижний пояс ферм / затяжка, утеплитель, пароизоляция, натяжной потолок
     if (fr && MZ) Detail.mansSection(D, M, { zr, inner, ext, Dh, hr: hr0 });
     if (fr) {
-      const hb = fr.h / 10, zb = lv.wallTop + 5, a0 = ext.length ? ext[0].v : -Dh, a1 = ext.length ? ext[ext.length - 1].v : Dh;
+      // опора — по оси несущей кладки (блока), а не по оси всей стены с утеплителем и облицовкой
+      const bAx = (W) => W.v - (W.outV || (W.v < 0 ? -1 : 1)) * (W.th / 2 - M.lay[0].th / 2);
+      const hb = fr.h / 10, zb = lv.wallTop + 15, a0 = ext.length ? bAx(ext[0]) : -Dh, a1 = ext.length ? bAx(ext[ext.length - 1]) : Dh;
       if (!MZ) {
-      D.rect(a0 - 7.5, lv.wallTop, a0 + 7.5, lv.wallTop + 5, P.wood, '#111', 0.25);                          // лежень / мауэрлат
-      D.rect(a1 - 7.5, lv.wallTop, a1 + 7.5, lv.wallTop + 5, P.wood, '#111', 0.25);
-      D.rect(a0 - 12, zb, a1 + 12, zb + hb, P.wood, '#111', 0.3);                                           // нижний пояс — на лежень над стеной
+      for (const W of [ext[0], ext[ext.length - 1]].filter(Boolean)) {                                     // утеплитель на кладке по сторонам мауэрлата — до низа стропил (без щелей)
+        const out = W.outV || (W.v < 0 ? -1 : 1), bi = W.v - out * W.th / 2, bo = bi + out * M.lay[0].th, a = bAx(W), mo = a + out * 7.5;
+        D.poly([[bo, lv.wallTop], [mo, lv.wallTop], [mo, Math.max(lv.wallTop + 15, zr(mo) - hr0)], [bo, Math.max(lv.wallTop, zr(bo) - hr0)]], P.ins, '#333', 0.2);
+      }
+      for (const a of [a0, a1]) {                                                                          // мауэрлат 150×150 на армопоясе, шпилька М12
+        D.line(a - 7.5, lv.wallTop + 0.4, a + 7.5, lv.wallTop + 0.4, '#000', 0.8);                         // 2 слоя гидроизоляции
+        D.rect(a - 7.5, lv.wallTop + 0.8, a + 7.5, lv.wallTop + 15, P.wood, '#111', 0.3);
+        D.line(a, lv.wallTop - (lv.ring || 20) + 5, a, lv.wallTop + 17, '#333', 0.6);                       // шпилька М12
+        D.rect(a - 2.5, lv.wallTop + 15, a + 2.5, lv.wallTop + 15.6, '#555', '#111', 0.15);                // шайба 50×50
+        D.rect(a - 1, lv.wallTop + 15.6, a + 1, lv.wallTop + 17, '#333', null);                             // гайка
+      }
+      D.rect(a0 - 11.5, zb, a1 + 11.5, zb + hb, P.wood, '#111', 0.3);                                       // нижний пояс ферм — на мауэрлате
       const ti = fr.attic.ins / 10;                                                                          // минвата между поясами и поперёк
       D.rect(inner[0], zb, inner[1], zb + ti, P.ins, '#333', 0.2);
       D.rect(a0 - 12, zb, a1 + 12, zb + hb, null, '#111', 0.3);                                            // нижний пояс поверх утеплителя
@@ -430,7 +467,7 @@ const Detail = {
   elevGeom(E) {
     if (E.bld) {
       const it = E.bld, sh = bldShell(it, it.w, it.d), F = bldSide(E.side, it.w, it.d, sh.t), H = bldWallH(it);
-      const ops = sh.ops.filter(o => o.side === E.side).map(o => ({ s0: o.s0 + F.L / 2, s1: o.s1 + F.L / 2, z0: o.sill || 0, z1: (o.sill || 0) + o.h, name: (OPENING_TYPES[o.type] || {}).name || 'Проём' }));
+      const ops = sh.ops.map((o, i) => ({ o, i })).filter(({ o }) => o.side === E.side).map(({ o, i }) => ({ id: it.id + ':' + i, s0: o.s0 + F.L / 2, s1: o.s1 + F.L / 2, z0: o.sill || 0, z1: (o.sill || 0) + o.h, name: (OPENING_TYPES[o.type] || {}).name || 'Проём' }));
       return { L: F.L, H, mat: bldWallMat(it), th: sh.t, ops, ring: (WALL_REINF[bldWallMat(it)] || {}).ring };
     }
     const u = E.u, base = E.walls.reduce((m, w) => Math.min(m, G.dot(w.a, u), G.dot(w.b, u)), Infinity), end = E.walls.reduce((m, w) => Math.max(m, G.dot(w.a, u), G.dot(w.b, u)), -Infinity);
@@ -439,7 +476,7 @@ const Detail = {
       const g = Model.opGeom(op), T = OPENING_TYPES[op.type] || {};
       if (!g) continue;
       const s0 = Math.min(G.dot(g.a, u), G.dot(g.b, u)) - base, s1 = Math.max(G.dot(g.a, u), G.dot(g.b, u)) - base, sill = T.cat === 'door' ? 0 : (op.sill ?? T.sill ?? 90);
-      ops.push({ s0, s1, z0: sill, z1: sill + (op.h || T.h || 150), name: T.name || 'Проём' });
+      ops.push({ id: op.id, s0, s1, z0: sill, z1: sill + (op.h || T.h || 150), name: T.name || 'Проём' });
     }
     // по наружной грани — с половиной толщины на углах
     return { L: end - base + th, H: Math.max(...E.walls.map(w => w.h)), mat: w0.mat, th, ops: ops.map(o => ({ ...o, s0: o.s0 + th / 2, s1: o.s1 + th / 2 })), ring: (WALL_REINF[w0.mat] || {}).ring, clad: w0.clad || 0 };
@@ -452,7 +489,7 @@ const Detail = {
     const lint = g.ops.map(o => ({ s0: o.s0 - 25, s1: o.s1 + 25, z0: o.z1, z1: Math.min(o.z1 + bh, top) }));
     let row = 0, blocks = 0;
     // отметки — слева (справа подписи армированных рядов)
-    D.level(-D.cm(8), g.H, '', true); D.level(-D.cm(8), 0, 'верх ленты', true);
+    D.level(-D.cm(8), g.H, '', true); { const F0 = Struct.foundation(); D.level(-D.cm(8), 0, F0 && F0.type === 'bored' ? 'верх ростверка' : 'верх ленты', true); }
     D.rect(0, -3, g.L, 0, '#000', null);                                                                  // гидроизоляция по ленте
     for (let z = 0; z < top - 0.5; z += bh, row++) {
       const zt = Math.min(z + bh, top), off = row % 2 ? bl / 2 : 0;
@@ -490,6 +527,88 @@ const Detail = {
     return { g, blocks: Math.ceil(blocks * 1.05), rows: row, bl, bh0 };
   },
 
+  /* ------------------------ перемычки и армопояс: типовые сечения ------------------------ */
+  /** Сечения: ПР в наружной стене (с уголком У под облицовку), ПР во внутренней, армопояс-перемычка, ПП в перегородке,
+   *  армопояс с мауэрлатом и шпилькой. Позиции — номера с расшифровкой в панели (callout) */
+  drawLintels(D) {
+    const L = Struct.lintels(), P = D.pat, M = Detail.model(), lay = M.lay, red = '#b00';
+    const marks = (pred) => { const m = L.filter(pred).map(r => r.mark); return m.length > 2 ? `${m[0]}…${m[m.length - 1]}` : m.join(', '); };
+    const extR = L.find(r => r.kind === 'mono' && r.b >= (lay[0] || {}).th - 1) || L.find(r => r.kind === 'mono'), intR = L.find(r => r.kind === 'mono' && extR && r.b < extR.b), beltR = L.find(r => r.kind === 'belt'), partR = L.find(r => r.kind === 'part'), angR = L.find(r => r.kind === 'angle');
+    const bars = (x0, z0, b, h, nb, nt) => {                                                               // каркас: стержни низ/верх, хомут
+      D.rect(x0 + 2.5, z0 + 2.5, x0 + b - 2.5, z0 + h - 2.5, null, red, 0.2);
+      for (let i = 0; i < nb; i++) D.dot(x0 + 4 + i * (b - 8) / Math.max(1, nb - 1), z0 + 4, 0.55, red);
+      for (let i = 0; i < nt; i++) D.dot(x0 + 4 + i * (b - 8) / Math.max(1, nt - 1), z0 + h - 4, 0.45, red);
+    };
+    const title = (x, z, t) => D.text(t, x, z, { size: 2.8, bold: true });
+    // 1) наружная стена: ПР в несущем слое, утеплитель, облицовка на уголке
+    if (extR) {
+      const x0 = 0, z0 = 0, h = extR.h, top = z0 + h + 22;
+      title(x0, top + 16, 'Сечение 1-1'); D.text(`${marks(r => r.kind === 'mono' && r.b === extR.b)}${angR ? ' + ' + marks(r => r.kind === 'angle') : ''}`, x0, top + 9, { size: 2.2 });
+      let x = x0;
+      for (const l of lay) {
+        const x1 = x + l.th;
+        if (l.kind === 'block') {
+          D.rect(x, z0, x1, z0 + h, P.concrete, '#111', 0.35); bars(x, z0, l.th, h, 2, 2);
+          D.rect(x, z0 + h, x1, top, P.block, '#111', 0.25);
+          D.rect(x - 4, z0 - 30, x + l.th * 0.55, z0 - 0.1, '#f4f6f8', '#555', 0.2);                         // коробка окна
+          D.dimH(x, x1, z0 - 38, String(l.th * 10)); D.dimV(z0, z0 + h, x - 8, String(Math.round(h * 10)));
+          D.callout(x + l.th / 2, z0 + h / 2, x + l.th / 2 - 25, z0 + h + 40, `ПР (наружные стены): монолитная ж/б ${l.th * 10}×${Math.round(h * 10)} в U-блоках или опалубке, бетон B20 W4 F100; ${extR.bars}; защитный слой 30 мм; опирание на кладку ≥ 250 мм с каждой стороны`);
+        } else if (l.kind === 'ins') D.rect(x, z0 - 30, x1, top, P.ins, '#333', 0.2);
+        else if (l.kind === 'brick') {
+          D.rect(x, z0, x1, top, P.brick, '#111', 0.3);
+          if (angR) {                                                                                    // уголок: полка под кирпич, стенка — к утеплителю
+            D.rect(x - 0.8, z0 - 0.8, x1 - 2, z0, '#3d4247', '#000', 0.2); D.rect(x - 0.8, z0 - 0.8, x, z0 + 9, '#3d4247', '#000', 0.2);
+            D.callout(x + 4, z0 - 0.4, x1 + 20, z0 - 20, `У (облицовка): стальной уголок ${[...new Set(L.filter(r => r.kind === 'angle').map(r => r.prof))].join(' / ')} по пролёту, горячее цинкование или грунт + 2 слоя эмали; опирание на облицовку 200 мм; при пролёте > 1,5 м — крепить к ПР анкерами М10 шаг 500 через утеплитель`);
+          }
+        }
+        x = x1;
+      }
+    }
+    // 2) внутренняя несущая стена
+    if (intR) {
+      const x0 = 95, z0 = 0, b = intR.b, h = intR.h, top = z0 + h + 22;
+      title(x0 - 5, top + 16, 'Сечение 2-2'); D.text(marks(r => r.kind === 'mono' && r.b === b), x0 - 5, top + 9, { size: 2.2 });
+      D.rect(x0, z0, x0 + b, z0 + h, P.concrete, '#111', 0.35); bars(x0, z0, b, h, 2, 2);
+      D.rect(x0, z0 + h, x0 + b, top, P.block, '#111', 0.25);
+      D.dimH(x0, x0 + b, z0 - 10, String(b * 10)); D.dimV(z0, z0 + h, x0 - 6, String(Math.round(h * 10)));
+      D.callout(x0 + b / 2, z0 + h / 2, x0 + b + 25, z0 + h + 30, `ПР (внутренние несущие): ж/б ${b * 10}×${Math.round(h * 10)}, ${intR.bars}; опирание ≥ 250 мм`);
+    }
+    // 3) армопояс с мауэрлатом
+    {
+      const x0 = 150, z0 = 0, b = (lay[0] || { th: 30 }).th, rh = 25, ax = x0 + b / 2;
+      title(x0 - 5, z0 + rh + 60, 'Сечение 3-3'); D.text('армопояс и мауэрлат', x0 - 5, z0 + rh + 53, { size: 2.2 });
+      D.rect(x0, z0 - 35, x0 + b, z0, P.block, '#111', 0.25);
+      D.rect(x0, z0, x0 + b, z0 + rh, P.concrete, '#111', 0.35); bars(x0, z0, b, rh, 2, 2);
+      D.line(ax - 7.5, z0 + rh + 0.4, ax + 7.5, z0 + rh + 0.4, '#000', 0.8);
+      D.rect(ax - 7.5, z0 + rh + 0.8, ax + 7.5, z0 + rh + 15, P.wood, '#111', 0.3);
+      D.line(ax, z0 + 5, ax, z0 + rh + 17, '#333', 0.6); D.rect(ax - 2.5, z0 + rh + 15, ax + 2.5, z0 + rh + 15.6, '#555', '#111', 0.15);
+      let x = x0 + b;
+      for (const l of lay.slice(1)) { const x1 = x + l.th; if (l.kind === 'ins') D.rect(x, z0 - 35, x1, z0 + rh + 22, P.ins, '#333', 0.2); else if (l.kind === 'brick') D.rect(x, z0 - 35, x1, z0 + rh + 18, P.brick, '#111', 0.3); x = x1; }
+      D.dimH(x0, x0 + b, z0 - 43, String(b * 10)); D.dimV(z0, z0 + rh, x0 - 6, '250'); D.dimH(ax - 7.5, ax + 7.5, z0 + rh + 22, '150');
+      D.callout(x0 + 6, z0 + rh / 2, x0 - 20, z0 + rh + 45, `Армопояс ${b * 10}×250 по всем наружным стенам: бетон B20 W4 F100, 4 Ø12 А500, хомуты Ø8 А240 шаг 300, защитный слой 30 мм; в углах — Г-образные стержни, нахлёст 50d`);
+      D.callout(ax, z0 + rh + 8, ax + 40, z0 + rh + 45, 'Мауэрлат 150×150 по 2 слоям гидроизоляции по оси блока; шпильки М12 шаг 800 (в углах — по обе стороны), заделка 200 мм, шайба 50×50×5 и гайка');
+    }
+    // 4) армопояс над проёмом — работает как перемычка (проём под самым поясом)
+    if (beltR) {
+      const x0 = 0, z0 = -100, b = beltR.b, h = 25;
+      title(x0, z0 + h + 26, 'Сечение 4-4'); D.text(marks(r => r.kind === 'belt'), x0, z0 + h + 19, { size: 2.2 });
+      D.rect(x0, z0, x0 + b, z0 + h, P.concrete, '#111', 0.35); bars(x0, z0, b, h, 2, 2);
+      for (const f of [0.35, 0.65]) D.dot(x0 + b * f, z0 + 4, 0.6, '#d35400');
+      D.rect(x0 - 4, z0 - 30, x0 + b + 4, z0 - 0.1, '#f8f8f6', '#555', 0.2);
+      D.dimH(x0, x0 + b, z0 - 38, String(Math.round(b * 10))); D.dimV(z0, z0 + h, x0 - 6, '250');
+      D.callout(x0 + b * 0.5, z0 + 4, x0 + b + 30, z0 - 25, `Проём под армопоясом (ворота, двери гаража): армопояс над ним — перемычка; дополнительно снизу ${beltR.bars.replace(' доп. снизу', '')} на длину проёма + 2 × 500 мм (оранжевые)`);
+    }
+    // 5) перегородка из блоков
+    if (partR) {
+      const x0 = 95, z0 = -100, b = partR.b;
+      title(x0 - 5, z0 + 45, 'Сечение 5-5'); D.text(marks(r => r.kind === 'part'), x0 - 5, z0 + 38, { size: 2.2 });
+      D.rect(x0, z0 + 0.5, x0 + b, z0 + 25, P.block, '#111', 0.25);
+      for (const sx of [0, 1]) { const xx = sx ? x0 + b : x0; D.rect(xx - (sx ? 5 : 0), z0, xx + (sx ? 0 : 5), z0 + 0.5, '#3d4247', '#000', 0.2); D.rect(sx ? xx - 0.5 : xx, z0, sx ? xx : xx + 0.5, z0 - 5, '#3d4247', '#000', 0.2); }
+      D.dimH(x0, x0 + b, z0 - 12, String(b * 10));
+      D.callout(x0 + b / 2, z0 + 0.3, x0 + b + 30, z0 - 25, 'ПП (перегородки из блоков): 2 уголка 50×5 полками наружу, опирание 150 мм с каждой стороны; блок над проёмом — на клей');
+    }
+    return D.notes;
+  },
   /* --------------------------- план стропильной системы --------------------------- */
   drawRoofPlan(D, M) {
     const r = M.r, fr = M.fr, W = r.w / 2, Dh = r.d / 2, S = fr.S;
@@ -588,7 +707,7 @@ const Detail = {
       ['Снеговой район', `${Climate.roman(fr.snow.district)} — Sg ${fr.snow.Sg} кПа; μ ${fr.snow.mu.toFixed(2)}; расчётная ${fr.snow.sD.toFixed(2)} кПа`],
       ['Проверка', isFinite(fr.sig) ? `σ = ${fr.sig.toFixed(1)} ≤ 13 МПа; прогиб ${fr.f.toFixed(0)} ≤ ${fr.fmax.toFixed(0)} мм (L/200)` : 'нужен индивидуальный расчёт'],
       ['Настил / обрешётка', fr.bat], fr.osb ? ['OSB-3', `${fr.osb.toFixed(0)} м²`] : null,
-      ['Мауэрлат 150×100', `${fr.mauerlat.toFixed(1)} м, анкеры М12 — ${fr.anchors} шт.`], ['Пиломатериал всего', `≈ ${fr.woodV.toFixed(1)} м³`],
+      ['Мауэрлат 150×150', `${fr.mauerlat.toFixed(1)} м, шпильки М12 шаг 800 — ${fr.anchors} шт.`], ['Пиломатериал всего', `≈ ${fr.woodV.toFixed(1)} м³`],
     ].filter(Boolean);
     const notes = ((spec && spec._notes) || []).map((t, i) => `${i + 1} — ${t}`);
     return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Крыша: ' + (it.label || catItem(it.key).name)), Sheets.T(null, rows),
@@ -603,15 +722,17 @@ const Detail = {
   /** Габарит сцены листа (см; ось y — вниз, как на плане) */
   bbox(spec) {
     if (spec.detail === 'bldRoof') { const G2 = Detail.bldGeom(spec.arg); return G2 ? G2.bbox : { x0: 0, y0: 0, x1: 100, y1: 100 }; }
+    if (spec.detail === 'lintels') return { x0: -30, y0: -88, x1: 234, y1: 146 };
     const M = Detail.model();
     if (spec.detail === 'wallElev') { const g = Detail.elevGeom(spec.arg); return { x0: -110, y0: -g.H - 20, x1: g.L + 100, y1: 60 }; }
     if (!M.r) return { x0: 0, y0: 0, x1: 100, y1: 100 };
     const Dh = M.r.d / 2, ridge = Roof.params(M.r).top + 30;
     if (spec.detail === 'roofPlan') return { x0: -M.r.w / 2 - 120, y0: -Dh - 20, x1: M.r.w / 2 + 20, y1: Dh + 110 };
     const C = Detail.cut(M), ext = Detail.cutWalls(M, C.u).filter(w => w.kind === 'ext'), W0 = ext[0] || { v: -Dh + 50, th: 40 };
-    if (spec.detail === 'foundNode') { const f = W0.v - W0.th / 2; return { x0: f - 140, y0: -(M.lv.stripTop + 110), x1: W0.v + W0.th / 2 + 140, y1: -(M.lv.cushion - 20) }; }
+    const low = Math.min(M.lv.cushion, M.lv.pileTip ?? Infinity);
+    if (spec.detail === 'foundNode') { const f = W0.v - W0.th / 2; return { x0: f - 140, y0: -(M.lv.stripTop + 110), x1: W0.v + W0.th / 2 + 140, y1: -(low - 20) }; }
     if (spec.detail === 'roofNode') { const f = W0.v - W0.th / 2; return { x0: -Dh - 40, y0: -(M.lv.plate + 130), x1: f + W0.th + 120, y1: -(M.lv.plate - (M.mz ? 110 : 70)) }; }
-    return { x0: -Dh - 115, y0: -ridge - 15, x1: Dh + 65, y1: -(M.lv.cushion - 90) };
+    return { x0: -Dh - 115, y0: -ridge - 15, x1: Dh + 65, y1: -(Math.min(M.lv.cushion - 90, low - 40)) };
   },
   /** Нарисовать лист-деталь в канвас W×H px в масштабе 1:N */
   render(spec, Wpx, Hpx, N, dpmm) {
@@ -625,6 +746,7 @@ const Detail = {
     try {
       if (spec.detail === 'wallElev') { const res = Detail.drawElev(D, spec.arg); spec._res = res; }
       else if (spec.detail === 'bldRoof') { const G2 = Detail.bldGeom(spec.arg); if (G2) spec._notes = Detail.drawBldRoof(D, G2); }
+      else if (spec.detail === 'lintels') spec._notes = Detail.drawLintels(D);
       else if (spec.detail === 'roofPlan' && M.fr) { const D2 = Detail.kit(ctx, k, ox, cv.height / 2 - cy * k, dpmm); D2.Y = (z) => cv.height / 2 + (z - cy) * k; Detail.drawRoofPlan(D2, M); }
       else if (M.r) { const S = Detail.drawSection(D, M, spec.detail); spec._notes = Detail.annotate(D, M, S, spec.detail); }
     } finally { ctx.restore(); }
@@ -635,7 +757,9 @@ const Detail = {
     const { lv, lay, fr, r, F } = M, ext = S.ext, W0 = ext[0], left = W0 ? W0.v - W0.th / 2 : -S.Dh + 50;
     const node = mode === 'foundNode' || mode === 'roofNode';
     const sL = node ? left - 25 : -S.Dh - 35;
-    if (mode !== 'roofNode') { D.level(sL, lv.fin, 'чистый пол', true); D.level(sL, lv.gnd, 'земля', true); D.level(sL, lv.stripBot, 'низ ленты', true); }
+    const bored = F && F.type === 'bored';
+    if (mode !== 'roofNode') { D.level(sL, lv.fin, 'чистый пол', true); D.level(sL, lv.gnd, 'земля', true); D.level(sL, lv.stripBot, bored ? 'низ ростверка' : 'низ ленты', true); }
+    if (bored && mode !== 'roofNode') { D.level(sL, lv.pileTip, 'низ сваи', true); D.level(sL, lv.frost, 'промерзание', true); }
     const MZ = M.mz;
     if (mode !== 'foundNode') {
       if (!MZ || mode !== 'roofNode') { D.level(sL, lv.wallTop, MZ ? 'низ плиты' : 'верх стен', true); if (lv.ring) D.level(sL, lv.wallTop - lv.ring, 'низ армопояса', true); D.level(S.inner[0] + 30, lv.ceil - D.cm(1), 'потолок', false); }
@@ -649,16 +773,18 @@ const Detail = {
     if (!node) D.level(0, Roof.params(r).top, 'конёк', false);                                          // та же отметка, что в таблице и на плане кровли
     const T = {
       floor: 'Пол по грунту: керамогранит 10 мм на клею; стяжка 50 мм с трубами тёплого пола; плита 100 мм B20, сетка Ø8 200×200; XPS 100 мм; песок 300 мм с послойным трамбованием; снять растительный слой',
-      found: F ? `Фундамент: ${FOUND_TYPES[F.type].toLowerCase()} — лента ${Math.round(F.width * 1000)}×${Math.round(F.H * 1000)} мм, бетон B20 W6 F150; ${F.bars}; защитный слой 40 мм` : 'Фундамент — по расчёту',
-      cushion: 'Подушка: песок средней крупности 200 мм, уплотнение Кпл ≥ 0,95, шире ленты на 200 мм с каждой стороны',
-      water: 'Гидроизоляция: по верху ленты — 2 слоя наплавляемой (отсечка под кладку); боковые грани — битумная обмазочная',
-      xps: 'Утепление ленты: XPS 100 мм по наружной грани до подошвы; под отмосткой — XPS 50 мм, юбка 1200 мм (МЗЛФ)',
+      found: F ? (bored ? `Ростверк монолитный ${Math.round(F.gw * 1000)}×${Math.round(F.gh * 1000)} мм во всю толщину стены, бетон B22,5 W6 F150; ${F.bars.split('; сваи')[0]}; защитный слой 40 мм; выпуски свай — в каркас ростверка`
+        : `Фундамент: ${FOUND_TYPES[F.type].toLowerCase()} — лента ${Math.round(F.width * 1000)}×${Math.round(F.H * 1000)} мм, бетон B20 W6 F150; ${F.bars}; защитный слой 40 мм`) : 'Фундамент — по расчёту',
+      pile: bored ? `Свая буронабивная Ø${Math.round(F.pileD * 1000)} с уширением пяты Ø${Math.round(F.bellD * 1000)} (бур ТИСЭ), длина ${String(F.Lp).replace('.', ',')} м, низ на ${F.tip.toFixed(2).replace('.', ',')} м от земли (на 1 м ниже промерзания), бетон B22,5 W6 F150; 4 Ø12 А500, спираль Ø6 шаг 200, выпуски 400 мм; шаг ${F.pileStep.toFixed(1).replace('.', ',')} м, в углах и примыканиях — обязательно; в зоне промерзания — битумная обмазка и 2 слоя рубероида` : '',
+      cushion: bored ? 'Под ростверком: сминаемый слой 150 мм (пенополистирол ПСБ-С 15) по песку 100 мм — пучинистый грунт не давит на ростверк снизу' : 'Подушка: песок средней крупности 200 мм, уплотнение Кпл ≥ 0,95, шире ленты на 200 мм с каждой стороны',
+      water: `Гидроизоляция: по верху ${bored ? 'ростверка' : 'ленты'} — 2 слоя наплавляемой (отсечка под кладку); боковые грани — битумная обмазочная`,
+      xps: bored ? 'Утепление цоколя: XPS 100 мм по наружной грани ростверка; под отмосткой — XPS 50 мм, юбка 1200 мм (меньше промерзание у свай)' : 'Утепление ленты: XPS 100 мм по наружной грани до подошвы; под отмосткой — XPS 50 мм, юбка 1200 мм (МЗЛФ)',
       blind: 'Отмостка 1000 мм: бетон 80–100 мм с уклоном 2 % от дома, песок 100 мм, деформационный шов у цоколя',
       wall: 'Стена: ' + lay.map(l => `${l.name.toLowerCase()} ${l.th * 10} мм`).join(' + ') + (lay.some(l => l.kind === 'brick') ? '; облицовка на базальтопластиковых связях 4 шт./м²; утеплитель — фасадная минвата ≥ 80 кг/м³ под ветрозащитной мембраной; зазор с продухами внизу и вверху (пустой вертикальный шов через 1 м)' : ''),
       reinf: 'Армирование кладки: 1-й и каждый ' + ((WALL_REINF[M.w0.mat] || {}).every || 3) + '-й ряд — ' + ((WALL_REINF[M.w0.mat] || {}).how || 'по расчёту'),
       lintel: 'Перемычка над проёмом: U-блок с бетоном B20, 2Ø12 А500, опирание ≥ 250 мм; подоконник и отлив',
-      ring: 'Армопояс 250 мм по всем наружным стенам: бетон B20, 4Ø12 А500, хомуты Ø8 шаг 300; анкеры М12 шаг 1000 под лежень',
-      plate: fr && fr.scheme === 'truss' ? 'Опорный лежень 150×50 (антисептик) по гидроизоляции; ферма — к лежню скобами / уголками с каждой стороны' : 'Мауэрлат 150×150 (антисептик) по гидроизоляции; стропило — скользящей опорой',
+      ring: `Армопояс монолитный ${M.lay[0].th * 10}×250 мм на всю ширину блока по всем наружным стенам: бетон B20 W4 F100, 4 Ø12 А500, хомуты Ø8 А240 шаг 300, защитный слой 30 мм; шпильки М12 под мауэрлат шаг 800 мм (в углах — по обе стороны угла), заделка 200 мм`,
+      plate: `Мауэрлат 150×150 (сосна 1 сорт, антисептик, антипирен) по 2 слоям гидроизоляции на армопояс — по оси несущего блока, опирание только на кладку; шпильки М12 с шайбой 50×50×5 и гайкой; ${fr && fr.scheme === 'truss' ? 'ферма' : 'стропило'} — к мауэрлату уголками или скобами с каждой стороны`,
       attic: fr ? `Чердачное перекрытие: ${fr.scheme === 'truss' ? 'нижний пояс ферм' : 'затяжка'} ${fr.b}×${fr.h}; пароизоляция снизу; минвата ${fr.attic.ins} мм (R = ${fr.attic.R.toFixed(2)} при норме ${fr.attic.need.toFixed(2)}); ходовые доски; холодный чердак с продухами ≥ 1/300 площади` : '',
       ceil: 'Потолок: натяжной (ПВХ матовый) на профиле, отступ 50–100 мм от нижнего пояса',
       roof: fr ? `Кровля: ${(ROOF_MATERIALS[r.mat] || {}).name.toLowerCase()}; ${fr.bat}; контррейка 50×50 (вентзазор); гидроветрозащитная мембрана; ${fr.scheme === 'truss' ? 'ферма' : 'стропило'} ${fr.b}×${fr.h} шаг ${fr.step * 1000}` : '',
@@ -683,7 +809,8 @@ const Detail = {
     if (mode === 'foundNode') {
       D.callout(inner0 + 70, lv.slab - 5, inner0 + 90, lv.fin + 45, T.floor);
       D.callout(Wv, lv.stripBot + 25, Wv + bw / 2 + 45, lv.stripBot + 5, T.found);
-      D.callout(Wv - bw / 2 - 10, lv.cushion + 10, Wv - bw / 2 - 40, lv.cushion - 12, T.cushion);
+      D.callout(Wv - bw / 2 - 10, lv.cushion + (bored ? 18 : 10), Wv - bw / 2 - 40, lv.cushion - 12, T.cushion);
+      if (bored) { D.callout(Wv, (lv.pileTip + lv.frost) / 2, Wv + F.bellD * 50 + 40, (lv.pileTip + lv.frost) / 2 + 10, T.pile); D.dimV(lv.pileTip, lv.stripBot - 15, Wv - F.bellD * 50 - 15); D.dimH(Wv - F.bellD * 50, Wv + F.bellD * 50, lv.pileTip - 8, String(Math.round(F.bellD * 1000))); }
       D.callout(Wv + 5, lv.stripTop + 0.5, Wv + bw / 2 + 35, lv.stripTop + 25, T.water);
       D.callout(left - 8, lv.stripBot + 30, left - 60, lv.stripBot + 10, T.xps);
       D.callout(left - 50, lv.gnd + 4, left - 90, lv.gnd + 45, T.blind);
@@ -693,9 +820,10 @@ const Detail = {
       D.dimV(lv.cushion, lv.stripBot, Wv + bw / 2 + 12);
       D.dimV(lv.gnd, lv.stripTop, Wv - bw / 2 - 20);
     } else if (mode === 'roofNode') {
-      const face = left, top = lv.plate;
-      D.callout(Wv, top - (MZ ? 15 + lv.ring / 2 : 12), face - 30, top - 40, T.ring);
-      D.callout(Wv + 5, top - (MZ ? 7 : -2.5), Wv + 45, top - 30, T.plate);
+      const face = left, top = lv.plate, bx = W0 ? W0.v - (W0.outV || (W0.v < 0 ? -1 : 1)) * (W0.th / 2 - lay[0].th / 2) : Wv;   // ось несущего блока
+      D.callout(MZ ? Wv : bx - 8, MZ ? top - 15 - lv.ring / 2 : lv.wallTop - lv.ring / 2, face - 30, top - 40, T.ring);
+      D.callout(MZ ? Wv + 5 : bx + 4, MZ ? top - 7 : lv.wallTop + 7.5, Wv + 45, top - 30, T.plate);
+      if (!MZ) D.level(face - 25, lv.plate, 'верх мауэрлата', true);
       if (MZ) { const v = inner0 + 50; D.callout(v, zr(v) - MZ.hr - 5, v + 30, zr(v) - MZ.hr - 60, T.slope); D.callout(inner0 - 8, top - 60, inner0 + 45, top - 90, T.knee); }
       else { D.callout(inner0 + 40, top + 20, inner0 + 60, top + 70, T.attic); D.callout(inner0 + 20, lv.ceil, inner0 + 50, lv.ceil - 30, T.ceil); }
       D.callout(-S.Dh + 60, zr(-S.Dh + 60) + 6, -S.Dh + 30, zr(-S.Dh + 30) + 60, T.roof);
@@ -710,6 +838,7 @@ const Detail = {
       D.dimV(lv.gnd, lv.fin, S.Dh + 45);
       D.callout(20, lv.slab, 70, lv.fin + 60, T.floor);
       D.callout(Wv, lv.stripBot + 20, Wv - 80, lv.stripBot - 10, T.found);
+      if (bored) D.callout(Wv, (lv.pileTip + lv.frost) / 2, Wv + 60, (lv.pileTip + lv.frost) / 2 - 10, T.pile);
       D.callout(left - 50, lv.gnd + 5, left - 80, lv.gnd + 60, T.blind);
       D.callout(left + 15, lv.fin + 150, left - 70, lv.fin + 170, T.wall);
       D.callout(Wv, lv.wallTop - 12, left - 70, lv.wallTop - 20, T.ring);
@@ -737,13 +866,14 @@ const Detail = {
       U.el('div', { class: 'norm' }, '§ СП 22.13330.2016; СП 45.13330.2017; СП 50-101-2004; СП 15.13330.2020; СП 17.13330.2017; СП 64.13330.2017'));
   },
   /** Указания к узлу карниза — по узлу, а не общие замечания проекта */
-  EAVE_NOTES: ['Лежень — по гидроизоляции на армопояс, анкеры М12 шаг 1000 мм; ферма/стропило — к лежню уголками или скобами с двух сторон',
+  EAVE_NOTES: ['Мауэрлат 150×150 — по оси несущего блока на 2 слоя гидроизоляции, шпильки М12 шаг 800 мм; ферма/стропило — к мауэрлату уголками или скобами с двух сторон',
+    'Утеплитель стены и облицовка — до низа стропил; зазор 20–30 мм — пена; утеплитель у мауэрлата закрыть ветрозащитой (узел продувания)',
     'Продухи: приток — через перфорированный софит, вытяжка — через конёк; сечение ≥ 1/300 площади чердака',
     'Пароизоляция — под утеплителем, нахлёсты 100 мм с проклейкой, примыкания к стенам — на ленту',
     'Мембрана — с выпуском на капельник; карнизная планка — под мембраной',
     'Желоб — на кронштейнах шаг 600 мм, уклон 3–5 мм на 1 м к воронкам'],
   /** Указания к узлу карниза мансарды: утеплённый скат, вентзазор от свеса до конька */
-  EAVE_NOTES_M: ['Мауэрлат 150×150 — по гидроизоляции на армопояс колена, анкеры М12 шаг 1000 мм; стропило — с врубкой, крепление уголком и скобой',
+  EAVE_NOTES_M: ['Мауэрлат 150×150 — по гидроизоляции на армопояс колена, шпильки М12 шаг 800 мм; стропило — с врубкой, крепление уголком и скобой',
     'Вентзазор 50 мм под мембраной — непрерывный от свеса до конька: приток через перфорированный софит, вытяжка через коньковый аэратор',
     'Утеплитель скатов — без зазоров к стропилам и колену; ветрозащита минваты у мауэрлата (узел продувания)',
     'Пароизоляция — сплошной контур: скат → потолок по ригелям → колено, нахлёсты 100 мм с проклейкой, к кладке — на ленту',
@@ -751,7 +881,7 @@ const Detail = {
   sectionPanel(spec) {
     const M = Detail.model();
     const lvl = (z) => '+' + (z / 100).toFixed(3);
-    const rows = [['Чистый пол', '±0.000'], ['Земля', ((M.lv.gnd) / 100).toFixed(3)], ['Низ ленты', (M.lv.stripBot / 100).toFixed(3)], [M.mz ? 'Низ плиты перекрытия' : 'Верх стен', lvl(M.lv.wallTop)]];
+    const rows = [['Чистый пол', '±0.000'], ['Земля', ((M.lv.gnd) / 100).toFixed(3)], [M.F && M.F.type === 'bored' ? 'Низ ростверка' : 'Низ ленты', (M.lv.stripBot / 100).toFixed(3)], ...(M.lv.pileTip != null ? [['Низ свай', (M.lv.pileTip / 100).toFixed(3)], ['Граница промерзания', (M.lv.frost / 100).toFixed(3)]] : []), [M.mz ? 'Низ плиты перекрытия' : 'Верх стен', lvl(M.lv.wallTop)]];
     if (M.mz) rows.push(['Чистый пол мансарды', lvl(M.mz.e)], ['Верх мауэрлата', lvl(M.lv.plate)], ['Потолок мансарды (по ригелям)', lvl(M.mz.L.ceil)]);
     if (M.r) rows.push(['Конёк', '+' + (Roof.params(M.r).top / 100).toFixed(3)]);
     return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Разрез 1-1'), Detail.posList(spec), U.el('h4', {}, 'Отметки'), Sheets.T(null, rows),
@@ -768,7 +898,7 @@ const Detail = {
       ['Проверка', isFinite(fr.sig) ? `σ = ${fr.sig.toFixed(1)} ≤ ${fr.R} МПа; f = ${fr.f.toFixed(0)} ≤ ${fr.fmax.toFixed(0)} мм` : 'нужен индивидуальный расчёт'],
       ['Обрешётка', fr.bat], ['Контррейка 50×50', `${fr.counter.toFixed(0)} м`], ['Мембрана', `${fr.membrane.toFixed(0)} м²`],
       fr.osb ? ['OSB-3 12 мм', `${fr.osb.toFixed(0)} м²`] : null,
-      [fr.scheme === 'truss' ? 'Опорный лежень' : 'Мауэрлат', `${fr.mauerlat.toFixed(1)} м, анкеры М12 — ${fr.anchors} шт.`],
+      ['Мауэрлат 150×150', `${fr.mauerlat.toFixed(1)} м, шпильки М12 шаг 800 — ${fr.anchors} шт.`],
       ['Пиломатериал всего', `≈ ${fr.woodV.toFixed(1)} м³`],
       ...(fr.attic.mansard ? [['Утепление мансарды', `минвата ${fr.attic.ins} мм между стропилами и поперёк, пароизоляция, вентзазор 50 мм над мембраной`]] : [['Утепление чердака', `минвата ${fr.attic.ins} мм по пароизоляции`], ['Продухи', `≥ ${fr.attic.vent.toFixed(2)} м² (1/300 площади)`]]),
     ].filter(Boolean);
@@ -777,18 +907,29 @@ const Detail = {
       U.el('div', { class: 'norm' }, '§ СП 17.13330.2017; СП 20.13330.2016; СП 64.13330.2017; СП 7.13130.2013'));
   },
   /** Перемычки стены: одинаковые (длина, тип) — одна марка ПР-n; проём до армопояса — пояс-перемычка */
+  /** Перемычки стены по общему каталогу (Struct.lintels): марки ПР-n — те же, что в ведомости на листе перемычек */
   lintels(g) {
     if (g._lint) return g._lint;
-    const top = g.H - (g.ring ? 25 : 0), out = [];
+    const L = Struct.lintels(), out = [];
     for (const o of g.ops) {
-      const len = Math.round(Math.min(g.L, o.s1 + 25) - Math.max(0, o.s0 - 25)), belt = o.z1 >= top - 5;
-      const key = belt ? 'belt' + len : 'u' + len;
-      let q = out.find(x => x.key === key);
-      if (!q) out.push(q = { key, len, belt, ops: [], mark: '' });
+      const rec = L.find(r => (r.kind === 'mono' || r.kind === 'belt') && r.refs.includes(o.id)), ang = L.find(r => r.kind === 'angle' && r.refs.includes(o.id));
+      const mark = rec ? rec.mark : '—';
+      let q = out.find(x => x.mark === mark);
+      if (!q) out.push(q = { mark, rec, ang, len: rec ? rec.len : Math.round(o.s1 - o.s0 + 50), belt: !!rec && rec.kind === 'belt', ops: [] });
       q.ops.push(o);
     }
-    out.sort((a, b) => a.belt - b.belt || a.len - b.len).forEach((q, i) => { q.mark = 'ПР-' + (i + 1); });
     return (g._lint = out);
+  },
+  /** Панель листа перемычек: ведомость по маркам и указания */
+  lintelsPanel(spec) {
+    const L = Struct.lintels();
+    const rows = L.map(r => [r.mark, r.kind === 'angle' ? `уголок ${r.prof}` : r.kind === 'part' ? r.prof : r.kind === 'belt' ? `армопояс ${Math.round(r.b * 10)}×250 (усиление)` : `ж/б ${Math.round(r.b * 10)}×${Math.round(r.h * 10)}`, String(r.len * 10), r.kind === 'angle' || r.kind === 'part' ? 'сталь С245' : r.bars, String(r.n), r.where]);
+    const conc = L.filter(r => r.kind === 'mono').reduce((a, r) => a + r.n * r.b * r.h * r.len / 1e6, 0);
+    return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Ведомость перемычек'), Detail.posList(spec),
+      Sheets.T(['Марка', 'Сечение / профиль', 'Длина, мм', 'Армирование', 'Кол.', 'Где'], rows),
+      U.el('div', { class: 'tb-note' }, `Бетон перемычек B20 ≈ ${conc.toFixed(2).replace('.', ',')} м³. Расчёт: нагрузка — кладка над проёмом, армопояс, крыша со снегом (наружные стены); M = q·l0²/8, l0 = проём + 250 мм; арматура А500 (Rs = 435 МПа)`),
+      U.el('h4', {}, 'Указания'), Sheets.ul(['Марки — на раскладках стен и плане кладки; длина — с опиранием (ПР — 250 мм, У — 200 мм, ПП — 150 мм с каждой стороны)', 'ПР бетонировать в U-блоках или в опалубке до кладки следующего ряда; распалубка ≥ 7 сут', 'Уголки У — под облицовочный кирпич, не опирать на утеплитель; облицовку над проёмом армировать сеткой через 4 ряда', 'Армопояс — непрерывный по всем наружным стенам, бетонировать за один приём; закладные шпильки М12 под мауэрлат — до бетонирования']),
+      U.el('div', { class: 'norm' }, '§ СП 15.13330.2020; СП 63.13330.2018; СП 16.13330.2017 (стальные); СП 70.13330.2012'));
   },
   elevPanel(E) {
     const g = Detail.elevGeom(E), M = WALL_MATERIALS[g.mat] || {}, R = WALL_REINF[g.mat] || {}, [bl, bh] = M.block || [39, 18.8];
@@ -797,9 +938,10 @@ const Detail = {
     const rows = Math.ceil(g.H / (bh + 1));
     return U.el('div', { class: 'sysdesc' }, U.el('h3', {}, 'Раскладка: ' + E.name),
       Sheets.T(null, [['Материал', `${M.name || g.mat}; стена ${g.th} см${g.clad ? ' (с утеплителем и облицовкой)' : ''}`], ['Блок', `${bl * 10}×${bh * 10} мм, шов ${M.block ? '10–12' : '10'} мм`], ['Длина / высота', `${(g.L / 100).toFixed(2)} × ${(g.H / 100).toFixed(2)} м`], ['Площадь кладки', `${area.toFixed(1)} м²`], ['Блоков', `≈ ${Math.ceil(area * perM2 * 1.05)} шт. (+5 %)`], ['Рядов', String(rows)], ['Проёмов', String(g.ops.length)]]),
-      U.el('h4', {}, 'Армирование и перемычки'), Sheets.ul([R.every ? `1-й и каждый ${R.every}-й ряд: ${R.how}` : (R.how || 'по расчёту'), 'Ряд под окнами — с заходом 900 мм в стороны', 'Перемычки — U-блоки с бетоном B20 и 2Ø12 А500, опирание ≥ 250 мм', g.ring ? 'Армопояс 250 мм по всему периметру, 4Ø12, хомуты Ø8 шаг 300' : null, g.clad ? 'Облицовка: кирпич на гибких связях (базальтопластик 4 шт./м², у проёмов — шаг 300)' : null].filter(Boolean)),
+      U.el('h4', {}, 'Армирование и перемычки'), Sheets.ul([R.every ? `1-й и каждый ${R.every}-й ряд: ${R.how}` : (R.how || 'по расчёту'), 'Ряд под окнами — с заходом 900 мм в стороны', 'Перемычки — по ведомости на листе «Перемычки и армопояс» (марки ПР-n, У-n), опирание ≥ 250 мм', g.ring ? 'Армопояс 250 мм по всему периметру, 4Ø12, хомуты Ø8 шаг 300' : null, g.clad ? 'Облицовка: кирпич на гибких связях (базальтопластик 4 шт./м², у проёмов — шаг 300)' : null].filter(Boolean)),
       g.ops.length ? U.el('h4', {}, 'Ведомость перемычек') : null,
-      g.ops.length ? Sheets.T(['Марка', 'Перемычка', 'Кол.'], Detail.lintels(g).map(q => [q.mark, q.belt ? `армопояс над проёмом ${Math.round(q.len - 50)} см — работает как перемычка: нижнее армирование по расчёту` : `U-блок с бетоном B20, 2Ø12 А500, L = ${q.len} см (опирание 25 см)`, String(q.ops.length)])) : null,
+      g.ops.length ? Sheets.T(['Марка', 'Перемычка', 'Кол.'], Detail.lintels(g).map(q => [q.mark + (q.ang ? ' + ' + q.ang.mark : ''), q.belt ? `армопояс над проёмом — перемычка: ${q.rec.bars}, L = ${q.len * 10} мм` : q.rec ? `ж/б ${Math.round(q.rec.b * 10)}×${Math.round(q.rec.h * 10)}, L = ${q.len * 10} мм, ${q.rec.bars}` : '—', String(q.ops.length)])) : null,
+      g.ops.length ? U.el('div', { class: 'tb-note' }, 'Сечения и полная ведомость — на листе «Перемычки и армопояс»; У-n — уголок под облицовку') : null,
       U.el('h4', {}, 'Перевязка'), Sheets.ul(['Смещение швов — ½ блока (≥ 0,4 высоты)', 'Углы и примыкания — перевязка через ряд', 'Первый ряд — на раствор по гидроизоляции, выставить по нивелиру']),
       U.el('div', { class: 'norm' }, '§ ' + (R.src || 'СП 15.13330.2020')));
   },

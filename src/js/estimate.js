@@ -18,7 +18,7 @@ const PRICE_DEFAULTS = {
   'roof:metaltile': 1100, 'roof:profile': 900, 'roof:seam': 2100, 'roof:soft': 1650, 'roof:ceramic': 2800,
   'roof:ondulin': 750, 'roof:polycarb': 800, 'roof:slate': 700, 'roof:membrane': 1650, 'roof:frame': 1900,
   // фундамент, перекрытия, полы
-  'found:strip': 10000, 'found:concrete': 10000, 'found:rebar': 85, 'found:sand': 1100, 'found:xps': 500, 'found:pile': 6800, 'wall:rebar': 85, 'wall:ring': 12000, 'slab:floor': 3400, 'floor:screed': 900,
+  'found:strip': 10000, 'found:concrete': 10000, 'found:rebar': 85, 'found:sand': 1100, 'found:xps': 500, 'found:pile': 6800, 'found:bore': 3500, 'wall:rebar': 85, 'wall:ring': 12000, 'slab:floor': 3400, 'floor:screed': 900,
   // чистовая отделка (за м² с работой)
   'fin:porcelain': 2800, 'fin:carpet': 1200, 'fin:tile': 1950, 'fin:laminate': 1400, 'fin:topping': 700, 'fin:paint': 700, 'fin:walltile': 2400,
   'fin:stretch': 800, 'fin:gkl': 1200, 'fin:lining': 2200, 'fin:brick': 3600, 'fin:plaster': 1400,
@@ -81,7 +81,8 @@ const Estimate = {
       add(g, k + ':rebar', `Арматура фундамента${who} А500/А240`, 'кг', F.rebar, 'found:rebar');
       if (F.sand) add(g, k + ':sand', `Песчаная подушка с трамбованием${who}`, 'м³', F.sand, 'found:sand');
       add(g, k + ':xps', `Утепление фундамента XPS 50–100 мм${who}`, 'м²', F.xps, 'found:xps');
-      if (F.piles) add(g, k + ':pile', `Сваи с монтажом${who}`, 'шт.', F.piles, 'found:pile');
+      if (F.type === 'bored') add(g, k + ':bore', `Бурение скважин под сваи Ø${F.pileD * 1000} с уширением пяты, обсадка рубероидом${who}`, 'шт.', F.piles, 'found:bore');
+      else if (F.piles) add(g, k + ':pile', `Сваи с монтажом${who}`, 'шт.', F.piles, 'found:pile');
     }
     for (const P of Struct.stovePads()) {
       const g = 'Фундамент, перекрытия, полы', k = 'found:stove:' + P.it.id, who = ` под печь (${P.name.toLowerCase()})`;

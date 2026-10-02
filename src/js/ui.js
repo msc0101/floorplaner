@@ -784,10 +784,10 @@ const UI = {
     ];
     if (Fd) body.push(
       F.info('Подобран', FOUND_TYPES[Fd.type] + (o.type === 'auto' ? ' (авто)' : '')),
-      Fd.type !== 'pile' ? F.info('Глубина заложения', `${mm(Fd.depth)}${Fd.soil.heave ? ` (промерзание ${mm(Fd.dfn)} × 0,6 = ${mm(Fd.df)})` : ' (грунт непучинистый)'}`) : F.info('Сваи', `${Fd.piles} шт., шаг 2–2,5 м`),
-      Fd.type !== 'slab' && Fd.type !== 'pile' ? F.info('Ширина подошвы', mm(Fd.width)) : null,
+      Fd.type === 'bored' ? F.info('Сваи и ростверк', Struct.dimsText(Fd)) : Fd.type !== 'pile' ? F.info('Глубина заложения', `${mm(Fd.depth)}${Fd.soil.heave ? ` (промерзание ${mm(Fd.dfn)} × 0,6 = ${mm(Fd.df)})` : ' (грунт непучинистый)'}`) : F.info('Сваи', `${Fd.piles} шт., шаг 2–2,5 м`),
+      Fd.type !== 'slab' && Fd.type !== 'pile' && Fd.type !== 'bored' ? F.info('Ширина подошвы', mm(Fd.width)) : null,
       F.info('Нагрузка на 1 м ленты', `${Fd.qn.toFixed(0)} кН/м (стены ${Fd.Gw.toFixed(0)}, крыша со снегом ${Fd.Groof.toFixed(0)}, перекрытия ${Fd.Gceil.toFixed(0)} кН)`),
-      F.info('Давление / сопротивление грунта', `${Fd.p.toFixed(0)} / ${Fd.R.toFixed(0)} кПа ${Fd.p <= Fd.R ? '✓' : '✗'}`),
+      F.info(Fd.type === 'bored' ? 'Нагрузка на сваю / допускаемая' : 'Давление / сопротивление грунта', Fd.type === 'bored' ? Struct.loadText(Fd) : `${Fd.p.toFixed(0)} / ${Fd.R.toFixed(0)} кПа ${Fd.p <= Fd.R ? '✓' : '✗'}`),
       F.info('Армирование', Fd.bars),
       F.info('Бетон B20 W6 F150', `${Fd.concrete.toFixed(1)} м³`),
       F.info('Арматура', `${Fd.rebar.toFixed(0)} кг`),
@@ -797,8 +797,8 @@ const UI = {
       F.note('Считается само по стенам, крыше, снеговому району и промерзанию города. Пучинистые грунты (суглинок, глина, супесь) — ниже промерзания; близкие грунтовые воды — МЗЛФ или утеплённая плита; торф — сваи. Уточните грунт по изысканиям (СП 47.13330) — хотя бы по соседям или шурфу.'));
     for (const B of Struct.all().filter(x => !x.house)) body.push(U.el('div', { class: 'mas' }, U.el('b', {}, `Фундамент: ${B.name}`),
       U.el('div', { class: 'mas-row' },
-        U.el('div', {}, `${FOUND_TYPES[B.type]}${B.type === 'pile' ? `, сваи ${B.piles} шт.` : `: глубина ${mm(B.depth)}${B.type === 'slab' ? '' : `, ширина ${mm(B.width)}`}`}`),
-        U.el('div', {}, `Промерзание ${mm(B.dfn)} × ${String(B.kh).replace('.', ',')} = ${mm(B.df)} (${B.khWhy}); нагрузка ${B.qn.toFixed(0)} кН/м, давление ${B.p.toFixed(0)} из ${B.R.toFixed(0)} кПа ${B.p <= B.R ? '✓' : '✗'}`),
+        U.el('div', {}, `${FOUND_TYPES[B.type]}${B.type === 'bored' ? ': ' + Struct.dimsText(B) : B.type === 'pile' ? `, сваи ${B.piles} шт.` : `: глубина ${mm(B.depth)}${B.type === 'slab' ? '' : `, ширина ${mm(B.width)}`}`}`),
+        U.el('div', {}, `Промерзание ${mm(B.dfn)} × ${String(B.kh).replace('.', ',')} = ${mm(B.df)} (${B.khWhy}); нагрузка ${B.qn.toFixed(0)} кН/м, ${B.type === 'bored' ? Struct.loadText(B) : `давление ${B.p.toFixed(0)} из ${B.R.toFixed(0)} кПа ${B.p <= B.R ? '✓' : '✗'}`}`),
         U.el('div', {}, `${B.bars}. Бетон ${B.concrete.toFixed(1)} м³, арматура ${B.rebar.toFixed(0)} кг${B.sand ? `, подушка ${B.sand.toFixed(1)} м³` : ''}, XPS ${B.xps.toFixed(0)} м².`),
         U.el('small', {}, 'Тип можно сменить в свойствах постройки. § СП 22.13330.2016 табл. 5.3, п. 5.5'))));
     const rows = Struct.masonry().filter(r => r.lenBear || r.rule.every);
