@@ -1234,6 +1234,7 @@ const View3D = {
     if (sh === 'woodRack') { View3D.woodRack(it, e); return; }
     if (['garageRack', 'workbench', 'tireRack', 'wallShelf', 'ceilRack'].includes(sh)) { View3D.storage(it, def, e); return; }
     if (sh === 'barrelSauna') { View3D.barrelSauna(it, e); return; }
+    if (sh === 'container') { View3D.container(it, e); return; }
     if (sh === 'deck') { box(it.x, it.y, it.w, it.d, rot, e, e + 25, C('#a8805a')); for (let x = -it.w / 2 + 7; x < it.w / 2; x += 14) { const q = G.toWorld({ x, y: 0 }, it.x, it.y, rot); box(q.x, q.y, 1, it.d, rot, e + 25, e + 25.3, C('#8c6848')); } return; }
     if (sh === 'parking') { box(it.x, it.y, it.w, it.d, rot, e, e + 3, C('#a9abb0')); return; }
     if (sh === 'gardenbed' || sh === 'flowerbed') { box(it.x, it.y, it.w, it.d, rot, e, e + Math.max(20, H), C('#7a5a3a')); return; }
@@ -3042,6 +3043,66 @@ const View3D = {
   },
   /** Баня-бочка «квадро»: скруглённое сечение из профилированной доски 45 мм на лагах и бетонных блоках,
    *  верх — мягкая черепица, стальные стяжки, боковая дверь с козырьком, окна, топка печи снаружи, труба-сэндвич */
+  /** Морской контейнер: опоры под фитинги, гофрированные стенки, угловые стойки и фитинги, торцевые двери с запорными штангами,
+   *  вход — двустворчатая дверь в длинной стене (+y); бытовка — окна; вентиляция — решётки (приток внизу, вытяжка вверху накрест) или дефлектор */
+  container(it, e) {
+    const { box, cyl, face } = View3D._g, C = View3D.hex, rot = it.rot || 0, w = it.w, d = it.d, K = contInfo(it), H = it.h || K.H;
+    const mx = it.flip ? -1 : 1, TW = (x, y) => G.toWorld({ x: x * mx, y }, it.x, it.y, rot), V = (x, y, z) => { const q = TW(x, y); return [q.x / 100, z / 100, q.y / 100]; };   // «Зеркально» — отражение по длине
+    const bx = (x, y, ww, dd, z0, z1, col) => { const q = TW(x, y); box(q.x, q.y, ww, dd, rot, z0, z1, col); };
+    const base = C(K.color), rib = base.map(v => Math.min(1, v * 1.12)), frame = base.map(v => v * 0.72), steel = C('#3a3d40'), conc = C('#9d9a93');
+    const zb = e + 20, zt = zb + H, mid = V(0, 0, zb + H / 2);
+    // опоры: бетонные блоки 400×200×200 под угловыми фитингами (у 40′ — ещё пара посередине) на щебёночной подушке
+    const sx = K.sup > 4 ? [-1, 0, 1] : [-1, 1];
+    for (const fx of sx) for (const fy of [-1, 1]) { bx(fx * (w / 2 - 20), fy * (d / 2 - 15), 40, 30, e - 2, e, C('#a8a49c')); bx(fx * (w / 2 - 20), fy * (d / 2 - 15), 40, 20, e, zb, conc); }
+    // короб, гофра длинных стенок и глухого торца
+    bx(0, 0, w - 4, d - 4, zb + 2, zt - 2, base);
+    for (let x = -w / 2 + 20; x < w / 2 - 15; x += 28) for (const fy of [-1, 1]) bx(x, fy * (d / 2 - 2), 13, 4, zb + 12, zt - 12, rib);
+    const closed = -1;
+    if (K.endDoors) for (let y = -d / 2 + 25; y < d / 2 - 20; y += 30) bx(closed * (w / 2 - 2), y, 4, 14, zb + 12, zt - 12, rib);
+    else for (const end of [-1, 1]) for (let y = -d / 2 + 25; y < d / 2 - 20; y += 30) bx(end * (w / 2 - 2), y, 4, 14, zb + 12, zt - 12, rib);
+    // рама: стойки, верхние и нижние брусья, фитинги
+    for (const fx of [-1, 1]) for (const fy of [-1, 1]) {
+      bx(fx * (w / 2 - 7), fy * (d / 2 - 7), 14, 14, zb, zt, frame);
+      for (const z of [zb, zt - 12]) bx(fx * (w / 2 - 9), fy * (d / 2 - 8), 18, 16, z, z + 12, steel);
+    }
+    for (const fy of [-1, 1]) { bx(0, fy * (d / 2 - 5), w - 30, 10, zb, zb + 12, frame); bx(0, fy * (d / 2 - 5), w - 30, 10, zt - 10, zt, frame); }
+    for (const fx of [-1, 1]) { bx(fx * (w / 2 - 5), 0, 10, d - 30, zb, zb + 14, frame); bx(fx * (w / 2 - 5), 0, 10, d - 30, zt - 12, zt, frame); }
+    bx(0, 0, w - 10, d - 10, zt - 1, zt + 0.5, rib);                                                         // крыша
+    // торцевые двери: две створки, по 2 запорные штанги на створку, ручки
+    if (K.endDoors) {
+      const ex = w / 2 + 0.5;
+      bx(ex, 0, 2, d - 28, zb + 12, zt - 12, base.map(v => v * 0.95));
+      bx(ex, 0, 2.5, 1.5, zb + 12, zt - 12, steel);
+      for (const y of [-d * 0.36, -d * 0.16, d * 0.16, d * 0.36]) { const q = TW(ex + 2.5, y); cyl(q.x, q.y, 1.6, zb + 6, zt - 6, steel, 6); bx(ex + 4, y + 4, 3, 10, zb + 105, zb + 110, steel); }
+    }
+    // вход: двустворчатая распашная дверь в длинной стене +y — рама, створки, штанги запоров, проушина под замок
+    const yf = d / 2;
+    if (K.sideDoor != null) {
+      const dx = (K.sideDoor - 0.5) * w, hw = K.sideW / 2, dh = Math.min(220, H - 30), z0 = zb + 12;
+      bx(dx, yf + 0.5, 2 * hw + 16, 3, z0, z0 + dh + 8, frame);                                          // обвязка проёма
+      for (const s of [-1, 1]) {
+        bx(dx + s * hw / 2, yf + 2.2, hw - 2, 2, z0 + 2, z0 + dh, base.map(v => v * 0.93));
+        for (const f of [0.3, 0.75]) { const q = TW(dx + s * hw * f, yf + 4); cyl(q.x, q.y, 1.5, z0 - 2, z0 + dh + 6, steel, 6); bx(dx + s * hw * f + s * 5, yf + 5, 10, 3, z0 + 100, z0 + 104, steel); }
+      }
+      bx(dx, yf + 4.5, 6, 3, z0 + 110, z0 + 116, C('#c9a227'));                                          // замок
+      { const q = TW(dx, yf + 18); box(q.x, q.y, 2 * hw + 20, 30, rot, e, zb - 2, conc); }                 // ступень
+    }
+    // окна бытовки
+    if (K.cabin) for (const wx of K.sideDoor != null ? [(K.sideDoor - 0.5) * w - K.sideW / 2 - 110, (K.sideDoor - 0.5) * w + K.sideW / 2 + 110] : [0]) {
+      if (Math.abs(wx) > w / 2 - 70) continue;
+      const z0 = zb + 110, z1 = zb + 170;
+      bx(wx, yf + 1.5, 112, 3, z0 - 6, z1 + 6, C('#f0f0f0'));
+      face([V(wx - 50, yf + 3.2, z0), V(wx + 50, yf + 3.2, z0), V(wx + 50, yf + 3.2, z1), V(wx - 50, yf + 3.2, z1)], [0.55, 0.68, 0.78], mid, true);
+      for (let z = z0 + 10; z < z1; z += 12) bx(wx, yf + 4.5, 104, 1.2, z, z + 1.2, steel);              // решётка
+    }
+    // вентиляция: приточные решётки внизу (+y), вытяжные — вверху (−y), накрест; дефлектор на крыше
+    for (const v of contVents(K, w, d)) {
+      if (v.kind === 'defl') { const q = TW(v.x, v.y); cyl(q.x, q.y, 8, zt, zt + 45, C('#c9ccd0'), 12); cyl(q.x, q.y, 14, zt + 45, zt + 70, C('#b4b8bd'), 14); View3D._g.cone(q.x, q.y, 14, 3, zt + 70, zt + 80, C('#9aa1a8'), 14); continue; }
+      const z = v.kind === 'in' ? zb + 25 : zt - 45, sy = v.y > 0 ? 1 : -1;
+      bx(v.x, v.y + sy * 3, 20, 2, z, z + 20, C('#d9dcdf'));
+      for (let k = 0; k < 4; k++) bx(v.x, v.y + sy * 4.2, 17, 1, z + 3 + k * 4.5, z + 4.5 + k * 4.5, steel);
+    }
+  },
   barrelSauna(it, e) {
     const { face, box, cyl } = View3D._g, C = View3D.hex, rot = it.rot || 0, w = it.w, a = it.d / 2, H = it.h || 240;
     const zb = e + 32, R = Math.min(75, a * 0.62), Rb = 22, k = w / 600;

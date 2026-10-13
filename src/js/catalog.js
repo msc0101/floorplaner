@@ -565,6 +565,13 @@ const CATALOG = [
     { key: 'carportLean', name: 'Навес пристроенный (односкатный)', shape: 'canopyLean', w: 350, d: 600, h: 300, shadow: true, roof: true },
     { key: 'shed', name: 'Сарай / хозблок', shape: 'building', w: 300, d: 400, h: 280, shadow: true },
     { key: 'bathhouse', name: 'Баня', shape: 'building', w: 400, d: 500, h: 380, shadow: true },
+    { key: 'cont8', name: 'Контейнер 8′ (2,4 × 2,2 м) — бытовка, кладовая', kw: 'морской контейнер бытовка хозблок склад', shape: 'container', cont: '8', w: 244, d: 220, h: 226, shadow: true },
+    { key: 'cont10', name: 'Контейнер морской 10′ (3,0 × 2,4 м)', kw: 'морской контейнер бытовка хозблок склад', shape: 'container', cont: '10', w: 299, d: 244, h: 259, shadow: true },
+    { key: 'cont20', name: 'Контейнер морской 20′ (6,1 × 2,4 м)', kw: 'морской контейнер бытовка хозблок склад', shape: 'container', cont: '20', w: 606, d: 244, h: 259, shadow: true },
+    { key: 'cont20hc', name: 'Контейнер морской 20′ HC, высокий (6,1 × 2,4 × 2,9 м)', kw: 'морской контейнер бытовка хозблок склад high cube', shape: 'container', cont: '20hc', w: 606, d: 244, h: 290, shadow: true },
+    { key: 'cont40', name: 'Контейнер морской 40′ (12,2 × 2,4 м)', kw: 'морской контейнер бытовка хозблок склад', shape: 'container', cont: '40', w: 1219, d: 244, h: 259, shadow: true },
+    { key: 'cont40hc', name: 'Контейнер морской 40′ HC, высокий (12,2 × 2,4 × 2,9 м)', kw: 'морской контейнер бытовка хозблок склад high cube', shape: 'container', cont: '40hc', w: 1219, d: 244, h: 290, shadow: true },
+    { key: 'cont45hc', name: 'Контейнер морской 45′ HC (13,7 × 2,4 × 2,9 м)', kw: 'морской контейнер бытовка хозблок склад high cube', shape: 'container', cont: '45hc', w: 1372, d: 244, h: 290, shadow: true },
     { key: 'barrelSauna', name: 'Баня-бочка «квадро» 2,3 м в сечении, длина 4 или 6 м (парная, моечная, комната отдыха)', kw: 'баня бочка квадро сауна парилка', shape: 'barrelSauna', w: 600, d: 230, h: 240, shadow: true },
     { key: 'coop', name: 'Курятник / птичник', kw: 'птица куры утки гуси кролики крольчатник', shape: 'building', w: 300, d: 250, h: 250, shadow: true },
     { key: 'barn', name: 'Хлев / сарай для скота', kw: 'скот козы овцы свиньи коровы животные', shape: 'building', w: 500, d: 400, h: 300, shadow: true },
@@ -860,6 +867,39 @@ function bldFrame(it) {
     mauerlat, anchors: Math.ceil(mauerlat / 0.8) + 4, woodV, rr };
 }
 
+/* ===================== МОРСКИЕ КОНТЕЙНЕРЫ (ISO 668) — бытовки и хозпостройки =====================
+   Наружные габариты, см; масса тары, т; опор под угловые фитинги (у 40′ и длиннее — ещё пара посередине) */
+const CONT_SIZES = {
+  '8':    { key: 'cont8',    name: '8′',      L: 244,  B: 220, H: 226, tare: 0.95, sup: 4 },
+  '10':   { key: 'cont10',   name: '10′',     L: 299,  B: 244, H: 259, tare: 1.3,  sup: 4 },
+  '20':   { key: 'cont20',   name: '20′',     L: 606,  B: 244, H: 259, tare: 2.2,  sup: 4 },
+  '20hc': { key: 'cont20hc', name: '20′ HC',  L: 606,  B: 244, H: 290, tare: 2.3,  sup: 4 },
+  '40':   { key: 'cont40',   name: '40′',     L: 1219, B: 244, H: 259, tare: 3.7,  sup: 6 },
+  '40hc': { key: 'cont40hc', name: '40′ HC',  L: 1219, B: 244, H: 290, tare: 3.9,  sup: 6 },
+  '45hc': { key: 'cont45hc', name: '45′ HC',  L: 1372, B: 244, H: 290, tare: 4.8,  sup: 6 },
+};
+const CONT_COLORS = { blue: ['синий (RAL 5010)', '#2f5f8f'], green: ['зелёный (RAL 6005)', '#3a5f45'], red: ['кирпичный (RAL 3009)', '#7d3a2c'], grey: ['серый (RAL 7035)', '#a9adb0'], beige: ['бежевый (RAL 1015)', '#d8c9a3'], brown: ['коричневый (RAL 8017)', '#4e3b31'], white: ['белый (RAL 9003)', '#e9eaea'] };
+/** Вентиляция контейнера: без неё металл «потеет» — конденсат на потолке и стенах, ржавчина, сырость.
+ *  Сквозное (диагональное) проветривание: приток — решётки внизу одной длинной стены, вытяжка — вверху противоположной у другого торца */
+const CONT_VENTS = { none: 'нет (только штатные щелевые продухи)', grilles: 'решётки: приток внизу + вытяжка вверху, накрест', deflector: 'приточные решётки внизу + дефлектор Ø160 на крыше' };
+/** Контейнер: размер, цвет, бытовка (дверь и окно в длинной стене, утепление), где торцевые двери. Внутренние размеры — за вычетом стенок */
+function contInfo(it) {
+  const def = catItem(it.key), S = CONT_SIZES[def.cont] || CONT_SIZES['20'];
+  const iL = S.L - 12, iB = S.B - 9, iH = S.H - 24, ins = it.cabin ? 10 : 0;
+  return { ...S, iL, iB, iH, area: (iL - 2 * ins) * (iB - 2 * ins) / 1e4, vol: iL * iB * iH / 1e6, color: (CONT_COLORS[it.paint] || CONT_COLORS.green)[1], cabin: !!it.cabin, endDoors: it.endDoors !== false, vent: CONT_VENTS[it.vent] ? it.vent : it.cabin ? 'deflector' : 'grilles', sideW: U.clamp(+it.sideW || 180, 80, S.L - 100), sideDoor: U.isNum(it.sideDoor) ? U.clamp(it.sideDoor, 0.1, 0.9) : it.sideDoor === null ? null : it.cabin ? 0.5 : null };
+}
+
+/** Точки вентиляции контейнера в его координатах: приток (in) — внизу стены +y у торца −x, вытяжка (out) — вверху стены −y у торца +x;
+ *  у 40′ и длиннее — по паре; с дефлектором вытяжка — на крыше у торца +x (defl) */
+function contVents(C, w, d) {
+  if (C.vent === 'none') return [];
+  const xs = w > 900 ? [0.12, 0.45] : [0.14], out = [];
+  for (const f of xs) out.push({ kind: 'in', x: -w / 2 + f * w, y: d / 2 });
+  if (C.vent === 'deflector') out.push({ kind: 'defl', x: w / 2 - Math.min(80, w * 0.15), y: 0 });
+  else for (const f of xs) out.push({ kind: 'out', x: w / 2 - f * w, y: -d / 2 });
+  return out;
+}
+
 /* ===================== ПОСТРОЙКИ «КАК ДОМ»: стены с толщиной, внутри — пусто ===================== */
 const BLD_HOLLOW = new Set(['building', 'garage']);
 /** Винтовая лестница: ступеней на виток — так, чтобы проступь посередине (r = R/2) была ≥ 19 см; высота прохода — один виток */
@@ -869,7 +909,7 @@ function spiralGeom(it, H) {
   return { R, perTurn, da, n, rise, mid: (R / 2) * da, head: perTurn * rise };
 }
 /** Отдельно стоящие постройки участка — для привязки сетей на листах наружных сетей */
-const SITE_BLD_SHAPES = new Set(['barrelSauna', 'gazebo', 'greenhouse', 'canopy', 'canopyLean', 'veranda']);
+const SITE_BLD_SHAPES = new Set(['barrelSauna', 'container', 'gazebo', 'greenhouse', 'canopy', 'canopyLean', 'veranda']);
 const BLD_SIDES = { front: 'спереди (+Г)', back: 'сзади (−Г)', left: 'слева (−Ш)', right: 'справа (+Ш)' };
 /** Толщина стен постройки */
 function bldWallT(it) {
@@ -1098,6 +1138,49 @@ const Painters = (() => {
     line(P, [60 * k, d / 2, Math.min(60 * k + 72, w / 2 - 95), d / 2 + 18]);                        // дверь
     const fs = Math.min(d * 0.13, 13 * k + 4);
     text(P, 'Парная', (-w / 2 + x1) / 2 + 6, -d * 0.25, fs); text(P, 'Мойка', (x1 + x2) / 2, -d * 0.25, fs); text(P, 'Отдых', (x2 + w / 2) / 2, -d * 0.25, fs);
+  };
+  // морской контейнер: гофра по длинным стенам, торцевые двери (+x) с запорными штангами, угловые фитинги;
+  // бытовка — дверь и окно в длинной стене со стороны +y, утеплённые стены (пунктир изнутри)
+  S.container = (P, w, d) => {
+    const C = contInfo(P.it);
+    box(P, -w / 2, -d / 2, w, d, 0); thin(P);
+    for (let x = -w / 2 + 14; x < w / 2 - 10; x += 28) for (const sy of [-1, 1]) line(P, [x, sy * d / 2, x, sy * (d / 2 - 5)]);   // гофра
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) box(P, sx * w / 2 - (sx > 0 ? 18 : 0), sy * d / 2 - (sy > 0 ? 16 : 0), 18, 16, 0, false);   // фитинги
+    const ex = w / 2;                                                                                // торцевые двери — у +x («Зеркально» отражает чертёж)
+    if (C.endDoors) {
+      line(P, [ex - 8, -d / 2 + 16, ex - 8, d / 2 - 16]);
+      for (const f of [-0.3, -0.1, 0.1, 0.3]) line(P, [ex, f * d, ex + 10, f * d]);                 // штанги запоров
+    }
+    P.ctx.save(); P.ctx.setLineDash([4 * P.px, 3 * P.px]);
+    if (C.endDoors) for (const sy of [-1, 1]) line(P, [ex, 0, ex + d / 2 * 0.9, sy * d / 2 * 0.95]);   // створки при открывании
+    if (C.cabin) box(P, -w / 2 + 10, -d / 2 + 10, w - 20, d - 20, 0, false);
+    P.ctx.restore();
+    if (C.sideDoor != null) {                                                                         // вход: двустворчатая распашная дверь (как ворота) в длинной стене +y, наружу
+      const dx = (C.sideDoor - 0.5) * w, h = C.sideW / 2;
+      P.ctx.save(); P.ctx.fillStyle = P.C.paper || '#fff'; P.ctx.fillRect(dx - h, d / 2 - 6, 2 * h, 7); P.ctx.restore();
+      for (const sx of [-1, 1]) {
+        const hx = dx + sx * h, a = Math.PI / 2 - Math.PI / 3;                                        // петли — по краям проёма, створки открыты на 60°
+        lw(P, 1.6); line(P, [hx, d / 2, hx - sx * h * Math.cos(a), d / 2 + h * Math.sin(a)]); thin(P);
+        P.ctx.beginPath(); if (sx < 0) P.ctx.arc(hx, d / 2, h, 0, a); else P.ctx.arc(hx, d / 2, h, Math.PI - a, Math.PI); P.ctx.stroke();
+      }
+    }
+    if (C.cabin) for (const wx of C.sideDoor != null ? [(C.sideDoor - 0.5) * w - C.sideW / 2 - 110, (C.sideDoor - 0.5) * w + C.sideW / 2 + 110] : [0]) {   // окна 100 см по сторонам от двери
+      if (Math.abs(wx) > w / 2 - 70) continue;
+      line(P, [wx - 50, d / 2 - 2, wx + 50, d / 2 - 2]); line(P, [wx - 50, d / 2 + 2, wx + 50, d / 2 + 2]);
+    }
+    if (C.vent !== 'none') {                                                                         // вентиляция: ▲ приток внизу (+y), ▼ вытяжка вверху (−y) или дефлектор на крыше
+      lw(P, 1.2);
+      for (const p of contVents(C, w, d)) {
+        if (p.kind === 'defl') { circle(P, p.x, p.y, 9, false); line(P, [p.x - 6, p.y, p.x + 6, p.y]); line(P, [p.x, p.y - 6, p.x, p.y + 6]); continue; }
+        const s = p.kind === 'in' ? -1 : 1, y0 = p.y;
+        box(P, p.x - 8, y0 - 3, 16, 6, 0, false);
+        line(P, [p.x, y0 + s * 4, p.x, y0 + s * 16]); line(P, [p.x - 4, y0 + s * 12, p.x, y0 + s * 16, p.x + 4, y0 + s * 12]);
+      }
+      thin(P);
+    }
+    const fs = Math.min(d * 0.16, 26);
+    if (!P.it.label) text(P, `${C.cabin ? 'Бытовка' : 'Контейнер'} ${C.name}`, 0, -d * 0.12, fs, { bold: true });
+    text(P, `${C.area.toFixed(1).replace('.', ',')} м²`, 0, d * 0.16, fs * 0.8);
   };
   // трап: квадратная решётка в полу
   // трап с сухим затвором: рамка из нержавейки, решётка с прорезями (два ряда), «конверт» уклона пола к трапу (1–2 %)

@@ -41,7 +41,7 @@ const Analysis = {
     if (s.plotArea) {
       const f2 = (v) => v.toFixed(2).replace('.', ','), kz = s.built / s.plotArea, kp = s.gross / s.plotArea, srcK = 'СП 42.13330.2026 (параметры индивидуальной жилой застройки); ПЗЗ муниципалитета';
       const cap = (s.footprint + s.outb.filter(it => catItem(it.key).shape === 'garage' || (catItem(it.key).shape === 'veranda' && porchOpt(it).roofed) || (catItem(it.key).shape === 'building' && !['pile', 'none'].includes(it.foundType))).reduce((a, it) => a + it.w * it.d, 0)) / s.plotArea;
-      if (kz > 0.2) add('info', 'Участок', `Коэффициент застройки ${f2(kz)} — больше 0,2 из СП 42.13330.2026 (капитальные: дом, веранды, гараж — ${f2(cap)}; теплица, беседка, сарай на сваях — некапитальные). Для участка обязателен предельный процент застройки по ПЗЗ — сверьте до подачи уведомления`, srcK, plots[0].pts[0]);
+      if (kz > 0.2) add('info', 'Участок', `Коэффициент застройки ${f2(kz)} — больше 0,2 из СП 42.13330.2026 (капитальные: дом, веранды, гараж — ${f2(cap)}; теплица, беседка, контейнер, сарай на сваях — некапитальные). Для участка обязателен предельный процент застройки по ПЗЗ — сверьте до подачи уведомления`, srcK, plots[0].pts[0]);
       if (kp > 0.4) add('info', 'Участок', `Коэффициент плотности застройки ${f2(kp)} больше 0,4 (площадь всех этажей ${m2(s.gross)}) — сверьте с ПЗЗ`, srcK, plots[0].pts[0]);
     }
     const ext = d.walls.filter(w => w.kind === 'ext'), int = d.walls.filter(w => w.kind === 'int' || w.kind === 'part');
@@ -208,6 +208,7 @@ const Analysis = {
     Analysis.wellsBound(d, add, m);
     Analysis.septicOut(d, add);
     Analysis.generator(d, add);
+    Analysis.containers(d, add);
 
     // ---------------- электрика: группы щита, автомат против сечения, УЗО на розетках ----------------
     Analysis.electric(d, add, stats);
@@ -398,6 +399,14 @@ const Analysis = {
   },
   /** Резервный генератор: подключение только через АВР (иначе ток уйдёт в сеть к электрикам на линии), на улице — выхлоп
    *  не ближе 3 м к окнам и дверям, в помещении — угарный газ; корпус — на контур заземления */
+  /** Контейнеры-бытовки: вентиляция (конденсат), заземление металлического корпуса */
+  containers(d, add) {
+    for (const it of d.items.filter(x => catItem(x.key).shape === 'container')) {
+      const K = contInfo(it), nm = it.label || `Контейнер ${K.name}`;
+      if (K.vent === 'none') add('warn', 'Постройки', `${nm}: без вентиляции металл «потеет» — конденсат на потолке, ржавчина, сырость в вещах; нужны решётки внизу и вверху накрест или дефлектор`, 'СП 60.13330.2020 (вентиляция); практика эксплуатации', it, it.id, () => { it.vent = K.cabin ? 'deflector' : 'grilles'; Model.commit(); });
+      if (K.cabin && !d.lines.some(l => l.kind === 'power' && l.pts.some(p => G.pointInPoly(p, Model.itemPts(it)))) && !d.lines.some(l => l.kind === 'ground' && l.pts.some(p => G.dist(p, it) < Math.max(it.w, it.d)))) add('info', 'Постройки', `${nm}: бытовка без электрики на плане — кабель в земле в ПНД, ввод в гильзе, УЗО 30 мА; металлический корпус — заземлить (полоса к контуру)`, 'ПУЭ п. 1.7.76, 7.1', it, it.id);
+    }
+  },
   generator(d, add) {
     const f1 = d.floors[0].id, gens = d.items.filter(it => it.key === 'generator' && (it.floor || f1) === f1);
     if (!gens.length) return;

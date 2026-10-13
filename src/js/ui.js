@@ -1081,6 +1081,23 @@ const UI = {
         it.exhaustOut ? F.num('Длина трубы за корпусом (до оголовка)', it.exhLen || 50, (v) => { it.exhLen = U.clamp(v, 10, 500); Model.commit(); }, { min: 10, max: 500 }) : null,
         F.note('Подключение — только через щит АВР: при пропадании сети АВР отключает ввод, запускает генератор и переводит на него секцию гарантированного питания (котёл, насосы, холодильник, свет, ворота, видеонаблюдение). Выхлоп — сзади (стрелка на плане). В гараже — только с выводом выхлопа наружу, притоком воздуха и датчиком CO.')));
     }
+    if (def.shape === 'container') {
+      const K = contInfo(it), mm = (v) => (v / 100).toFixed(2).replace('.', ',');
+      body.append(F.section('Контейнер',
+        F.select('Размер', def.cont, Object.entries(CONT_SIZES).map(([k, v]) => [k, `${v.name} — ${mm(v.L)} × ${mm(v.B)} × ${mm(v.H)} м`]), (v) => {
+          const S = CONT_SIZES[v]; it.key = S.key; it.w = S.L; it.d = S.B; it.h = S.H; Model.commit();
+        }),
+        F.select('Цвет', it.paint || 'green', Object.entries(CONT_COLORS).map(([k, v]) => [k, v[0]]), (v) => { it.paint = v; Model.commit(); }),
+        F.check('Бытовка: утепление 100 мм, обшивка, окна, свет', K.cabin, (v) => { it.cabin = v || undefined; Model.commit(); }),
+        F.check('Вход — двустворчатая дверь в длинной стене (как ворота)', K.sideDoor != null, (v) => { it.sideDoor = v ? 0.5 : null; Model.commit(); }),
+        K.sideDoor != null ? F.num('Ширина двери (две створки)', K.sideW, (v) => { it.sideW = U.clamp(v, 80, K.L - 100); Model.commit(); }, { min: 80, max: K.L - 100, step: 10 }) : null,
+        K.sideDoor != null ? F.num('Дверь: от торца −Ш, % длины', Math.round(K.sideDoor * 100), (v) => { it.sideDoor = U.clamp(v / 100, 0.1, 0.9); Model.commit(); }, { min: 10, max: 90, step: 5, unit: '%' }) : null,
+        F.check('Штатные торцевые двери', K.endDoors, (v) => { it.endDoors = v ? undefined : false; Model.commit(); }),
+        F.select('Вентиляция', K.vent, Object.entries(CONT_VENTS), (v) => { it.vent = v; Model.commit(); }),
+        F.info('Внутри', `${mm(K.iL)} × ${mm(K.iB)} × ${mm(K.iH)} м — ${K.area.toFixed(1).replace('.', ',')} м², ${K.vol.toFixed(0)} м³`),
+        F.info('Масса тары', `${K.tare.toFixed(1).replace('.', ',')} т — опор ${K.sup}`),
+        F.note('Ставить на бетонные блоки или сваи под угловые фитинги (у 40′ и 45′ — ещё пара посередине) на щебень, низ — на 15–20 см над землёй: днище проветривается и не гниёт. Без вентиляции металл «потеет»: приток — решётки внизу, вытяжка — вверху у другого торца накрест или дефлектор на крыше. Заземлить (полоса к контуру), крышу — уклон или навес, чтобы не стояла вода. Как хозпостройка: 1 м до соседа, 5 м до красной линии улицы. Входная дверь — «Зеркально» и поворот на 180° меняют стороны.')));
+    }
     if (def.shape === 'radiator') {
       body.append(F.section('Монтаж',
         F.num('Низ от пола', U.isNum(it.z0) ? it.z0 : it.key === 'towel' ? 50 : 12, (v) => { it.z0 = U.clamp(v, 0, 200); Model.commit(); }),
@@ -1110,7 +1127,7 @@ const UI = {
         F.info('Створка', U.fmtLen(leaf) + (wk ? `, калитка ${U.fmtLen(wk)}` : '')),
         F.note('Створкам нужно свободное место радиусом с их ширину. Открывание наружу, на улицу, обычно не допускается — лучше внутрь участка.')));
     }
-    if (BLD_ROOF_SHAPES.has(def.shape) || def.shape === 'gazebo') {
+    if (BLD_ROOF_SHAPES.has(def.shape) || def.shape === 'gazebo' || def.shape === 'container') {
       const g = Checks.groupsOf(it).filter(x => x !== 'outbuilding' || Checks.groupsOf(it).length === 1).map(x => CHECK_GROUPS[x]).join(', ') || 'не учитывается';
       body.append(F.section('Нормы отступов',
         F.select('Назначение', it.checkAs || '', Object.entries(CHECK_AS), (v) => { if (v) it.checkAs = v; else delete it.checkAs; Model.commit(); }),

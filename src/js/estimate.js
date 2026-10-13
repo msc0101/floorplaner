@@ -50,6 +50,8 @@ const PRICE_DEFAULTS = {
   'item:cellar': 260000, 'item:cellarHouse': 340000, 'item:podpol': 68000, 'item:inspPit': 90000, 'item:pitOpen': 30000,
   // хранение в гараже (за шт.)
   'item:garageRack': 6000, 'item:workbench': 15000, 'item:tireRack': 4000, 'item:wallShelf': 1500, 'item:ceilRack': 7000,
+  'item:cont8': 95000, 'item:cont10': 110000, 'item:cont20': 165000, 'item:cont20hc': 195000, 'item:cont40': 250000, 'item:cont40hc': 280000, 'item:cont45hc': 380000,
+  'cont:cabin': 9000, 'cont:door': 38000, 'cont:base': 18000,
   'item:gate': 90000, 'item:wicket': 19000, 'item:bbq': 30000,
 };
 
@@ -155,6 +157,13 @@ const Estimate = {
       const def = catItem(k);
       add(def.layer === 'siteobj' ? 'Постройки на участке' : 'Оборудование', 'item:' + k, def.name + (Fs.some(F => F.item && F.item.key === k) ? ' — коробка, крыша, ворота (фундамент — отдельной строкой)' : ''), 'шт.', n);
     }
+    // контейнеры: б/у с доставкой (строка выше) + опоры, переделка в бытовку, вход в длинной стене
+    const conts = d.items.filter(it => catItem(it.key).shape === 'container').map(contInfo);
+    if (conts.length) add('Постройки на участке', 'cont:base', 'Контейнер: опоры (блоки на щебне), заземление, установка краном-манипулятором', 'шт.', conts.length);
+    const cab = conts.filter(c => c.cabin).reduce((a, c) => a + c.area, 0);
+    if (cab) add('Постройки на участке', 'cont:cabin', 'Переделка контейнера в бытовку: утепление 100 мм, обшивка, пол, окна, свет, вентиляция', 'м²', cab);
+    const sd = conts.filter(c => c.sideDoor != null).length;
+    if (sd) add('Постройки на участке', 'cont:door', 'Контейнер: двустворчатая дверь в длинной стене (вырез, усиление рамой, створки с запорами)', 'шт.', sd);
     // заборы
     for (const m of Rooms.materials().rows) if (m.fence) {
       add('Заборы', 'fence:' + (m.mat || 'profile'), m.name, 'м', m.len / 100);
